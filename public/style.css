@@ -1976,6 +1976,60 @@ a:hover {
   fill: #fff;
 }
 
+/* أزرار أيقونات دائرية محايدة (الاستشهاد والإجراءات) */
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: #6b7482;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+
+.icon-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  display: block;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #fff;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  text-decoration: none;
+  outline: none;
+}
+
+.icon-btn.is-copied {
+  background: #1c7c4a;
+  border-color: #1c7c4a;
+  color: #fff;
+}
+
+/* قانون عام للمنصة: النصوص والمقالات والاقتباسات متحاذية الأطراف تمامًا */
+.doc-desc,
+.text-block,
+.citation-text,
+.page-desc,
+blockquote {
+  text-align: justify;
+}
+
 /* ---------- 15. المجلة والأعداد (Journal) ---------- */
 .journal-hero {
   text-align: center;

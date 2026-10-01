@@ -56,7 +56,7 @@
     var done = function () {
       if (!btn) return;
       // أزرار الأيقونات: وميض أخضر بدل استبدال المحتوى
-      if (btn.classList && btn.classList.contains('share-ic')) {
+      if (btn.classList && (btn.classList.contains('share-ic') || btn.classList.contains('icon-btn'))) {
         btn.classList.add('is-copied');
         setTimeout(function () { btn.classList.remove('is-copied'); }, 1800);
         return;
@@ -102,11 +102,18 @@
     });
   });
 
-  /* ---------- زر مُجتمع: نسخ الرابط ثم فتح المنصة ---------- */
+  /* ---------- زر مُجتمع: نسخ الرابط ثم فتح التطبيق (أو الموقع كبديل) ---------- */
   document.querySelectorAll('[data-copy-open]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       copyText(btn.getAttribute('data-copy-open') || location.href, btn);
+      var ua = navigator.userAgent || '';
+      var isAndroid = /Android/i.test(ua);
+      var appUrl = btn.getAttribute('data-app-android');
       var open = btn.getAttribute('data-open');
+      // أندرويد: intent صريح لحزمة التطبيق يفتحه مباشرة إن كان مثبتًا،
+      // والمتصفح بديل تلقائي (browser_fallback_url) إن لم يكن مثبتًا.
+      if (isAndroid && appUrl) { window.location.href = appUrl; return; }
+      // iOS: الرابط من نوع universal link (/feed) فيفتح التطبيق إن كان مثبتًا.
       if (open) window.open(open, '_blank', 'noopener');
     });
   });

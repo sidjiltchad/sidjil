@@ -727,7 +727,7 @@ function shareHTML(ctx, m) {
       ${ic(`https://t.me/share/url?url=${e(url)}&text=${e(text)}`, '#229ed9', t(lang, 'share_telegram'), ICON_TG)}
       ${ic(`https://twitter.com/intent/tweet?url=${e(url)}&text=${e(text)}`, '#111111', t(lang, 'share_x'), ICON_X)}
       ${ic(`https://www.facebook.com/sharer/sharer.php?u=${e(url)}`, '#1877f2', t(lang, 'share_facebook'), ICON_FB)}
-      <button class="share-ic" type="button" style="--sc:#0a84ff" data-copy-open="${esc(url)}" data-open="https://mujtam3.com/" data-copied="${esc(t(lang, 'share_copied'))}" title="${esc(t(lang, 'share_mujtam3'))}" aria-label="${esc(t(lang, 'share_mujtam3'))}"><img src="/img/mujtam3.png" alt=""></button>
+      <button class="share-ic" type="button" style="--sc:#0a84ff" data-copy-open="${esc(url)}" data-open="https://mujtam3.com/feed" data-app-android="intent://mujtam3.com/feed#Intent;scheme=https;package=com.mujtam3.production;S.browser_fallback_url=https%3A%2F%2Fmujtam3.com%2Ffeed;end" data-copied="${esc(t(lang, 'share_copied'))}" title="${esc(t(lang, 'share_mujtam3'))}" aria-label="${esc(t(lang, 'share_mujtam3'))}"><img src="/img/mujtam3.png" alt=""></button>
       <button class="share-ic" type="button" style="--sc:#5b6472" data-copy-link="${esc(url)}" data-copied="${esc(t(lang, 'share_copied'))}" title="${esc(t(lang, 'share_copy'))}" aria-label="${esc(t(lang, 'share_copy'))}">${ICON_LINK}</button>
     </div>
   </div>`;
@@ -951,15 +951,18 @@ async function documentPage(ctx, ark) {
     </section>` : '';
 
   /* --- الاستشهاد --- */
+  const citeCopyLabel = esc(t(lang, 'citation_copy'));
+  const linkCopyLabel = esc(t(lang, 'copy_link'));
+  const permLabel = esc(t(lang, 'permanent_link'));
   const citationHTML = `
     <section class="doc-section" id="citationBox">
       <h2 class="doc-section-title">${esc(t(lang, 'citation'))}</h2>
       <p class="hint">${esc(t(lang, 'citation_hint'))}</p>
       <blockquote class="citation-text" id="citationText" dir="auto">${esc(citation)}</blockquote>
       <div class="citation-actions">
-        <button type="button" class="btn btn-primary" id="copyCitation" data-copied="${esc(t(lang, 'copied'))}">${esc(t(lang, 'citation_copy'))}</button>
-        <button type="button" class="btn btn-ghost" id="copyLink" data-link="${esc(canonical)}" data-copied="${esc(t(lang, 'copied'))}">${esc(t(lang, 'copy_link'))}</button>
-        <a class="btn btn-ghost" href="${esc(canonical)}" target="_blank" rel="noopener">${esc(t(lang, 'permanent_link'))}</a>
+        <button type="button" class="icon-btn" id="copyCitation" data-copied="${esc(t(lang, 'copied'))}" title="${citeCopyLabel}" aria-label="${citeCopyLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h6"/></svg></button>
+        <button type="button" class="icon-btn" id="copyLink" data-link="${esc(canonical)}" data-copied="${esc(t(lang, 'copied'))}" title="${linkCopyLabel}" aria-label="${linkCopyLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
+        <a class="icon-btn" href="${esc(canonical)}" target="_blank" rel="noopener" title="${permLabel}" aria-label="${permLabel}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>
       </div>
     </section>`;
 
