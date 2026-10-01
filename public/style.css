@@ -1897,50 +1897,84 @@ a:hover {
   flex-wrap: wrap;
 }
 
-/* صندوق المشاركة */
+/* صندوق المشاركة — أيقونات */
 .share-box {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin-block: 16px;
-  padding: 14px 18px;
+  gap: 14px;
+  margin-block: 18px;
+  padding: 14px 20px;
   background: var(--paper-2);
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
 
-.share-label {
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--muted);
-  margin-inline-end: 6px;
+.share-title {
+  font-weight: 700;
+  font-size: 1.08rem;
+  color: var(--ink);
+  margin: 0;
 }
 
-.share-btn {
+.share-icons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.share-ic {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--line);
+  justify-content: center;
   background: var(--card);
-  color: var(--ink);
-  font-size: 0.88rem;
-  font-weight: 500;
+  border: 1px solid var(--line);
   cursor: pointer;
-  transition: all 0.18s ease;
+  padding: 0;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.share-btn:hover {
-  text-decoration: none;
-  border-color: var(--gold);
-  transform: translateY(-2px);
+.share-ic svg {
+  width: 21px;
+  height: 21px;
+  fill: #6b7482;
+  transition: fill 0.18s ease;
 }
-.share-btn.share-wa:hover { background: #25d366; border-color: #25d366; color: #fff; }
-.share-btn.share-tg:hover { background: #229ed9; border-color: #229ed9; color: #fff; }
-.share-btn.share-x:hover { background: #111; border-color: #111; color: #fff; }
-.share-btn.share-fb:hover { background: #1877f2; border-color: #1877f2; color: #fff; }
+
+.share-ic img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: block;
+}
+
+.share-ic:hover,
+.share-ic:focus-visible {
+  background: var(--sc, var(--gold));
+  border-color: var(--sc, var(--gold));
+  transform: translateY(-3px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  text-decoration: none;
+  outline: none;
+}
+
+.share-ic:hover svg,
+.share-ic:focus-visible svg {
+  fill: #fff;
+}
+
+.share-ic.is-copied {
+  background: #1c7c4a;
+  border-color: #1c7c4a;
+}
+
+.share-ic.is-copied svg {
+  fill: #fff;
+}
 
 /* ---------- 15. المجلة والأعداد (Journal) ---------- */
 .journal-hero {

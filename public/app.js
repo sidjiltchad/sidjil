@@ -55,6 +55,12 @@
   function copyText(text, btn) {
     var done = function () {
       if (!btn) return;
+      // أزرار الأيقونات: وميض أخضر بدل استبدال المحتوى
+      if (btn.classList && btn.classList.contains('share-ic')) {
+        btn.classList.add('is-copied');
+        setTimeout(function () { btn.classList.remove('is-copied'); }, 1800);
+        return;
+      }
       var original = btn.dataset.label || btn.textContent;
       if (!btn.dataset.label) btn.dataset.label = original;
       btn.textContent = btn.dataset.copied || '✓';
@@ -93,6 +99,15 @@
   document.querySelectorAll('[data-copy-link]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       copyText(btn.getAttribute('data-copy-link') || location.href, btn);
+    });
+  });
+
+  /* ---------- زر مُجتمع: نسخ الرابط ثم فتح المنصة ---------- */
+  document.querySelectorAll('[data-copy-open]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      copyText(btn.getAttribute('data-copy-open') || location.href, btn);
+      var open = btn.getAttribute('data-open');
+      if (open) window.open(open, '_blank', 'noopener');
     });
   });
 
