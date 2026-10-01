@@ -1,11 +1,11 @@
 # النشر الإنتاجي — سِجِل | SIDJIL
 
-> آخر تحديث: 2026-10-01 — أول نشر إنتاجي تم على العنوان المؤقت.
+> آخر تحديث: 2026-10-01 — قاعدة الإنتاج الحالية `SIDJIL`، والنطاق الأساسي `sidjil.org`.
 
 ## الهوية
 - الاسم الرسمي: **SIDJIL** — الاسم العربي: **سِجِل**
 - الوصف: سِجِل — أرشيف تاريخ تشاد الرقمي / SIDJIL — Archives historiques du Tchad
-- الدومين المستهدف: **sidjil.org** (غير مربوط حتى الآن — لا يُربط إلا بإذن صريح بعد نجاح كل الاختبارات)
+- النطاق الأساسي: **sidjil.org**؛ يحوّل `www.sidjil.org` إليه تحويلًا دائمًا.
 
 ## موارد الإنتاج
 | المورد | القيمة |
@@ -13,14 +13,14 @@
 | Worker name | `sidjil` |
 | Temporary URL | `https://sidjil.sidjil.workers.dev/` |
 | workers.dev subdomain | `sidjil` (ثبت في 2026-10-01) |
-| D1 database | `sidjil-prod` (`fd170307-68fd-459b-8fd1-80c26396b1e4`) |
+| D1 database | `SIDJIL` (`c129a877-d3c5-425c-995e-a6dbe0aa805c`) |
 | D1 binding | `DB` |
 | R2 bucket | `sidjil-assets` (خاص Private — لا يُفتح للعامة أبدًا) |
 | R2 binding | `FILES` (اسم الربط الفعلي في الكود — لا يُغيَّر) |
 | البيئة | production (منفصلة تمامًا عن التطوير) |
 | تاريخ أول نشر | 2026-10-01 |
-| Migration version | `0001_init.sql` ← `0002_segments.sql` ← `0003_raw_text.sql` (طبقت بالترتيب) |
-| Deployment ID / Version | آخر نشر: 2026-10-01 (مع ربط R2) — يُراجع من لوحة Cloudflare ← Deployments |
+| Migration version | `0001_init.sql` ← `0002_segments.sql` ← `0003_raw_text.sql` ← `0004_sections_journal_researchers.sql` (طبقت بالترتيب) |
+| Deployment ID / Version | `76a1ca90-e169-4039-995f-1b2b6e93d86f` (2026-10-01) |
 
 ## بيانات الإنتاج (2026-10-01)
 - 9 مواد منشورة (3 كتب، 3 وثائق، 1 استكشاف/بعثة، 3 صور).
@@ -42,10 +42,9 @@
 
 ## نشر إصدار جديد
 1. تحقق محليًا: `node --check` لكل ملفات `src/`، وشغّل `wrangler dev` واختبار دخاني سريع.
-2. طبّق أي migrations جديدة على `sidjil-prod` أولًا (بالترتيب، واحدة واحدة).
-3. ادمج الكود (`esbuild src/index.js --bundle`) وارفع الـWorker مع الـbindings نفسها.
-4. **تفعيل workers.dev**: النشر عبر API لا يفعّل route تلقائيًا — بعد أول نشر نفّذ:
-   `POST /accounts/{id}/workers/scripts/sidjil/subdomain` بالجسم `{"enabled": true}`.
+2. طبّق أي migrations جديدة على `SIDJIL` أولًا: `npm run db:migrate:remote`.
+3. انشر من جذر المشروع عبر `npm run deploy`، ثم تحقق من ربط D1 وR2 والنطاقات الثلاثة في مخرجات Wrangler.
+4. أبقِ `workers_dev = true` في `wrangler.toml` ليستمر العنوان المؤقت في العمل.
 5. سجّل: Deployment ID، التاريخ، الـcommit، وحالة الـmigrations.
 6. اختبار دخاني على العنوان المؤقت قبل اعتبار النشر ناجحًا.
 
@@ -54,14 +53,14 @@
 - الـmigrations أحادية الاتجاه: لا يُرجَع migration مطبق؛ عند مشكلة في بيانات يُعالَج بإصلاح محدود موثق لا بإعادة البناء.
 
 ## النسخ الاحتياطي (Backup)
-- **D1**: تصدير SQL دوري عبر `wrangler d1 export sidjil-prod` (أو ما يكافئه API) وحفظه خارج Cloudflare.
+- **D1**: شغّل `npm run db:export` واحفظ المخرجات خارج Cloudflare. يفصل السكربت الجداول العادية عن فهرس FTS5 لأن أمر `wrangler d1 export` الكامل لا يدعم الجداول الافتراضية.
 - **R2**: جرد كامل للكائنات (`r2 object list`) مع manifest يتضمن لكل ملف أصلي: `archive_number` و`r2_key` و`sha256` و`size` و`mime_type`.
 - **Deployment**: سجل كل نشر (الإصدار، التاريخ، الـcommit، حالة الـmigrations) في ملف `docs/deployments-log.md`.
 - أول نسخة احتياطية تُنشأ فور نجاح النشر الأول.
 
 ## الاستعادة (Restore)
 1. أنشئ قاعدة D1 جديدة فارغة وطبّق الـmigrations بالترتيب.
-2. استورد ملف SQL الاحتياطي.
+2. شغّل `wrangler d1 execute SIDJIL --remote --file=backup/SIDJIL-<timestamp>/SIDJIL-data.sql` بعد تحديث مسار النسخة المقصودة والتحقق من القاعدة المستهدفة.
 3. أعد رفع كائنات R2 من النسخة المحلية (تحقق من `sha256` لكل ملف أصلي بعد الرفع).
 4. انشر الـWorker واربطه بالموارد المستعادة، ثم اختبار دخاني.
 
@@ -70,12 +69,14 @@
 - الأسرار المستخدمة: جلسات الإدارة، CSRF، بيانات اعتماد الإدارة (hash)، مفاتيح OCR/الترجمة عند ضبط مزود فعلي.
 - عند تدوير سر: حدّثه ثم أعد النشر؛ لا حاجة لتغيير الكود.
 
-## إضافة الدومين أو تغييره مستقبلًا
-1. أضف الدومين في لوحة Cloudflare ← Workers ← `sidjil` ← Settings ← Domains & Routes.
-2. اجعل `https://sidjil.org` الأساسي، و`www.sidjil.org` تحويلًا دائمًا إليه.
-3. فعّل فرض HTTPS (Always Use HTTPS) وتأكد من عدم وجود Mixed Content.
-4. حدّث `SITE_URL`/canonical في الكود فقط إن لزم، ثم أعد النشر واختبر.
+## النطاقات
+1. يُضبط كل من `sidjil.org` و`www.sidjil.org` كـ Custom Domains في أعلى `wrangler.toml`، خارج قسم `[assets]`.
+2. يُحوّل Worker طلبات صفحات `www.sidjil.org` تحويلًا دائمًا إلى `https://sidjil.org` مع حفظ المسار والاستعلام؛ قد تُقدَّم الأصول الثابتة مباشرة من Cloudflare.
+3. يُبقى `workers_dev = true` صريحًا في `wrangler.toml` ليستمر العنوان المؤقت في العمل بجانب النطاقات المخصصة.
+4. فعّل فرض HTTPS (Always Use HTTPS) وتأكد من عدم وجود Mixed Content.
+5. حدّث `SITE_URL`/canonical في الكود فقط إن لزم، ثم أعد النشر واختبر.
 
 ## سجل القرارات المرتبطة
 - `docs/adr/001-vanilla-stack.md` — البناء الحالي Vanilla دون أطر.
 - `docs/adr/002-rename-archifouna-to-sidjil.md` — إعادة التسمية.
+- `docs/adr/003-rename-d1-to-SIDJIL.md` — نقل قاعدة D1 إلى الاسم الحالي.

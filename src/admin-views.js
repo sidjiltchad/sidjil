@@ -859,7 +859,7 @@ async function backupPage(env, user) {
     </tr>`).join('');
 
   const instructions = `— التفريغ الكامل لقاعدة البيانات (D1):
-  wrangler d1 export sidjil-prod --output=backup-d1.sql
+  npm run db:export
 
   — تنزيل التفريغ JSON من اللوحة:
   زر «تنزيل التفريغ JSON» أدناه (GET /api/v1/admin/export)

@@ -18,7 +18,7 @@ Cloudflare Workers + D1 + R2، **دون أي إطار عمل خارجي** — HT
 ## البنية
 
 ```
-archifouna/
+sidjil/
 ├── src/
 │   ├── index.js          # الموجّه الرئيسي
 │   ├── i18n.js           # العربية/الفرنسية
@@ -48,7 +48,7 @@ archifouna/
 
 ```bash
 npm install
-npx wrangler d1 execute archifouna-db --local --file=migrations/0001_init.sql
+npx wrangler d1 migrations apply SIDJIL --local
 npx wrangler dev --port 8787
 ```
 

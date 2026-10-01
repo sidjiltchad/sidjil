@@ -3,13 +3,13 @@
   "devDependencies": {
     "wrangler": "^3.114.17"
   },
-  "name": "archifouna",
+  "name": "sidjil",
   "private": true,
   "scripts": {
     "admin:hash": "node scripts/hash-password.js",
-    "db:export": "wrangler d1 export archifouna-db --remote --output=backup/archifouna.sql",
-    "db:migrate:local": "wrangler d1 migrations apply archifouna-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply archifouna-db --remote",
+    "db:export": "node scripts/export-d1.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply SIDJIL --local",
+    "db:migrate:remote": "wrangler d1 migrations apply SIDJIL --remote",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"
   },

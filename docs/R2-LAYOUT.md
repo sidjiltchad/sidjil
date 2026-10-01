@@ -22,7 +22,7 @@ derived/
 thumbnails/
   ARC-TD-IMG-000152/thumb-480.jpg
 exports/
-  backup-2026-10-01/sidjil-prod.json
+  backup-2026-10-01/SIDJIL.json
   backup-2026-10-01/manifest.csv
 ```
 

@@ -25,6 +25,10 @@ function clientIp(req) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.hostname === 'www.sidjil.org') {
+      url.hostname = 'sidjil.org';
+      return Response.redirect(url.toString(), 301);
+    }
     const pathname = url.pathname;
 
     // تحديد معدل الطلبات على مستوى الخادم (قبل أي توجيه)

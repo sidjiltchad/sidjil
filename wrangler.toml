@@ -1,12 +1,18 @@
 name = "sidjil"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
+workers_dev = true
+
+routes = [
+  { pattern = "sidjil.org", custom_domain = true },
+  { pattern = "www.sidjil.org", custom_domain = true }
+]
 
 # قاعدة البيانات (D1) — الإنتاج
 [[d1_databases]]
 binding = "DB"
-database_name = "sidjil-prod"
-database_id = "fd170307-68fd-459b-8fd1-80c26396b1e4"
+database_name = "SIDJIL"
+database_id = "c129a877-d3c5-425c-995e-a6dbe0aa805c"
 migrations_dir = "migrations"
 
 # التخزين (R2) — الإنتاج
@@ -18,11 +24,6 @@ bucket_name = "sidjil-assets"
 [assets]
 directory = "./public"
 not_found_handling = "none"
-
-routes = [
-  { pattern = "sidjil.org", custom_domain = true },
-  { pattern = "www.sidjil.org", custom_domain = true }
-]
 
 [vars]
 SITE_NAME = "سِجِل"
