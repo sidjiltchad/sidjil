@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# صفحات الإدارة ليست للفهرسة (تُحجب أيضًا عبر noindex في admin-views)
+Disallow: /admin/
+Disallow: /api/v1/admin/
+
+Sitemap: https://sidjil.org/sitemap.xml

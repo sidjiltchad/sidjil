@@ -1,0 +1,3 @@
+# انسخ هذا الملف إلى .dev.vars (لا يُرفع أبدًا إلى git)
+# ولّد القيمة بـ: node scripts/hash-password.js 'كلمة-مرور-قوية'
+ADMIN_PASSWORD_HASH=

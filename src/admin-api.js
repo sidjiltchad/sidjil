@@ -1,0 +1,1496 @@
+// ============================================================
+// SIDJIL — JSON API للوحة الإدارة (يتطلب جلسة صالحة)
+// فريق الخلفية — routeAdminApi(req, env): Promise<Response|null>
+// ============================================================
+
+import {
+  TYPE_CODES,
+  nextArk,
+  touchMaterial,
+  rebuildSearchBlob,
+  audit,
+} from './lib/db.js';
+import {
+  login,
+  logout,
+  hashPassword,
+  getSessionUser,
+  getSessionToken,
+  setSessionCookie,
+  clearSessionCookie,
+  verifyCsrf,
+} from './lib/auth.js';
+import { getOCRProvider } from './lib/ocr.js';
+import { putUpload } from './lib/r2files.js';
+
+// ---------- أدوات ----------
+
+function json(data, status = 200, headers = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers },
+  });
+}
+
+const err = (message, status = 400) => json({ error: message }, status);
+
+function normPath(pathname) {
+  if (pathname.length > 1 && pathname.endsWith('/')) return pathname.slice(0, -1);
+  return pathname;
+}
+
+function clientIp(req) {
+  return (
+    req.headers.get('CF-Connecting-IP') ||
+    (req.headers.get('X-Forwarded-For') || '').split(',')[0].trim() ||
+    ''
+  );
+}
+
+async function readJson(req) {
+  try {
+    return await req.json();
+  } catch {
+    return null;
+  }
+}
+
+function pageParams(url) {
+  const page = Math.max(1, parseInt(url.searchParams.get('page'), 10) || 1);
+  const perPage = Math.min(100, Math.max(1, parseInt(url.searchParams.get('perPage'), 10) || 20));
+  return { page, perPage, offset: (page - 1) * perPage };
+}
+
+const asInt = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? null : n;
+};
+
+async function findMaterial(db, idOrArk) {
+  if (/^\d+$/.test(String(idOrArk))) {
+    return db.prepare('SELECT * FROM materials WHERE id = ?').bind(parseInt(idOrArk, 10)).first();
+  }
+  return db.prepare('SELECT * FROM materials WHERE ark = ?').bind(idOrArk).first();
+}
+
+// ---------- صلاحيات الباحث ----------
+function researcherAllowed(rest, method) {
+  if (method === 'GET' && rest === 'materials') return true;      // تُفلتر لمواده داخل الدالة
+  if (method === 'GET' && rest === 'collections') return true;    // لاختيار الأقسام في النموذج
+  if (method === 'POST' && rest === 'materials') return true;     // إنشاء كمسودة حصرًا
+  if (/^materials\/\d+$/.test(rest) && (method === 'PUT' || method === 'DELETE')) return true;
+  if (/^materials\/\d+\/files$/.test(rest) && method === 'POST') return true;
+  if (/^files\/\d+$/.test(rest) && method === 'DELETE') return true;
+  if (/^materials\/\d+\/submit$/.test(rest) && method === 'POST') return true; // إرسال للمراجعة
+  return false;
+}
+
+// يتحقق أن المادة مسودة مملوكة للباحث (يُرجع المادة أو يرمي خطأ)
+// بعد الإرسال للمراجعة تُقفل المادة أمام الباحث حتى يبتّ فيها المدير
+async function requireOwnDraft(db, user, idOrArk) {
+  const m = await findMaterial(db, idOrArk);
+  if (!m) throw new Error('المادة غير موجودة');
+  if (Number(m.created_by) !== Number(user.id)) throw new Error('هذه المادة ليست من منشوراتك');
+  if (m.publish_status === 'in_review') throw new Error('المادة قيد المراجعة — لا يمكن تعديلها الآن');
+  if (m.publish_status !== 'draft') throw new Error('لا يمكن تعديل مادة منشورة — تواصل مع الإدارة');
+  return m;
+}
+
+// ---------- الموجّه ----------
+
+export async function routeAdminApi(req, env) {
+  const url = new URL(req.url);
+  const path = normPath(url.pathname);
+  if (!path.startsWith('/api/v1/admin/')) return null;
+  const rest = path.slice('/api/v1/admin/'.length);
+  const method = req.method;
+
+  // تسجيل الدخول — بدون جلسة
+  if (rest === 'login' && method === 'POST') {
+    const body = await readJson(req);
+    if (!body) return err('طلب غير صالح', 400);
+    const r = await login(env, body.username, body.password, clientIp(req));
+    if (!r.ok) return err(r.error, 401);
+    const user = await env.DB
+      .prepare('SELECT id, username, role FROM admin_users WHERE username = ?')
+      .bind(String(body.username).trim())
+      .first();
+    return json(
+      { ok: true, user, csrfToken: r.csrfToken },
+      200,
+      { 'Set-Cookie': setSessionCookie(r.token, req.url) }
+    );
+  }
+
+  // باقي المسارات تتطلب جلسة صالحة
+  const user = await getSessionUser(req, env);
+  if (!user) return err('غير مصرح', 401);
+
+  // CSRF: كل طلب معدِّل (POST/PUT/PATCH/DELETE) يتطلب هيدر X-CSRF-Token
+  // مطابقًا لرمز الجلسة — المصادقة هنا كوكيز جلسات (ليست Cloudflare Access)
+  // إذن CSRF قابل للتطبيق فعلًا.
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !verifyCsrf(user, req)) {
+    await audit(env.DB, { userId: user.id, action: 'admin.csrf_rejected', target: rest, ip: clientIp(req) });
+    return err('رمز CSRF غير صالح أو مفقود', 403);
+  }
+
+  // صلاحيات الباحث: قائمة بيضاء صارمة — كل ما عداها للإدارة فقط
+  // (النشر المباشر، المراجعة، المستخدمون، الإعلانات، الكيانات، النسخ… للإدارة)
+  const isAdmin = user.role === 'admin';
+  if (!isAdmin && !researcherAllowed(rest, method)) {
+    await audit(env.DB, { userId: user.id, action: 'admin.forbidden', target: `${method} ${rest}`, ip: clientIp(req) });
+    return err('غير مصرح — هذه العملية من صلاحيات الإدارة فقط', 403);
+  }
+
+  if (rest === 'logout' && method === 'POST') {
+    await logout(env, getSessionToken(req));
+    await audit(env.DB, { userId: user.id, action: 'admin.logout', ip: clientIp(req) });
+    return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie() });
+  }
+
+  // المواد
+  if (rest === 'materials' && method === 'GET') return admMaterialsList(env, url, user);
+  if (rest === 'materials' && method === 'POST')
+    return withJsonBody(req, (body) => admMaterialCreate(env, user, req, body));
+
+  let m = rest.match(/^materials\/([^/]+)\/publish$/);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admMaterialPublish(env, user, req, m[1], body));
+
+  // إرسال المادة للمراجعة (باحث: مسودته → قيد المراجعة)
+  m = rest.match(/^materials\/(\d+)\/submit$/);
+  if (m && method === 'POST') return admMaterialSubmit(env, user, req, parseInt(m[1], 10));
+
+  // قرار المراجعة (إدارة فقط — محمي بالقائمة البيضاء أعلاه)
+  m = rest.match(/^materials\/(\d+)\/review$/);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admMaterialReview(env, user, req, parseInt(m[1], 10), body));
+
+  // إدارة المستخدمين (إدارة فقط)
+  if (rest === 'users' && method === 'GET') return admUsersList(env);
+  if (rest === 'users' && method === 'POST')
+    return withJsonBody(req, (body) => admUserCreate(env, user, req, body));
+  m = rest.match(/^users\/(\d+)$/);
+  if (m && method === 'PATCH')
+    return withJsonBody(req, (body) => admUserUpdate(env, user, req, parseInt(m[1], 10), body));
+
+  m = rest.match(/^materials\/([^/]+)\/files$/);
+  if (m && method === 'POST') return admMaterialUpload(env, user, req, m[1]);
+
+  m = rest.match(/^materials\/([^/]+)\/versions$/);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admVersionCreate(env, user, req, m[1], body));
+
+  m = rest.match(/^materials\/([^/]+)\/text$/);
+  if (m && method === 'PUT')
+    return withJsonBody(req, (body) => admMaterialText(env, user, req, m[1], body));
+
+  m = rest.match(/^materials\/([^/]+)\/relations$/);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admRelationCreate(env, user, req, m[1], body));
+
+  // مقاطع الترجمة (العرض الموازي)
+  m = rest.match(/^materials\/([^/]+)\/translation-segments$/);
+  if (m && method === 'GET') return admSegmentsList(env, m[1]);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admSegmentsCreate(env, user, req, m[1], body));
+
+  m = rest.match(/^translation-segments\/(\d+)$/);
+  if (m && method === 'PATCH')
+    return withJsonBody(req, (body) => admSegmentUpdate(env, user, req, parseInt(m[1], 10), body));
+
+  // اعتماد الترجمة: صريح فقط — لا يحدث تلقائيًا أبدًا
+  m = rest.match(/^translations\/(\d+)\/approve$/);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admTranslationApprove(env, user, req, parseInt(m[1], 10), body || {}));
+
+  m = rest.match(/^translations\/(\d+)$/);
+  if (m && method === 'DELETE') return admTranslationDelete(env, user, req, parseInt(m[1], 10));
+
+  // OCR اليدوي (لا يعمل تلقائيًا عند الرفع — تكلفة)
+  m = rest.match(/^materials\/([^/]+)\/ocr$/);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admMaterialOcr(env, user, req, m[1], body));
+
+  m = rest.match(/^materials\/([^/]+)\/jobs$/);
+  if (m && method === 'GET') return admJobsList(env, m[1]);
+
+  m = rest.match(/^materials\/([^/]+)$/);
+  if (m && method === 'PUT')
+    return withJsonBody(req, (body) => admMaterialUpdate(env, user, req, m[1], body));
+  if (m && method === 'DELETE') return admMaterialDelete(env, user, req, m[1]);
+
+  // ملفات ونسخ
+  m = rest.match(/^files\/(\d+)$/);
+  if (m && method === 'DELETE') return admFileDelete(env, user, req, parseInt(m[1], 10));
+
+  m = rest.match(/^versions\/(\d+)$/);
+  if (m && method === 'DELETE') return admVersionDelete(env, user, req, parseInt(m[1], 10));
+
+  // النسخ الاحتياطي والسجل
+  if (rest === 'export' && method === 'GET') return admExport(env, user, req);
+  if (rest === 'audit' && method === 'GET') return admAuditList(env, url);
+
+  // الكيانات: people/places/sources/tags/collections/glossary
+  m = rest.match(/^(people|places|sources|tags|collections|glossary|announcements)$/);
+  if (m && method === 'GET') return admEntityList(env, url, m[1]);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => admEntityCreate(env, user, req, m[1], body));
+
+  m = rest.match(/^(people|places|sources|tags|collections|glossary|announcements)\/(\d+)$/);
+  if (m && method === 'PUT')
+    return withJsonBody(req, (body) => admEntityUpdate(env, user, req, m[1], parseInt(m[2], 10), body));
+  if (m && method === 'DELETE') return admEntityDelete(env, user, req, m[1], parseInt(m[2], 10));
+
+  return err('غير موجود', 404);
+}
+
+async function withJsonBody(req, fn) {
+  const body = await readJson(req);
+  if (!body || typeof body !== 'object') return err('طلب غير صالح (JSON)', 400);
+  try {
+    return await fn(body);
+  } catch (e) {
+    return err(e.message || 'خطأ غير متوقع', 400);
+  }
+}
+
+// ---------- المواد: قائمة ----------
+
+async function admMaterialsList(env, url, user) {
+  const sp = url.searchParams;
+  const { page, perPage, offset } = pageParams(url);
+  const where = [];
+  const binds = [];
+  const status = sp.get('status');
+  const type = sp.get('type');
+  const q = (sp.get('q') || '').trim();
+  if (status) {
+    where.push('m.publish_status = ?');
+    binds.push(status);
+  }
+  if (type) {
+    where.push('m.type = ?');
+    binds.push(type);
+  }
+  if (q) {
+    where.push('(m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ? OR m.archive_ref LIKE ?)');
+    const like = `%${q}%`;
+    binds.push(like, like, like, like);
+  }
+  // الباحث يرى مواده فقط
+  if (user && user.role !== 'admin') {
+    where.push('m.created_by = ?');
+    binds.push(user.id);
+  }
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const fromSql = 'FROM materials m LEFT JOIN admin_users u ON u.id = m.created_by';
+  const [itemsRes, countRow] = await Promise.all([
+    env.DB.prepare(
+      `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.year, m.date_text, m.language,
+              m.publish_status, m.review_note, m.translation_status, m.transcription_status,
+              m.updated_at, u.username AS creator
+       ${fromSql}${whereSql} ORDER BY m.updated_at DESC, m.id DESC LIMIT ? OFFSET ?`
+    )
+      .bind(...binds, perPage, offset)
+      .all(),
+    env.DB.prepare(`SELECT COUNT(*) AS c ${fromSql}${whereSql}`).bind(...binds).first(),
+  ]);
+  return json({ items: itemsRes.results, total: countRow.c, page, perPage });
+}
+
+// ---------- المواد: إنشاء ----------
+
+const MATERIAL_FIELDS = [
+  'type',
+  'title_ar',
+  'title_orig',
+  'description',
+  'language',
+  'year',
+  'date_text',
+  'date_confidence',
+  'author',
+  'photographer',
+  'place_id',
+  'place_confidence',
+  'source_id',
+  'archive_ref',
+  'source_url',
+  'rights',
+  'full_text',
+  'transcription_status',
+  'translation_status',
+  'publish_status',
+];
+
+const PUBLISH_STATUSES = ['draft', 'in_review', 'published', 'hidden'];
+const DATE_CONFIDENCES = ['confirmed', 'approximate', 'probable', 'unknown'];
+const TRANSCRIPTION_STATUSES = ['none', 'auto', 'corrected'];
+const TRANSLATION_STATUSES = ['none', 'machine', 'in_review', 'reviewed', 'approved'];
+
+function pickMaterialFields(body) {
+  const f = {};
+  for (const k of MATERIAL_FIELDS) {
+    if (body[k] !== undefined) f[k] = body[k] === '' ? null : body[k];
+  }
+  if (f.year !== undefined) f.year = asInt(f.year);
+  if (f.place_id !== undefined) f.place_id = asInt(f.place_id);
+  if (f.source_id !== undefined) f.source_id = asInt(f.source_id);
+  return f;
+}
+
+function validateMaterialFields(f, isCreate) {
+  if (isCreate || f.type !== undefined) {
+    if (!f.type || !TYPE_CODES[f.type]) throw new Error('نوع المادة غير صالح');
+  }
+  if (isCreate && (!f.title_ar || !String(f.title_ar).trim())) {
+    throw new Error('العنوان بالعربية مطلوب');
+  }
+  if (f.publish_status !== undefined && f.publish_status !== null && !PUBLISH_STATUSES.includes(f.publish_status))
+    throw new Error('حالة النشر غير صالحة');
+  if (f.date_confidence && !DATE_CONFIDENCES.includes(f.date_confidence))
+    throw new Error('مستوى ثقة التاريخ غير صالح');
+  if (f.place_confidence && !DATE_CONFIDENCES.includes(f.place_confidence))
+    throw new Error('مستوى ثقة المكان غير صالح');
+  if (f.transcription_status && !TRANSCRIPTION_STATUSES.includes(f.transcription_status))
+    throw new Error('حالة التفريغ غير صالحة');
+  if (f.translation_status && !TRANSLATION_STATUSES.includes(f.translation_status))
+    throw new Error('حالة الترجمة غير صالحة');
+}
+
+async function replaceLinks(db, materialId, body) {
+  const links = [
+    ['material_people', 'person_id', body.peopleIds],
+    ['material_places', 'place_id', body.placeIds],
+    ['material_tags', 'tag_id', body.tagIds],
+  ];
+  const stmts = [];
+  for (const [table, col, ids] of links) {
+    if (ids === undefined) continue;
+    stmts.push(db.prepare(`DELETE FROM ${table} WHERE material_id = ?`).bind(materialId));
+    for (const raw of Array.isArray(ids) ? ids : []) {
+      const id = asInt(raw);
+      if (id) stmts.push(db.prepare(`INSERT OR IGNORE INTO ${table} (material_id, ${col}) VALUES (?, ?)`).bind(materialId, id));
+    }
+  }
+  if (body.collectionIds !== undefined) {
+    stmts.push(db.prepare('DELETE FROM material_collections WHERE material_id = ?').bind(materialId));
+    let order = 0;
+    for (const raw of Array.isArray(body.collectionIds) ? body.collectionIds : []) {
+      const id = asInt(raw);
+      if (id)
+        stmts.push(
+          db.prepare('INSERT OR IGNORE INTO material_collections (material_id, collection_id, sort_order) VALUES (?, ?, ?)').bind(materialId, id, order++)
+        );
+    }
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+
+async function admMaterialCreate(env, user, req, body) {
+  const f = pickMaterialFields(body);
+  // الباحث: إنشاء كمسودة حصرًا — لا يملك تعيين حالة النشر ولا المالك
+  if (user.role !== 'admin') {
+    f.publish_status = 'draft';
+  }
+  validateMaterialFields(f, true);
+  const db = env.DB;
+
+  const ark = await nextArk(db, f.type); // ذري عبر batch
+  const cols = ['ark', 'created_by', ...Object.keys(f)];
+  const vals = [ark, user.id, ...Object.values(f)];
+  const res = await db
+    .prepare(`INSERT INTO materials (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
+    .bind(...vals)
+    .run();
+  const materialId = res.meta.last_row_id;
+
+  await replaceLinks(db, materialId, body);
+  await rebuildSearchBlob(db, materialId);
+  await audit(db, {
+    userId: user.id,
+    action: 'material.create',
+    target: ark,
+    detail: f.title_ar,
+    ip: clientIp(req),
+  });
+  return json({ ok: true, ark, id: materialId }, 201);
+}
+
+// ---------- المواد: تعديل ----------
+
+async function admMaterialUpdate(env, user, req, idOrArk, body) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  // الباحث: مواده غير المنشورة فقط، ولا يغيّر حالة النشر
+  if (user.role !== 'admin') {
+    try {
+      await requireOwnDraft(db, user, m.id);
+    } catch (e) {
+      return err(e.message, 403);
+    }
+    delete body.publish_status;
+  }
+  const f = pickMaterialFields(body);
+  delete f.ark; // الرقم الأرشيفي ثابت لا يتغير
+  validateMaterialFields(f, false);
+
+  const keys = Object.keys(f);
+  if (keys.length) {
+    await db
+      .prepare(
+        `UPDATE materials SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`
+      )
+      .bind(...keys.map((k) => f[k]), m.id)
+      .run();
+  }
+  await replaceLinks(db, m.id, body);
+  await touchMaterial(db, m.id);
+  await rebuildSearchBlob(db, m.id);
+  await audit(db, {
+    userId: user.id,
+    action: 'material.update',
+    target: m.ark,
+    detail: keys.join(', '),
+    ip: clientIp(req),
+  });
+  return json({ ok: true, ark: m.ark });
+}
+
+// ---------- المواد: حذف (مع مفاتيح R2) ----------
+
+async function admMaterialDelete(env, user, req, idOrArk) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  // الباحث: حذف مواده غير المنشورة فقط
+  if (user.role !== 'admin') {
+    try {
+      await requireOwnDraft(db, user, m.id);
+    } catch (e) {
+      return err(e.message, 403);
+    }
+  }
+
+  const files = await db.prepare('SELECT r2_key FROM files WHERE material_id = ?').bind(m.id).all();
+  // حذف الملفات من R2 أولًا (الأصل لا يُستبدل — الحذف هنا نهائي بطلب المدير)
+  await Promise.all(
+    files.results.map((f) => env.FILES.delete(f.r2_key).catch(() => {}))
+  );
+
+  await db.batch([
+    db.prepare('DELETE FROM material_relations WHERE material_a = ? OR material_b = ?').bind(m.id, m.id),
+    db.prepare('DELETE FROM material_people WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM material_places WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM material_tags WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM material_collections WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM image_versions WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM transcriptions WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM translations WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM files WHERE material_id = ?').bind(m.id),
+    db.prepare('UPDATE collections SET cover_material_id = NULL WHERE cover_material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM materials_fts WHERE ark = ?').bind(m.ark),
+    db.prepare('DELETE FROM materials WHERE id = ?').bind(m.id),
+  ]);
+
+  await audit(db, {
+    userId: user.id,
+    action: 'material.delete',
+    target: m.ark,
+    detail: `${m.title_ar} — حُذفت ${files.results.length} ملفات من R2`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true });
+}
+
+// ---------- المواد: نشر ----------
+
+async function admMaterialPublish(env, user, req, idOrArk, body) {
+  // دفاع إضافي: النشر المباشر للإدارة فقط (القائمة البيضاء تمنعه أصلًا)
+  if (user.role !== 'admin') return err('النشر المباشر من صلاحيات الإدارة فقط', 403);
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  const status = body.status;
+  if (!PUBLISH_STATUSES.includes(status)) return err('حالة النشر غير صالحة', 400);
+  await db
+    .prepare("UPDATE materials SET publish_status = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(status, m.id)
+    .run();
+  await audit(db, {
+    userId: user.id,
+    action: 'material.publish',
+    target: m.ark,
+    detail: `→ ${status}`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true, status });
+}
+
+// ---------- المواد: إرسال للمراجعة (باحث) ----------
+
+async function admMaterialSubmit(env, user, req, id) {
+  const db = env.DB;
+  const m = await findMaterial(db, id);
+  if (!m) return err('المادة غير موجودة', 404);
+  // الباحث يرسل مسودته فقط؛ الإدارة لا تحتاج هذا المسار
+  if (user.role !== 'admin') {
+    if (Number(m.created_by) !== Number(user.id)) return err('هذه المادة ليست من منشوراتك', 403);
+  }
+  if (m.publish_status !== 'draft') return err('يمكن إرسال المسودات فقط للمراجعة', 400);
+  await db
+    .prepare("UPDATE materials SET publish_status = 'in_review', review_note = NULL, updated_at = datetime('now') WHERE id = ?")
+    .bind(m.id)
+    .run();
+  await audit(db, { userId: user.id, action: 'material.submit', target: m.ark, ip: clientIp(req) });
+  return json({ ok: true, status: 'in_review' });
+}
+
+// ---------- المواد: قرار المراجعة (إدارة فقط) ----------
+
+async function admMaterialReview(env, user, req, id, body) {
+  const db = env.DB;
+  const m = await findMaterial(db, id);
+  if (!m) return err('المادة غير موجودة', 404);
+  if (m.publish_status !== 'in_review') return err('المادة ليست قيد المراجعة', 400);
+  const decision = body.decision;
+  const note = String(body.note || '').trim();
+  if (decision === 'approve') {
+    await db
+      .prepare("UPDATE materials SET publish_status = 'published', review_note = NULL, updated_at = datetime('now') WHERE id = ?")
+      .bind(m.id)
+      .run();
+    await rebuildSearchBlob(db, m.id);
+    await audit(db, { userId: user.id, action: 'material.review_approve', target: m.ark, ip: clientIp(req) });
+    return json({ ok: true, status: 'published' });
+  }
+  if (decision === 'reject') {
+    if (!note) return err('ملاحظة المراجعة مطلوبة عند إعادة المادة', 400);
+    await db
+      .prepare('UPDATE materials SET publish_status = ?, review_note = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .bind('draft', note.slice(0, 2000), m.id)
+      .run();
+    await audit(db, { userId: user.id, action: 'material.review_reject', target: m.ark, detail: note.slice(0, 200), ip: clientIp(req) });
+    return json({ ok: true, status: 'draft' });
+  }
+  return err('قرار غير صالح (approve/reject)', 400);
+}
+
+// ---------- المستخدمون (إدارة فقط) ----------
+
+async function admUsersList(env) {
+  const res = await env.DB.prepare(
+    `SELECT u.id, u.username, u.role, u.is_active, u.created_at,
+            (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
+     FROM admin_users u ORDER BY u.id ASC`
+  ).all();
+  return json({ items: res.results });
+}
+
+async function admUserCreate(env, user, req, body) {
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '');
+  const role = body.role === 'admin' ? 'admin' : 'researcher';
+  if (!username || username.length < 3) return err('اسم المستخدم 3 أحرف على الأقل', 400);
+  if (!/^[A-Za-z0-9_.-]+$/.test(username)) return err('اسم المستخدم: أحرف لاتينية وأرقام و _ . - فقط', 400);
+  if (password.length < 8) return err('كلمة المرور 8 أحرف على الأقل', 400);
+  const exists = await env.DB.prepare('SELECT id FROM admin_users WHERE username = ?').bind(username).first();
+  if (exists) return err('اسم المستخدم موجود مسبقًا', 400);
+  const password_hash = await hashPassword(password);
+  const res = await env.DB.prepare(
+    'INSERT INTO admin_users (username, password_hash, role, is_active) VALUES (?, ?, ?, 1)'
+  ).bind(username, password_hash, role).run();
+  await audit(env.DB, { userId: user.id, action: 'user.create', target: username, detail: `role=${role}`, ip: clientIp(req) });
+  return json({ ok: true, id: res.meta.last_row_id }, 201);
+}
+
+async function admUserUpdate(env, user, req, id, body) {
+  const db = env.DB;
+  const target = await db.prepare('SELECT id, username, role FROM admin_users WHERE id = ?').bind(id).first();
+  if (!target) return err('المستخدم غير موجود', 404);
+  const sets = [];
+  const binds = [];
+  // لا يمكن للمدير إيقاف نفسه أو تغيير دوره
+  const selfEdit = Number(id) === Number(user.id);
+  if (body.role !== undefined) {
+    const role = body.role === 'admin' ? 'admin' : 'researcher';
+    if (selfEdit && role !== 'admin') return err('لا يمكنك تغيير دور حسابك', 400);
+    sets.push('role = ?');
+    binds.push(role);
+  }
+  if (body.is_active !== undefined) {
+    const active = body.is_active ? 1 : 0;
+    if (selfEdit && !active) return err('لا يمكنك إيقاف حسابك', 400);
+    sets.push('is_active = ?');
+    binds.push(active);
+    if (!active) {
+      // إبطال جلسات المستخدم الموقوف فورًا
+      await db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(id).run();
+    }
+  }
+  if (body.password !== undefined && body.password !== '') {
+    if (String(body.password).length < 8) return err('كلمة المرور 8 أحرف على الأقل', 400);
+    sets.push('password_hash = ?');
+    binds.push(await hashPassword(String(body.password)));
+  }
+  if (!sets.length) return err('لا تغييرات', 400);
+  await db.prepare(`UPDATE admin_users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, id).run();
+  await audit(db, { userId: user.id, action: 'user.update', target: target.username, detail: sets.join(', '), ip: clientIp(req) });
+  return json({ ok: true });
+}
+
+// ---------- المواد: رفع ملف ----------
+
+async function admMaterialUpload(env, user, req, idOrArk) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  // الباحث: الرفع لمواده غير المنشورة فقط
+  if (user.role !== 'admin') {
+    try {
+      await requireOwnDraft(db, user, m.id);
+    } catch (e) {
+      return err(e.message, 403);
+    }
+  }
+
+  let form;
+  try {
+    form = await req.formData();
+  } catch {
+    return err('نموذج الرفع غير صالح', 400);
+  }
+  const file = form.get('file');
+  const kind = String(form.get('kind') || 'original');
+  if (!['original', 'attachment'].includes(kind)) return err('نوع الملف (kind) غير صالح', 400);
+
+  let row;
+  try {
+    row = await putUpload(env, { materialId: m.id, ark: m.ark, type: m.type }, file, kind);
+  } catch (e) {
+    return err(e.message || 'فشل الرفع', 400);
+  }
+
+  // صورة أصلية → تسجيلها تلقائيًا كنسخة original في image_versions
+  if (m.type === 'image' && kind === 'original') {
+    await db
+      .prepare(
+        'INSERT INTO image_versions (material_id, version_type, file_id, process_note) VALUES (?, ?, ?, ?)'
+      )
+      .bind(m.id, 'original', row.id, 'النسخة الأصلية كما وردت من المصدر')
+      .run();
+  }
+
+  await touchMaterial(db, m.id);
+  await audit(db, {
+    userId: user.id,
+    action: 'file.upload',
+    target: m.ark,
+    detail: `${row.filename} (${row.size} بايت، ${kind})`,
+    ip: clientIp(req),
+  });
+  return json(row, 201);
+}
+
+// ---------- نسخ الصور: تسجيل مشتق ----------
+
+const VERSION_TYPES = ['original', 'restored', 'enhanced', 'colorized', 'annotated', 'cropped'];
+
+async function admVersionCreate(env, user, req, idOrArk, body) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  const fileId = asInt(body.fileId);
+  const versionType = body.versionType;
+  if (!fileId) return err('fileId مطلوب', 400);
+  if (!VERSION_TYPES.includes(versionType)) return err('نوع النسخة غير صالح', 400);
+
+  const file = await db
+    .prepare('SELECT * FROM files WHERE id = ? AND material_id = ?')
+    .bind(fileId, m.id)
+    .first();
+  if (!file) return err('الملف غير موجود', 404);
+  // التحقق: مشتق مسموح دائمًا؛ 'original' مسموح فقط إذا رُفع الملف كأصل
+  if (versionType === 'original' && file.kind !== 'original') {
+    return err('لا يمكن تسجيل نسخة أصلية لملف غير مرفوع كأصل', 400);
+  }
+
+  const res = await db
+    .prepare(
+      'INSERT INTO image_versions (material_id, version_type, file_id, process_note) VALUES (?, ?, ?, ?)'
+    )
+    .bind(m.id, versionType, fileId, body.processNote || null)
+    .run();
+  const row = await db.prepare('SELECT * FROM image_versions WHERE id = ?').bind(res.meta.last_row_id).first();
+  await touchMaterial(db, m.id);
+  await audit(db, {
+    userId: user.id,
+    action: 'image_version.create',
+    target: m.ark,
+    detail: `${versionType} ← ملف ${fileId}`,
+    ip: clientIp(req),
+  });
+  return json(row, 201);
+}
+
+// ---------- نسخ الصور: حذف صف النسخة فقط (دون المساس بالملف) ----------
+
+async function admVersionDelete(env, user, req, id) {
+  const db = env.DB;
+  const v = await db
+    .prepare(
+      `SELECT iv.*, m.ark AS material_ark
+       FROM image_versions iv JOIN materials m ON m.id = iv.material_id
+       WHERE iv.id = ?`
+    )
+    .bind(id)
+    .first();
+  if (!v) return err('النسخة غير موجودة', 404);
+
+  // يُحذف صف image_versions فقط — يبقى الملف في R2 وفي جدول files
+  await db.prepare('DELETE FROM image_versions WHERE id = ?').bind(id).run();
+  await audit(db, {
+    userId: user.id,
+    action: 'image_version.delete',
+    target: v.material_ark,
+    detail: `نسخة ${id} (${v.version_type}) — الملف الأصلي محفوظ`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true });
+}
+
+// ---------- الملفات: حذف ----------
+
+async function admFileDelete(env, user, req, id) {
+  const db = env.DB;
+  const f = await db
+    .prepare(
+      `SELECT f.*, m.ark AS material_ark FROM files f
+       JOIN materials m ON m.id = f.material_id WHERE f.id = ?`
+    )
+    .bind(id)
+    .first();
+  if (!f) return err('الملف غير موجود', 404);
+  // الباحث: حذف ملفات مواده غير المنشورة فقط
+  if (user.role !== 'admin') {
+    try {
+      await requireOwnDraft(db, user, f.material_id);
+    } catch (e) {
+      return err(e.message, 403);
+    }
+  }
+
+  await env.FILES.delete(f.r2_key).catch(() => {});
+  await db.batch([
+    db.prepare('DELETE FROM image_versions WHERE file_id = ?').bind(id),
+    db.prepare('DELETE FROM files WHERE id = ?').bind(id),
+  ]);
+  await audit(db, {
+    userId: user.id,
+    action: 'file.delete',
+    target: f.material_ark,
+    detail: `${f.filename} — حُذف من R2`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true });
+}
+
+// ---------- النصوص: التفريغ والترجمة ----------
+
+async function upsertTranscription(db, materialId, layer, text, lang) {
+  const ex = await db
+    .prepare('SELECT id FROM transcriptions WHERE material_id = ? AND layer = ?')
+    .bind(materialId, layer)
+    .first();
+  if (ex) {
+    await db.prepare('UPDATE transcriptions SET text = ?, lang = ? WHERE id = ?').bind(text, lang, ex.id).run();
+  } else {
+    await db
+      .prepare('INSERT INTO transcriptions (material_id, layer, lang, text) VALUES (?, ?, ?, ?)')
+      .bind(materialId, layer, lang, text)
+      .run();
+  }
+}
+
+async function getOrCreateTranslation(db, material, translator) {
+  let t = await db
+    .prepare("SELECT * FROM translations WHERE material_id = ? AND target_lang = 'ar' ORDER BY updated_at DESC")
+    .bind(material.id)
+    .first();
+  if (!t) {
+    const res = await db
+      .prepare(
+        "INSERT INTO translations (material_id, source_lang, target_lang, text, status, translator) VALUES (?, ?, 'ar', '', 'machine', ?)"
+      )
+      .bind(material.id, material.language || 'fr', translator || null)
+      .run();
+    t = await db.prepare('SELECT * FROM translations WHERE id = ?').bind(res.meta.last_row_id).first();
+  }
+  return t;
+}
+
+async function admMaterialText(env, user, req, idOrArk, body) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+
+  const changed = [];
+  if (body.transcriptionAuto !== undefined) {
+    await upsertTranscription(db, m.id, 'auto', String(body.transcriptionAuto), m.language);
+    changed.push('transcription:auto');
+  }
+  if (body.transcriptionManual !== undefined) {
+    await upsertTranscription(db, m.id, 'manual', String(body.transcriptionManual), m.language);
+    changed.push('transcription:manual');
+  }
+  // اشتقاق حالة التفريغ من الطبقات الموجودة
+  const layers = await db
+    .prepare('SELECT layer FROM transcriptions WHERE material_id = ?')
+    .bind(m.id)
+    .all();
+  const has = new Set(layers.results.map((r) => r.layer));
+  const trStatus = has.has('manual') ? 'corrected' : has.has('auto') ? 'auto' : 'none';
+
+  let tlStatus = body.translationStatus;
+  if (tlStatus !== undefined && !TRANSLATION_STATUSES.includes(tlStatus)) {
+    return err('حالة الترجمة غير صالحة', 400);
+  }
+  if (body.translationText !== undefined || body.translator !== undefined || tlStatus !== undefined) {
+    const t = await getOrCreateTranslation(db, m, body.translator);
+    // إن كانت الترجمة تُدار بالمقاطع، يُمنع تعديل النص الموحد مباشرة (منعًا للتباعد)
+    if (body.translationText !== undefined) {
+      const segCount = await db
+        .prepare('SELECT COUNT(*) AS c FROM translation_segments WHERE translation_id = ?')
+        .bind(t.id)
+        .first();
+      if (segCount && segCount.c > 0) {
+        return err('هذه الترجمة تُدار بالمقاطع — عدّل المقاطع من واجهة المراجعة المتوازية', 400);
+      }
+    }
+    const sets = [];
+    const binds = [];
+    if (body.translationText !== undefined) {
+      sets.push('text = ?');
+      binds.push(String(body.translationText));
+    }
+    if (body.translator !== undefined) {
+      sets.push('translator = ?');
+      binds.push(body.translator || null);
+    }
+    if (tlStatus !== undefined) {
+      sets.push('status = ?');
+      binds.push(tlStatus);
+    }
+    sets.push("updated_at = datetime('now')");
+    await db.prepare(`UPDATE translations SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, t.id).run();
+    changed.push('translation');
+  }
+
+  const matSets = ['transcription_status = ?'];
+  const matBinds = [trStatus];
+  if (tlStatus !== undefined) {
+    matSets.push('translation_status = ?');
+    matBinds.push(tlStatus);
+  }
+  if (body.fullText !== undefined) {
+    matSets.push('full_text = ?');
+    matBinds.push(String(body.fullText));
+    changed.push('full_text');
+  }
+  matSets.push("updated_at = datetime('now')");
+  await db.prepare(`UPDATE materials SET ${matSets.join(', ')} WHERE id = ?`).bind(...matBinds, m.id).run();
+
+  await rebuildSearchBlob(db, m.id);
+  await audit(db, {
+    userId: user.id,
+    action: 'material.text',
+    target: m.ark,
+    detail: changed.join(', '),
+    ip: clientIp(req),
+  });
+  return json({ ok: true });
+}
+
+// ---------- العلاقات مادة↔مادة ----------
+
+async function admRelationCreate(env, user, req, idOrArk, body) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  const relatedArk = String(body.relatedArk || '').trim();
+  if (!relatedArk) return err('relatedArk مطلوب', 400);
+  const rel = await db.prepare('SELECT id, ark FROM materials WHERE ark = ?').bind(relatedArk).first();
+  if (!rel) return err('المادة المرتبطة غير موجودة', 404);
+  if (rel.id === m.id) return err('لا يمكن ربط المادة بنفسها', 400);
+
+  const a = Math.min(m.id, rel.id);
+  const b = Math.max(m.id, rel.id);
+  await db
+    .prepare('INSERT OR IGNORE INTO material_relations (material_a, material_b, relation, note) VALUES (?, ?, ?, ?)')
+    .bind(a, b, body.relation || null, body.note || null)
+    .run();
+  await touchMaterial(db, m.id);
+  await audit(db, {
+    userId: user.id,
+    action: 'material.relate',
+    target: m.ark,
+    detail: `↔ ${relatedArk} (${body.relation || 'مرتبطة'})`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true }, 201);
+}
+
+// ---------- مقاطع الترجمة (العرض الموازي) ----------
+
+const SEGMENT_STATUSES = ['machine', 'reviewed'];
+
+async function getMaterialTranslation(db, materialId) {
+  return db
+    .prepare("SELECT * FROM translations WHERE material_id = ? AND target_lang = 'ar' ORDER BY updated_at DESC")
+    .bind(materialId)
+    .first();
+}
+
+/** سرد المقاطع (إن وُجدت) مع سجل الترجمة الأم */
+async function admSegmentsList(env, idOrArk) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  const t = await getMaterialTranslation(db, m.id);
+  if (!t) return json({ translation: null, segments: [] });
+  const segs = await db
+    .prepare('SELECT * FROM translation_segments WHERE translation_id = ? ORDER BY sequence_number')
+    .bind(t.id)
+    .all();
+  return json({ translation: t, segments: segs.results });
+}
+
+/**
+ * إنشاء ترجمة من مقاطع: body.segments = [{source_text, machine_translation?, page_number?}]
+ * تستبدل أي ترجمة عربية سابقة للمادة (مع مقاطعها عبر CASCADE).
+ */
+async function admSegmentsCreate(env, user, req, idOrArk, body) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  const segments = Array.isArray(body.segments) ? body.segments : [];
+  if (!segments.length) return err('المقاطع مطلوبة (مصفوفة segments غير فارغة)', 400);
+  if (segments.length > 2000) return err('عدد المقاطع يتجاوز الحد (2000)', 400);
+  for (const s of segments) {
+    if (!s || !String(s.source_text || '').trim()) return err('كل مقطع يحتاج source_text', 400);
+  }
+
+  const old = await getMaterialTranslation(db, m.id);
+  if (old) {
+    await db.prepare('DELETE FROM translations WHERE id = ?').bind(old.id).run();
+  }
+  const res = await db
+    .prepare(
+      "INSERT INTO translations (material_id, source_lang, target_lang, text, status, translator) VALUES (?, ?, 'ar', '', 'machine', ?)"
+    )
+    .bind(m.id, body.sourceLang || m.language || 'fr', body.translator || null)
+    .run();
+  const tid = res.meta.last_row_id;
+
+  const stmts = [];
+  let seq = 1;
+  for (const s of segments) {
+    stmts.push(
+      db
+        .prepare(
+          `INSERT INTO translation_segments
+           (translation_id, sequence_number, page_number, source_text, machine_translation, reviewed_translation, status)
+           VALUES (?, ?, ?, ?, ?, NULL, 'machine')`
+        )
+        .bind(
+          tid,
+          seq++,
+          asInt(s.page_number),
+          String(s.source_text),
+          s.machine_translation ? String(s.machine_translation) : null
+        )
+    );
+  }
+  await db.batch(stmts);
+
+  await db
+    .prepare("UPDATE materials SET translation_status = 'machine', updated_at = datetime('now') WHERE id = ?")
+    .bind(m.id)
+    .run();
+  await rebuildSearchBlob(db, m.id);
+  await audit(db, {
+    userId: user.id,
+    action: 'translation.segments_create',
+    target: m.ark,
+    detail: `${segments.length} مقطعًا`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true, translationId: tid, count: segments.length }, 201);
+}
+
+/** تعديل مقطع: reviewed_translation + status (+ machine_translation + page_number) */
+async function admSegmentUpdate(env, user, req, segId, body) {
+  const db = env.DB;
+  const seg = await db
+    .prepare(
+      `SELECT ts.*, t.material_id, m.ark FROM translation_segments ts
+       JOIN translations t ON t.id = ts.translation_id
+       JOIN materials m ON m.id = t.material_id
+       WHERE ts.id = ?`
+    )
+    .bind(segId)
+    .first();
+  if (!seg) return err('المقطع غير موجود', 404);
+
+  const sets = [];
+  const binds = [];
+  if (body.reviewed_translation !== undefined) {
+    sets.push('reviewed_translation = ?');
+    const v = String(body.reviewed_translation || '').trim();
+    binds.push(v ? v : null);
+  }
+  if (body.machine_translation !== undefined) {
+    sets.push('machine_translation = ?');
+    const v = String(body.machine_translation || '').trim();
+    binds.push(v ? v : null);
+  }
+  if (body.page_number !== undefined) {
+    sets.push('page_number = ?');
+    binds.push(asInt(body.page_number));
+  }
+  if (body.status !== undefined) {
+    if (!SEGMENT_STATUSES.includes(body.status)) return err('حالة المقطع غير صالحة', 400);
+    sets.push('status = ?');
+    binds.push(body.status);
+  }
+  if (!sets.length) return err('لا حقول للتعديل', 400);
+  sets.push("updated_at = datetime('now')");
+  await db
+    .prepare(`UPDATE translation_segments SET ${sets.join(', ')} WHERE id = ?`)
+    .bind(...binds, segId)
+    .run();
+
+  // اشتقاق حالة الترجمة الأم من اكتمال مراجعة المقاطع (ليس اعتمادًا — الاعتماد صريح فقط)
+  const pending = await db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM translation_segments
+       WHERE translation_id = ?
+         AND (status != 'reviewed' OR reviewed_translation IS NULL OR reviewed_translation = '')`
+    )
+    .bind(seg.translation_id)
+    .first();
+  const parentStatus = pending && pending.c > 0 ? 'in_review' : 'reviewed';
+  await db
+    .prepare("UPDATE translations SET status = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(parentStatus, seg.translation_id)
+    .run();
+  await db
+    .prepare("UPDATE materials SET translation_status = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(parentStatus, seg.material_id)
+    .run();
+
+  await rebuildSearchBlob(db, seg.material_id);
+  await touchMaterial(db, seg.material_id);
+  await audit(db, {
+    userId: user.id,
+    action: 'translation.segment_update',
+    target: seg.ark,
+    detail: `مقطع ${segId} ← ${body.status || 'تعديل نص'}`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true, parentStatus });
+}
+
+/** اعتماد الترجمة: إجراء إداري صريح — لا يحدث تلقائيًا أبدًا */
+async function admTranslationApprove(env, user, req, translationId, body) {
+  const db = env.DB;
+  const t = await db
+    .prepare(
+      `SELECT t.*, m.ark, m.id AS material_id FROM translations t
+       JOIN materials m ON m.id = t.material_id WHERE t.id = ?`
+    )
+    .bind(translationId)
+    .first();
+  if (!t) return err('الترجمة غير موجودة', 404);
+
+  await db
+    .prepare("UPDATE translations SET status = 'approved', updated_at = datetime('now') WHERE id = ?")
+    .bind(translationId)
+    .run();
+  await db
+    .prepare("UPDATE materials SET translation_status = 'approved', updated_at = datetime('now') WHERE id = ?")
+    .bind(t.material_id)
+    .run();
+  await rebuildSearchBlob(db, t.material_id);
+  await audit(db, {
+    userId: user.id,
+    action: 'translation.approve',
+    target: t.ark,
+    detail: `اعتماد صريح${body && body.note ? ' — ' + String(body.note).slice(0, 200) : ''}`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true, status: 'approved' });
+}
+
+/** حذف الترجمة ومقاطعها (لإعادة التقسيم مثلًا) */
+async function admTranslationDelete(env, user, req, translationId) {
+  const db = env.DB;
+  const t = await db
+    .prepare(
+      `SELECT t.*, m.ark FROM translations t
+       JOIN materials m ON m.id = t.material_id WHERE t.id = ?`
+    )
+    .bind(translationId)
+    .first();
+  if (!t) return err('الترجمة غير موجودة', 404);
+  await db.prepare('DELETE FROM translations WHERE id = ?').bind(translationId).run(); // CASCADE للمقاطع
+  await db
+    .prepare("UPDATE materials SET translation_status = 'none', updated_at = datetime('now') WHERE id = ?")
+    .bind(t.material_id)
+    .run();
+  await rebuildSearchBlob(db, t.material_id);
+  await audit(db, {
+    userId: user.id,
+    action: 'translation.delete',
+    target: t.ark,
+    detail: `حذف ترجمة ${translationId} ومقاطعها`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true });
+}
+
+// ---------- OCR اليدوي (لا يعمل تلقائيًا عند الرفع) ----------
+
+/**
+ * تشغيل OCR على ملف: يدوي فقط (تكلفة).
+ * الناتج يُحفظ دائمًا في raw_text (طبقة auto) —
+ * ولا ينتقل إلى corrected_text (طبقة manual) إلا بمراجعة بشرية.
+ */
+async function admMaterialOcr(env, user, req, idOrArk, body) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  const fileId = asInt(body.fileId);
+  if (!fileId) return err('fileId مطلوب', 400);
+  const file = await db
+    .prepare('SELECT * FROM files WHERE id = ? AND material_id = ?')
+    .bind(fileId, m.id)
+    .first();
+  if (!file) return err('الملف غير موجود', 404);
+  const language = String(body.language || 'fra').slice(0, 10);
+
+  const provider = getOCRProvider(env);
+  const jobRes = await db
+    .prepare(
+      `INSERT INTO processing_jobs (material_id, file_id, job_type, status, provider, started_at)
+       VALUES (?, ?, 'ocr', 'processing', ?, datetime('now'))`
+    )
+    .bind(m.id, fileId, provider.name)
+    .run();
+  const jobId = jobRes.meta.last_row_id;
+
+  try {
+    const obj = await env.FILES.get(file.r2_key);
+    if (!obj) throw new Error('الملف غير موجود في التخزين');
+    const bytes = await obj.arrayBuffer();
+    const result = await provider.extract(bytes, { language, timeoutMs: 180000 });
+    if (result.status === 'failed') throw new Error(result.error || 'فشل OCR');
+    const raw = result.text || '';
+
+    const ex = await db
+      .prepare('SELECT id FROM transcriptions WHERE material_id = ? AND layer = ?')
+      .bind(m.id, 'auto')
+      .first();
+    if (ex) {
+      await db
+        .prepare('UPDATE transcriptions SET text = ?, raw_text = ?, lang = ? WHERE id = ?')
+        .bind(raw, raw, language, ex.id)
+        .run();
+    } else {
+      await db
+        .prepare('INSERT INTO transcriptions (material_id, layer, lang, text, raw_text) VALUES (?, ?, ?, ?, ?)')
+        .bind(m.id, 'auto', language, raw, raw)
+        .run();
+    }
+
+    await db
+      .prepare("UPDATE processing_jobs SET status = 'completed', provider = ?, finished_at = datetime('now') WHERE id = ?")
+      .bind(result.provider || provider.name, jobId)
+      .run();
+    await db
+      .prepare("UPDATE materials SET transcription_status = 'auto', updated_at = datetime('now') WHERE id = ?")
+      .bind(m.id)
+      .run();
+    await rebuildSearchBlob(db, m.id);
+    await audit(db, {
+      userId: user.id,
+      action: 'ocr.run',
+      target: m.ark,
+      detail: `ملف ${fileId} عبر ${result.provider} — ${raw.length} حرف`,
+      ip: clientIp(req),
+    });
+    return json({
+      ok: true,
+      jobId,
+      provider: result.provider,
+      chars: raw.length,
+      confidence: result.confidence,
+    });
+  } catch (e) {
+    await db
+      .prepare("UPDATE processing_jobs SET status = 'failed', error_message = ?, finished_at = datetime('now') WHERE id = ?")
+      .bind(String(e.message).slice(0, 2000), jobId)
+      .run();
+    await audit(db, {
+      userId: user.id,
+      action: 'ocr.failed',
+      target: m.ark,
+      detail: String(e.message).slice(0, 500),
+      ip: clientIp(req),
+    });
+    return err('فشل OCR: ' + e.message, 502);
+  }
+}
+
+/** سجل عمليات المعالجة للمادة */
+async function admJobsList(env, idOrArk) {
+  const db = env.DB;
+  const m = await findMaterial(db, idOrArk);
+  if (!m) return err('المادة غير موجودة', 404);
+  const r = await db
+    .prepare('SELECT * FROM processing_jobs WHERE material_id = ? ORDER BY created_at DESC LIMIT 50')
+    .bind(m.id)
+    .all();
+  return json({ items: r.results });
+}
+
+const ENTITIES = {
+  people: {
+    table: 'people',
+    fields: ['name_ar', 'name_orig', 'bio', 'birth_year', 'death_year', 'identity_confidence'],
+    required: ['name_ar'],
+    searchCols: ['name_ar', 'name_orig'],
+    order: 'name_ar',
+  },
+  places: {
+    table: 'places',
+    fields: ['name_ar', 'name_orig', 'region', 'kind', 'lat', 'lng', 'place_confidence', 'notes'],
+    required: ['name_ar'],
+    searchCols: ['name_ar', 'name_orig', 'region'],
+    order: 'name_ar',
+  },
+  sources: {
+    table: 'sources',
+    fields: ['name', 'name_ar', 'kind', 'website', 'notes'],
+    required: ['name'],
+    searchCols: ['name_ar', 'name'],
+    order: 'name_ar',
+  },
+  tags: {
+    table: 'tags',
+    fields: ['name_ar', 'name_orig'],
+    required: ['name_ar'],
+    searchCols: ['name_ar', 'name_orig'],
+    order: 'name_ar',
+  },
+  collections: {
+    table: 'collections',
+    fields: ['title_ar', 'title_fr', 'description', 'cover_material_id', 'sort_order'],
+    required: ['title_ar'],
+    searchCols: ['title_ar', 'title_fr'],
+    order: 'sort_order, title_ar',
+  },
+  announcements: {
+    table: 'announcements',
+    fields: ['title_ar', 'title_fr', 'body_ar', 'body_fr', 'link_url', 'active', 'sort_order', 'starts_at', 'ends_at'],
+    required: ['title_ar'],
+    searchCols: ['title_ar', 'title_fr'],
+    order: 'sort_order, id',
+  },
+  glossary: {
+    table: 'glossary',
+    fields: ['term_orig', 'term_ar', 'domain', 'notes'],
+    required: ['term_orig', 'term_ar'],
+    searchCols: ['term_orig', 'term_ar'],
+    order: 'term_orig',
+  },
+};
+
+function pickEntityFields(cfg, body, key) {
+  const f = {};
+  for (const k of cfg.fields) {
+    if (body[k] !== undefined) f[k] = body[k] === '' ? null : body[k];
+  }
+  // الإعلانات: تطبيع صيغة datetime-local («YYYY-MM-DDTHH:MM») إلى صيغة SQLite
+  if (key === 'announcements') {
+    for (const dk of ['starts_at', 'ends_at']) {
+      if (typeof f[dk] === 'string' && f[dk]) {
+        let v = f[dk].replace('T', ' ');
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) v += ':00';
+        f[dk] = v;
+      }
+    }
+    // مربع الاختيار: «on» أو غائب → 1/0
+    if (f.active !== undefined && f.active !== null) {
+      f.active = (f.active === 'on' || f.active === 1 || f.active === '1' || f.active === true) ? 1 : 0;
+    }
+  }
+  return f;
+}
+async function admEntityList(env, url, key) {
+  const cfg = ENTITIES[key];
+  const { page, perPage, offset } = pageParams(url);
+  const q = (url.searchParams.get('q') || '').trim();
+  const where = [];
+  const binds = [];
+  if (q) {
+    where.push(`(${cfg.searchCols.map((c) => `${c} LIKE ?`).join(' OR ')})`);
+    for (const _ of cfg.searchCols) binds.push(`%${q}%`);
+  }
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const [itemsRes, countRow] = await Promise.all([
+    env.DB.prepare(`SELECT * FROM ${cfg.table}${whereSql} ORDER BY ${cfg.order} LIMIT ? OFFSET ?`)
+      .bind(...binds, perPage, offset)
+      .all(),
+    env.DB.prepare(`SELECT COUNT(*) AS c FROM ${cfg.table}${whereSql}`).bind(...binds).first(),
+  ]);
+  return json({ items: itemsRes.results, total: countRow.c, page, perPage });
+}
+
+async function admEntityCreate(env, user, req, key, body) {
+  const cfg = ENTITIES[key];
+  const f = pickEntityFields(cfg, body, key);
+  for (const r of cfg.required) {
+    if (!f[r] || !String(f[r]).trim()) throw new Error(`الحقل مطلوب: ${r}`);
+  }
+  const cols = Object.keys(f);
+  try {
+    const res = await env.DB
+      .prepare(`INSERT INTO ${cfg.table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
+      .bind(...cols.map((c) => f[c]))
+      .run();
+    const row = await env.DB.prepare(`SELECT * FROM ${cfg.table} WHERE id = ?`).bind(res.meta.last_row_id).first();
+    await audit(env.DB, { userId: user.id, action: `${key}.create`, target: String(row.id), ip: clientIp(req) });
+    return json(row, 201);
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return err('هذا السجل موجود مسبقًا', 409);
+    throw e;
+  }
+}
+
+async function admEntityUpdate(env, user, req, key, id, body) {
+  const cfg = ENTITIES[key];
+  const ex = await env.DB.prepare(`SELECT id FROM ${cfg.table} WHERE id = ?`).bind(id).first();
+  if (!ex) return err('السجل غير موجود', 404);
+  const f = pickEntityFields(cfg, body, key);
+  const keys = Object.keys(f);
+  if (!keys.length) return err('لا حقول للتعديل', 400);
+  try {
+    await env.DB
+      .prepare(`UPDATE ${cfg.table} SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`)
+      .bind(...keys.map((k) => f[k]), id)
+      .run();
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return err('هذا السجل موجود مسبقًا', 409);
+    throw e;
+  }
+  const row = await env.DB.prepare(`SELECT * FROM ${cfg.table} WHERE id = ?`).bind(id).first();
+  await audit(env.DB, { userId: user.id, action: `${key}.update`, target: String(id), ip: clientIp(req) });
+  return json(row);
+}
+
+async function admEntityDelete(env, user, req, key, id) {
+  const db = env.DB;
+  const cfg = ENTITIES[key];
+  const ex = await db.prepare(`SELECT id FROM ${cfg.table} WHERE id = ?`).bind(id).first();
+  if (!ex) return err('السجل غير موجود', 404);
+
+  // تنظيف الروابط المرجعية قبل الحذف
+  const cleanup = {
+    people: ['DELETE FROM material_people WHERE person_id = ?'],
+    places: [
+      'DELETE FROM material_places WHERE place_id = ?',
+      'UPDATE materials SET place_id = NULL WHERE place_id = ?',
+    ],
+    sources: ['UPDATE materials SET source_id = NULL WHERE source_id = ?'],
+    tags: ['DELETE FROM material_tags WHERE tag_id = ?'],
+    collections: ['DELETE FROM material_collections WHERE collection_id = ?'],
+    glossary: [],
+  };
+  // عند حذف مادة تُصفَّر مراجع الأغلفة في admMaterialDelete؛ هنا لا نمس المواد إطلاقًا
+  const stmts = (cleanup[key] || []).map((sql) => db.prepare(sql).bind(id));
+  // عند حذف مجموعة: لا نمس المواد، فقط روابطها
+  stmts.push(db.prepare(`DELETE FROM ${cfg.table} WHERE id = ?`).bind(id));
+  await db.batch(stmts);
+
+  await audit(db, { userId: user.id, action: `${key}.delete`, target: String(id), ip: clientIp(req) });
+  return json({ ok: true });
+}
+
+// ---------- النسخ الاحتياطي: تفريغ JSON ----------
+
+const EXPORT_TABLES = [
+  'counters',
+  'sources',
+  'people',
+  'places',
+  'tags',
+  'materials',
+  'files',
+  'image_versions',
+  'transcriptions',
+  'translations',
+  'translation_segments',
+  'processing_jobs',
+  'glossary',
+  'collections',
+  'material_people',
+  'material_places',
+  'material_tags',
+  'material_collections',
+  'material_relations',
+  'audit_log',
+];
+
+async function admExport(env, user, req) {
+  const db = env.DB;
+  const tables = {};
+  for (const t of EXPORT_TABLES) {
+    const r = await db.prepare(`SELECT * FROM ${t}`).all();
+    tables[t] = r.results;
+  }
+  // admin_users دون كلمات المرور
+  const au = await db.prepare('SELECT id, username, created_at FROM admin_users').all();
+  tables.admin_users = au.results;
+
+  const payload = {
+    exported_at: new Date().toISOString(),
+    generator: 'sidjil-admin-export-v1',
+    tables,
+  };
+  const day = new Date().toISOString().slice(0, 10);
+  await audit(db, { userId: user.id, action: 'backup.export', ip: clientIp(req) });
+  return json(payload, 200, {
+    'Content-Disposition': `attachment; filename="sidjil-backup-${day}.json"`,
+  });
+}
+
+// ---------- سجل العمليات ----------
+
+async function admAuditList(env, url) {
+  const { page, perPage, offset } = pageParams(url);
+  const [itemsRes, countRow] = await Promise.all([
+    env.DB.prepare(
+      `SELECT a.*, u.username FROM audit_log a
+       LEFT JOIN admin_users u ON u.id = a.user_id
+       ORDER BY a.created_at DESC, a.id DESC LIMIT ? OFFSET ?`
+    )
+      .bind(perPage, offset)
+      .all(),
+    env.DB.prepare('SELECT COUNT(*) AS c FROM audit_log').first(),
+  ]);
+  return json({ items: itemsRes.results, total: countRow.c, page, perPage });
+}

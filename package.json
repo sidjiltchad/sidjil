@@ -1,0 +1,17 @@
+{
+  "description": "سِجِل — SIDJIL: منصة رقمية لحفظ وفهرسة مصادر تاريخ تشاد",
+  "devDependencies": {
+    "wrangler": "^3.114.17"
+  },
+  "name": "archifouna",
+  "private": true,
+  "scripts": {
+    "admin:hash": "node scripts/hash-password.js",
+    "db:export": "wrangler d1 export archifouna-db --remote --output=backup/archifouna.sql",
+    "db:migrate:local": "wrangler d1 migrations apply archifouna-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply archifouna-db --remote",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "version": "0.1.0"
+}

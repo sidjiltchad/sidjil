@@ -1,0 +1,31 @@
+name = "sidjil"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# قاعدة البيانات (D1) — الإنتاج
+[[d1_databases]]
+binding = "DB"
+database_name = "sidjil-prod"
+database_id = "fd170307-68fd-459b-8fd1-80c26396b1e4"
+migrations_dir = "migrations"
+
+# التخزين (R2) — الإنتاج
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "sidjil-assets"
+
+# الأصول الثابتة (CSS/JS/الشعار) — تُقدَّم مباشرة دون المرور بالـ Worker
+[assets]
+directory = "./public"
+not_found_handling = "none"
+
+routes = [
+  { pattern = "sidjil.org", custom_domain = true },
+  { pattern = "www.sidjil.org", custom_domain = true }
+]
+
+[vars]
+SITE_NAME = "سِجِل"
+SITE_URL = "https://sidjil.org"
+ADMIN_USERNAME = "admin"
+# ADMIN_PASSWORD_HASH يُضبط كسرّ (wrangler secret) ولا يوضع هنا أبدًا
