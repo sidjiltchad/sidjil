@@ -2610,3 +2610,166 @@ a:hover {
     border: 0 !important;
   }
 }
+
+/* ============================================================
+   خريطة سِجِل التفاعلية (SVG)
+   ============================================================ */
+.smap-root {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 8px 28px rgba(22, 32, 46, 0.06);
+}
+.smap-loading, .smap-error, .smap-empty {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.smap-error { color: #b3261e; }
+
+.smap-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.smap-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--ink-secondary);
+}
+.smap-select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.smap-kinds { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.smap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 0.86rem;
+  color: var(--ink-secondary);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 13px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+.smap-chip.is-on { opacity: 1; border-color: var(--gold); }
+
+.smap-dot {
+  width: 11px; height: 11px; border-radius: 50%;
+  display: inline-block; flex: none;
+}
+.smap-dot-city   { background: #c0392b; box-shadow: 0 0 0 3px rgba(192,57,43,0.18); }
+.smap-dot-region { background: #1a7a6d; }
+.smap-dot-site   { background: #bfa150; border-radius: 3px; }
+
+.smap-stage {
+  position: relative;
+  max-width: 620px;
+  margin: 0 auto;
+}
+.smap-svg { width: 100%; height: auto; display: block; }
+.smap-province {
+  fill: var(--paper-2);
+  stroke: var(--line-strong);
+  stroke-width: 1.1;
+}
+.smap-province:hover { fill: var(--teal-light); }
+.smap-label { pointer-events: none; }
+.smap-label-ar {
+  font-family: var(--font-head);
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--ink-secondary);
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-width: 3px;
+}
+.smap-label-fr {
+  font-size: 9.5px;
+  fill: var(--muted);
+  paint-order: stroke;
+  stroke: var(--card);
+  stroke-width: 3px;
+}
+.smap-label-anchor { fill: var(--gold-deep); }
+.smap-label-leader { stroke: var(--gold-deep); stroke-width: 1; }
+
+.smap-pt { cursor: pointer; outline: none; }
+.smap-pt .smap-ring {
+  fill: none;
+  stroke: #c0392b;
+  stroke-width: 2;
+  opacity: 0.85;
+}
+.smap-pt-city .smap-dotc   { fill: #c0392b; stroke: #fff; stroke-width: 1.5; }
+.smap-pt-region .smap-dotc { fill: #1a7a6d; stroke: #fff; stroke-width: 1.5; }
+.smap-pt-site .smap-dotc   { fill: #bfa150; stroke: #fff; stroke-width: 1.5; }
+.smap-pt:hover .smap-dotc, .smap-pt:focus .smap-dotc { stroke: var(--gold); stroke-width: 2.5; }
+
+.smap-tip {
+  position: absolute;
+  z-index: 5;
+  max-width: 260px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(22, 32, 46, 0.18);
+  padding: 12px 14px;
+  font-size: 0.86rem;
+  pointer-events: auto;
+}
+.smap-tip-place {
+  font-size: 0.75rem;
+  color: var(--gold-deep);
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.smap-tip-title { font-weight: 700; margin-bottom: 4px; line-height: 1.5; }
+.smap-tip-date { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }
+.smap-tip-sum { margin: 0 0 8px; color: var(--ink-secondary); line-height: 1.6; font-size: 0.82rem; }
+.smap-tip-link {
+  color: var(--teal-soft);
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 0.84rem;
+}
+.smap-tip-link:hover { text-decoration: underline; }
+
+.smap-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.smap-legend { display: inline-flex; gap: 14px; flex-wrap: wrap; }
+.smap-leg { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 640px) {
+  .smap-root { padding: 12px; }
+  .smap-label-ar { font-size: 11px; }
+  .smap-label-fr { font-size: 8px; }
+  .smap-tip { max-width: 210px; }
+}

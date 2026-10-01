@@ -450,6 +450,28 @@ async function homePage(ctx) {
 
   ${secHTML}
 
+  <section class="wrap section" aria-labelledby="sidjilMapTitle">
+    <div class="section-head">
+      <h2 class="section-title" id="sidjilMapTitle">${esc(t(lang, 'map_title'))}</h2>
+    </div>
+    <p class="section-sub">${esc(t(lang, 'map_subtitle'))}</p>
+    <div id="sidjilMap" data-sidjil-map
+         data-lang="${lang}" data-langq="?lang=${lang}"
+         data-str-loading="${esc(t(lang, 'map_loading'))}"
+         data-str-error="${esc(t(lang, 'map_error'))}"
+         data-str-no-points="${esc(t(lang, 'map_no_points'))}"
+         data-str-events="${esc(t(lang, 'map_events'))}"
+         data-str-region="${esc(t(lang, 'map_region'))}"
+         data-str-all-regions="${esc(t(lang, 'map_all_regions'))}"
+         data-str-kind="${esc(t(lang, 'map_kind'))}"
+         data-str-city="${esc(t(lang, 'map_kind_city'))}"
+         data-str-region-kind="${esc(t(lang, 'map_kind_region'))}"
+         data-str-site="${esc(t(lang, 'map_kind_site'))}"
+         data-str-view-material="${esc(t(lang, 'map_view_material'))}"
+         data-str-map-label="${esc(t(lang, 'map_aria'))}"></div>
+  </section>
+  <script src="/js/sidjil-map.js" defer></script>
+
   <section class="wrap section">
     <h2 class="section-title">${esc(t(lang, 'quick_access'))}</h2>
     <div class="quick-grid">${quick}</div>
