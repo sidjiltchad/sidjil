@@ -1,1 +1,33 @@
-{"background_color":"#f7f4ec","description":"الشبكة الاجتماعية العلمية لأرشيف تاريخ تشاد الرقمي: نقاشات الباحثين الموثّقين حول الكتب والوثائق والأفكار.","dir":"rtl","display":"standalone","icons":[{"purpose":"any","sizes":"512x512","src":"/logo.png","type":"image/png"},{"purpose":"any","sizes":"192x192","src":"/logo.png","type":"image/png"},{"purpose":"maskable","sizes":"512x512","src":"/logo.png","type":"image/png"}],"lang":"ar","name":"مجلس سِجِل — نقاشات الباحثين","orientation":"portrait","scope":"/","short_name":"مجلس سِجِل","start_url":"/discussions","theme_color":"#1f4276"}
+{
+ "background_color": "#f7f4ec",
+ "description": "الشبكة الاجتماعية العلمية لأرشيف تاريخ تشاد الرقمي: نقاشات الباحثين الموثّقين حول الكتب والوثائق والأفكار.",
+ "dir": "rtl",
+ "display": "standalone",
+ "icons": [
+  {
+   "src": "/icons/icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "/icons/icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any"
+  },
+  {
+   "src": "/icons/maskable-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ],
+ "lang": "ar",
+ "name": "مجلس سِجِل — نقاشات الباحثين",
+ "orientation": "portrait",
+ "scope": "/",
+ "short_name": "مجلس سِجِل",
+ "start_url": "/discussions",
+ "theme_color": "#1f4276"
+}

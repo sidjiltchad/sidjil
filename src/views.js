@@ -778,9 +778,11 @@ function pdfViewerBlock(ctx, pdfFiles) {
           <button type="button" class="btn btn-small" data-pdf-zoom-in aria-label="${esc(t(lang, 'zoom_in'))}">+</button>
           <button type="button" class="btn btn-small" data-pdf-fit>${esc(t(lang, 'fit_width'))}</button>
           <button type="button" class="btn btn-small" data-pdf-full>${esc(t(lang, 'fullscreen'))}</button>
+          <button type="button" class="btn btn-small btn-primary" data-pdf-read data-read-label="${esc(t(lang, 'read_full_book'))}" data-close-label="${esc(t(lang, 'close_full_book'))}">${esc(t(lang, 'read_full_book'))}</button>
           <a class="btn btn-small btn-ghost" href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a>
         </div>
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap"><canvas data-pdf-canvas></canvas></div>
+        <div class="pdf-reading-pages hidden" data-pdf-reading-pages aria-live="polite"></div>
         <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
