@@ -119,11 +119,16 @@ export async function serveFile(env, fileId, { download = false, admin = false }
 
   if (!admin) {
     const mat = await env.DB
-      .prepare('SELECT publish_status FROM materials WHERE id = ?')
+      .prepare('SELECT publish_status, full_text FROM materials WHERE id = ?')
       .bind(file.material_id)
       .first();
     if (!mat || mat.publish_status !== 'published') {
       return jsonError('الملف غير متاح', 403);
+    }
+    const textualOriginal = /(?:docx?|txt|md)$/i.test(file.filename || '')
+      || /^(text\/plain|text\/markdown|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/i.test(file.mime || '');
+    if (textualOriginal && mat.full_text) {
+      return jsonError('هذا المستند متاح كنص موثق داخل المنصة', 403);
     }
   }
 

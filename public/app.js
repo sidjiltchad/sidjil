@@ -2,6 +2,13 @@
 (function () {
   'use strict';
 
+  /* ---------- تسجيل Service Worker (تطبيق الويب التقدمي) ---------- */
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () { /* تجاهل */ });
+    });
+  }
+
   /* ---------- مبدّل الثيم (فاتح/داكن) ---------- */
   var themeBtn = document.getElementById('themeToggle');
   if (themeBtn) {

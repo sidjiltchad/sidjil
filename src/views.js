@@ -1,6 +1,7 @@
 // SIDJIL — الواجهة العامة (صفحات الزوار)
 // renderPublic(pathname, req, env) → Response (HTML, server-side)
 import { SUPPORTED_LANGS, t, htmlDir } from './i18n.js';
+import { discussionsPage, discussionPage, registerPage, discussionSectionHTML } from './discussion-views.js';
 import { searchMaterials } from './lib/search.js';
 import { getMaterialFull } from './lib/db.js';
 import { buildCitation } from './lib/citation.js';
@@ -97,9 +98,13 @@ ${ogUrl}
 <meta name="theme-color" content="#1f4276" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101724" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/logo.png" type="image/png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Tajawal:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="/manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
+<link rel="apple-touch-icon" href="/logo.png">
+<link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css">
 </head>`;
 }
@@ -139,6 +144,7 @@ function header(ctx, active = '') {
     <nav class="main-nav" id="mainNav" aria-label="main">
       ${L('/sections', 'nav_sections')}
       ${L('/journal', 'nav_journal')}
+      ${L('/discussions', 'nav_discussions')}
       ${L('/archive', 'nav_archive')}
       ${L('/collections', 'nav_collections')}
       <div class="nav-drop">
@@ -192,6 +198,7 @@ function footer(ctx) {
     <nav class="footer-col" aria-label="footer-2">
       <h3>${esc(t(lang, 'site_name'))}</h3>
       <a href="${langPath(ctx, '/journal')}">${esc(t(lang, 'nav_journal'))}</a>
+      <a href="${langPath(ctx, '/discussions')}">${esc(t(lang, 'nav_discussions'))}</a>
       <a href="${langPath(ctx, '/advanced-search')}">${esc(t(lang, 'nav_advanced'))}</a>
       <a href="${langPath(ctx, '/about')}">${esc(t(lang, 'nav_about'))}</a>
       <a href="${langPath(ctx, '/methodology')}">${esc(t(lang, 'nav_methodology'))}</a>
@@ -203,9 +210,24 @@ function footer(ctx) {
 </footer>`;
 }
 
-function layout(ctx, { title, description, ogImage, canonical, active, content }) {
+export function layout(ctx, { title, description, ogImage, canonical, active, content }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
+}
+
+// شريط سفلي يظهر فقط في وضع التطبيق (standalone)
+function pwaBar(ctx, active = '') {
+  const { lang } = ctx;
+  const items = [
+    ['/', 'nav_home', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>'],
+    ['/discussions', 'nav_discussions', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>'],
+    ['/sections', 'nav_sections', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>'],
+    ['/search', 'nav_search', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'],
+  ];
+  const links = items.map(([p, label, svg]) =>
+    `<a href="${langPath(ctx, p)}" class="${active === p ? 'active' : ''}">${svg}<span>${esc(t(lang, label))}</span></a>`
+  ).join('');
+  return `<nav class="pwa-bar" aria-label="app">${links}</nav>`;
 }
 
 /* ---------- بطاقات المواد ---------- */
@@ -377,7 +399,7 @@ async function homePage(ctx) {
   const cols = collections.length ? collections.map(c => `
     <a class="collection-card" href="${langPath(ctx, '/collection/' + c.id)}">
       <span class="collection-card-title">${esc(lang === 'fr' && c.title_fr ? c.title_fr : c.title_ar)}</span>
-      ${c.description ? `<span class="collection-card-desc">${esc(truncate(c.description, 140))}</span>` : ''}
+      ${colDesc(lang, c) ? `<span class="collection-card-desc">${esc(truncate(colDesc(lang, c), 140))}</span>` : ''}
       <span class="collection-card-count">${colMatCounts[c.id] || 0} ${esc(t(lang, 'materials_count'))}</span>
       <span class="collection-card-go">${esc(t(lang, 'explore_collection'))} →</span>
     </a>`).join('') : `<p class="empty">—</p>`;
@@ -507,9 +529,14 @@ function quickIcon(tp) {
   return { document: '📜', book: '📚', image: '🖼', manuscript: '📖', map: '🗺', press: '📰', correspondence: '✉', excerpt: '❝', journal: '📓', article: '📝' }[tp] || '📄';
 }
 
-function truncate(s, n) {
+export function truncate(s, n) {
   s = String(s || '');
   return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+}
+
+/** وصف المجموعة/القسم حسب لغة الواجهة — الفرنسي أولًا ثم العربي كبديل */
+function colDesc(lang, c) {
+  return lang === 'fr' && c.description_fr ? c.description_fr : c.description;
 }
 
 /* ---------- الأرشيف + البحث ---------- */
@@ -712,11 +739,11 @@ const ICON_TG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A
 const ICON_X = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>';
 const ICON_FB = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>';
 const ICON_LINK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>';
-function shareHTML(ctx, m) {
+export function shareHTML(ctx, m, override) {
   const { lang } = ctx;
   const origin = new URL(ctx.url).origin;
-  const url = `${origin}/document/${encodeURIComponent(m.ark)}?lang=${lang}`;
-  const title = displayTitle(lang, m);
+  const url = (override && override.url) || `${origin}/document/${encodeURIComponent(m.ark)}?lang=${lang}`;
+  const title = (override && override.title) || displayTitle(lang, m);
   const e = encodeURIComponent;
   const text = `${title} — ${t(lang, 'site_name')}`;
   const ic = (href, color, label, svg) => `<a class="share-ic" style="--sc:${color}" target="_blank" rel="noopener" href="${href}" title="${esc(label)}" aria-label="${esc(label)}">${svg}</a>`;
@@ -1003,6 +1030,7 @@ async function documentPage(ctx, ark) {
       ${transcriptionHTML}
       ${translationHTML}
       ${relatedHTML}
+      ${await discussionSectionHTML(ctx, m)}
       ${citationHTML}
     </article>
   </div>`;
@@ -1209,7 +1237,7 @@ async function collectionsPage(ctx) {
   const cards = (rows.results || []).map(c => `
     <a class="collection-card" href="${langPath(ctx, '/collection/' + c.id)}">
       <span class="collection-card-title">${esc(lang === 'fr' && c.title_fr ? c.title_fr : c.title_ar)}</span>
-      ${c.description ? `<span class="collection-card-desc">${esc(truncate(c.description, 160))}</span>` : ''}
+      ${colDesc(lang, c) ? `<span class="collection-card-desc">${esc(truncate(colDesc(lang, c), 160))}</span>` : ''}
       <span class="collection-card-count">${c.n} ${esc(t(lang, 'materials_count'))}</span>
       <span class="collection-card-go">${esc(t(lang, 'explore_collection'))} →</span>
     </a>`).join('');
@@ -1238,13 +1266,13 @@ async function collectionPage(ctx, id) {
   <div class="wrap page-head">
     <nav class="breadcrumb"><a href="${langPath(ctx, '/collections')}">${esc(t(lang, 'nav_collections'))}</a> / ${esc(title)}</nav>
     <h1 class="page-title">${esc(title)}</h1>
-    ${c.description ? `<p class="page-desc" dir="auto">${esc(c.description)}</p>` : ''}
+    ${colDesc(lang, c) ? `<p class="page-desc" dir="auto">${esc(colDesc(lang, c))}</p>` : ''}
   </div>
   <div class="wrap section">
     ${cardsGrid(ctx, items)}
     ${paginationHTML(ctx, page, PER_PAGE, res.total || 0, '/collection/' + id + '?' + url.searchParams.toString())}
   </div>`;
-  return layout(ctx, { title, description: truncate(c.description || title, 160), active: '/collections', content });
+  return layout(ctx, { title, description: truncate(colDesc(lang, c) || title, 160), active: '/collections', content });
 }
 
 /* ---------- أقسام سِجِل ---------- */
@@ -1262,7 +1290,7 @@ async function sectionsPage(ctx) {
     return `
     <div class="section-card">
       <h2><a href="${langPath(ctx, '/section/' + s.id)}">${esc(title)}</a></h2>
-      ${s.description ? `<p dir="auto">${esc(truncate(s.description, 180))}</p>` : ''}
+      ${colDesc(lang, s) ? `<p dir="auto">${esc(truncate(colDesc(lang, s), 180))}</p>` : ''}
       <div class="sec-foot">
         <span class="section-count">${s.n} ${esc(t(lang, 'section_count_materials'))}</span>
         <a class="more-link" href="${langPath(ctx, '/section/' + s.id)}">${esc(t(lang, 'sections_explore'))} →</a>
@@ -1310,7 +1338,7 @@ async function sectionPage(ctx, id) {
   <div class="wrap page-head">
     <nav class="breadcrumb"><a href="${langPath(ctx, '/')}">${esc(t(lang, 'nav_home'))}</a> / <a href="${langPath(ctx, '/sections')}">${esc(t(lang, 'nav_sections'))}</a> / ${esc(title)}</nav>
     <h1 class="page-title">${esc(title)}</h1>
-    ${s.description ? `<p class="page-desc" dir="auto">${esc(s.description)}</p>` : ''}
+    ${colDesc(lang, s) ? `<p class="page-desc" dir="auto">${esc(colDesc(lang, s))}</p>` : ''}
   </div>
   <div class="wrap section">
     <h2 class="section-title">${esc(t(lang, 'section_materials'))}</h2>
@@ -1318,7 +1346,7 @@ async function sectionPage(ctx, id) {
     ${paginationHTML(ctx, page, PER_PAGE, res.total || 0, '/section/' + id + '?' + url.searchParams.toString())}
     ${subHTML}
   </div>`;
-  return layout(ctx, { title, description: truncate(s.description || title, 160), active: '/sections', content });
+  return layout(ctx, { title, description: truncate(colDesc(lang, s) || title, 160), active: '/sections', content });
 }
 
 /* ---------- مجلة سِجِل ---------- */
@@ -1583,6 +1611,22 @@ function notFoundPage(ctx) {
   return { html, status: 404 };
 }
 
+// صفحة الأوفلاين لتطبيق الويب التقدمي
+function offlinePage(ctx) {
+  const { lang } = ctx;
+  const msg = lang === 'fr'
+    ? 'Vous êtes hors ligne. Les pages déjà visitées restent disponibles, mais les débats nécessitent une connexion.'
+    : 'أنت دون اتصال. الصفحات التي زرتها من قبل متاحة، لكن النقاشات تحتاج إلى اتصال بالإنترنت.';
+  const content = `
+  <div class="wrap section not-found">
+    <div class="not-found-code">📡</div>
+    <h1 class="page-title">${lang === 'fr' ? 'Hors ligne' : 'دون اتصال'}</h1>
+    <p class="page-desc">${esc(msg)}</p>
+    <button class="btn btn-primary" type="button" onclick="location.reload()">${lang === 'fr' ? 'Réessayer' : 'إعادة المحاولة'}</button>
+  </div>`;
+  return layout(ctx, { title: lang === 'fr' ? 'Hors ligne' : 'دون اتصال', content });
+}
+
 /* ---------- الموجّه ---------- */
 
 export async function renderPublic(pathname, req, env) {
@@ -1613,6 +1657,9 @@ export async function renderPublic(pathname, req, env) {
     else if (pathname === '/collections') result = await collectionsPage(ctx);
     else if (pathname === '/sections') result = await sectionsPage(ctx);
     else if (pathname === '/journal') result = await journalListPage(ctx);
+    else if (pathname === '/discussions') result = await discussionsPage(ctx);
+    else if (pathname === '/researcher/register') result = registerPage(ctx);
+    else if (pathname === '/offline') result = offlinePage(ctx);
     else if (pathname === '/about') result = aboutPage(ctx);
     else if (pathname === '/methodology') result = methodologyPage(ctx);
     else {
@@ -1623,6 +1670,7 @@ export async function renderPublic(pathname, req, env) {
       else if ((m = pathname.match(/^\/collection\/(\d+)$/))) result = await collectionPage(ctx, m[1]);
       else if ((m = pathname.match(/^\/section\/(\d+)$/))) result = await sectionPage(ctx, m[1]);
       else if ((m = pathname.match(/^\/journal\/([^/]+)$/))) result = await journalIssuePage(ctx, decodeURIComponent(m[1]));
+      else if ((m = pathname.match(/^\/discussion\/(\d+)$/))) result = await discussionPage(ctx, m[1]);
       else result = notFoundPage(ctx);
     }
   } catch (err) {

@@ -30,3 +30,6 @@ SITE_NAME = "سِجِل"
 SITE_URL = "https://sidjil.org"
 ADMIN_USERNAME = "admin"
 # ADMIN_PASSWORD_HASH يُضبط كسرّ (wrangler secret) ولا يوضع هنا أبدًا
+
+[observability]
+enabled = true

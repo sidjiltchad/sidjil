@@ -182,4 +182,39 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  // ---------- نموذج نقاش جديد ----------
+  const dForm = document.getElementById('discussionForm');
+  if (dForm) {
+    dForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = dForm.querySelector('[type="submit"]');
+      const payload = {
+        kind: document.getElementById('nd-kind').value,
+        title: document.getElementById('nd-title').value.trim(),
+        body: document.getElementById('nd-body').value.trim(),
+        quote_text: document.getElementById('nd-quote').value.trim(),
+        page_no: document.getElementById('nd-page').value.trim(),
+      };
+      const matId = document.getElementById('nd-material').value.trim();
+      if (matId) payload.material_id = matId;
+      if (!payload.title || !payload.body) { toast('العنوان والنص مطلوبان', false); return; }
+      btn.disabled = true;
+      try {
+        await api('/api/v1/admin/discussions', 'POST', payload);
+        toast('نُشر النقاش بنجاح');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); btn.disabled = false; }
+    });
+  }
+  document.querySelectorAll('[data-del-discussion]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('حذف هذا النقاش نهائيًا؟')) return;
+      try {
+        await api(`/api/v1/admin/discussions/${btn.dataset.delDiscussion}`, 'DELETE');
+        toast('حُذف النقاش');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); }
+    });
+  });
 });

@@ -4,7 +4,7 @@
 
 ## الهوية
 - الاسم الرسمي: **SIDJIL** — الاسم العربي: **سِجِل**
-- الوصف: سِجِل — أرشيف تاريخ تشاد الرقمي / SIDJIL — Archives historiques du Tchad
+- الوصف: سِجِل — أرشيف تشاد الرقمي / SIDJIL — Archives historiques du Tchad
 - النطاق الأساسي: **sidjil.org**؛ يحوّل `www.sidjil.org` إليه تحويلًا دائمًا.
 
 ## موارد الإنتاج

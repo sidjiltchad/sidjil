@@ -167,7 +167,7 @@ export async function getSessionUser(req, env) {
     if (!token) return null;
     const user = await env.DB
       .prepare(
-        `SELECT u.id, u.username, u.role, u.is_active, s.csrf_token AS csrfToken FROM admin_users u
+        `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, s.csrf_token AS csrfToken FROM admin_users u
          JOIN sessions s ON s.user_id = u.id
          WHERE s.token = ? AND s.expires_at > datetime('now')`
       )

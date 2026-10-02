@@ -715,6 +715,38 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) { toast(err.message, false); }
     });
   });
+  document.querySelectorAll('[data-disc-mod]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const status = btn.dataset.status;
+      if (!confirm(status === 'hidden' ? 'إخفاء هذا النقاش عن الزوار؟' : 'إظهار هذا النقاش؟')) return;
+      try {
+        await api(`/api/v1/admin/discussions/${btn.dataset.discMod}`, 'PUT', { status });
+        toast(status === 'hidden' ? 'أُخفي النقاش' : 'أُظهر النقاش');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); }
+    });
+  });
+  document.querySelectorAll('[data-disc-del]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('حذف هذا النقاش نهائيًا مع ردوده وتفاعلاته؟')) return;
+      try {
+        await api(`/api/v1/admin/discussions/${btn.dataset.discDel}`, 'DELETE');
+        toast('حُذف النقاش');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); }
+    });
+  });
+  document.querySelectorAll('[data-verify-researcher]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const verified = btn.dataset.verified === '1';
+      if (!confirm(verified ? 'توثيق هذا الباحث؟ سيتمكن من خوض النقاشات.' : 'إلغاء توثيق هذا الباحث؟ لن يتمكن من النشر.')) return;
+      try {
+        await api(`/api/v1/admin/researchers/${btn.dataset.verifyResearcher}/verify`, 'POST', { verified });
+        toast(verified ? 'وُثّق الباحث ✓' : 'أُلغي التوثيق');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); }
+    });
+  });
   document.querySelectorAll('[data-user-pass]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const pw = prompt(`كلمة مرور جديدة للحساب «${btn.dataset.username}» (8 أحرف على الأقل):`);
@@ -727,3 +759,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+// ---------- قائمة الجوال: إظهار/إخفاء الشريط الجانبي ----------
+(function initSideToggle() {
+  var btn = document.getElementById('sideToggle');
+  var sidebar = document.getElementById('adminNav');
+  var shell = document.querySelector('.admin-shell');
+  if (!btn || !sidebar || !shell) return;
+  function setOpen(open) {
+    sidebar.classList.toggle('open', open);
+    shell.classList.toggle('nav-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setOpen(!sidebar.classList.contains('open'));
+  });
+  document.addEventListener('click', function (e) {
+    if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      setOpen(false);
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setOpen(false);
+  });
+  sidebar.querySelectorAll('.nav-item').forEach(function (a) {
+    a.addEventListener('click', function () { setOpen(false); });
+  });
+})();

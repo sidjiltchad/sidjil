@@ -22,6 +22,15 @@ import {
 } from './lib/auth.js';
 import { getOCRProvider } from './lib/ocr.js';
 import { putUpload } from './lib/r2files.js';
+import {
+  requireVerifiedResearcher,
+  apiDiscussionCreate,
+  apiDiscussionUpdate,
+  apiDiscussionDelete,
+  apiReplyCreate,
+  apiReplyDelete,
+  apiResearcherVerify,
+} from './discussions.js';
 
 // ---------- أدوات ----------
 
@@ -83,6 +92,11 @@ function researcherAllowed(rest, method) {
   if (/^materials\/\d+\/files$/.test(rest) && method === 'POST') return true;
   if (/^files\/\d+$/.test(rest) && method === 'DELETE') return true;
   if (/^materials\/\d+\/submit$/.test(rest) && method === 'POST') return true; // إرسال للمراجعة
+  // مجلس سِجِل: الباحث (الموثّق — يُتحقق داخل الدالة) ينشر النقاشات والردود
+  if (rest === 'discussions' && method === 'POST') return true;
+  if (/^discussions\/\d+$/.test(rest) && (method === 'PUT' || method === 'DELETE')) return true;
+  if (/^discussions\/\d+\/replies$/.test(rest) && method === 'POST') return true;
+  if (/^discussions\/\d+\/replies\/\d+$/.test(rest) && method === 'DELETE') return true;
   return false;
 }
 
@@ -174,6 +188,38 @@ export async function routeAdminApi(req, env) {
   m = rest.match(/^users\/(\d+)$/);
   if (m && method === 'PATCH')
     return withJsonBody(req, (body) => admUserUpdate(env, user, req, parseInt(m[1], 10), body));
+
+  // توثيق باحث (إدارة فقط)
+  m = rest.match(/^researchers\/(\d+)\/verify$/);
+  if (m && method === 'POST')
+    return withJsonBody(req, (body) => apiResearcherVerify(env, req, user, parseInt(m[1], 10), body));
+
+  // مجلس سِجِل: النقاشات (الباحث الموثّق — يُتحقق داخل كل دالة)
+  if (rest === 'discussions' && method === 'POST') {
+    const v = await requireVerifiedResearcher(env, req);
+    if (v.error) return v.error;
+    return apiDiscussionCreate(env, req, v.user);
+  }
+  m = rest.match(/^discussions\/(\d+)$/);
+  if (m && (method === 'PUT' || method === 'DELETE')) {
+    const v = await requireVerifiedResearcher(env, req);
+    if (v.error) return v.error;
+    const id = parseInt(m[1], 10);
+    if (method === 'PUT') return apiDiscussionUpdate(env, req, v.user, id);
+    return apiDiscussionDelete(env, req, v.user, id);
+  }
+  m = rest.match(/^discussions\/(\d+)\/replies$/);
+  if (m && method === 'POST') {
+    const v = await requireVerifiedResearcher(env, req);
+    if (v.error) return v.error;
+    return apiReplyCreate(env, req, v.user, parseInt(m[1], 10));
+  }
+  m = rest.match(/^discussions\/(\d+)\/replies\/(\d+)$/);
+  if (m && method === 'DELETE') {
+    const v = await requireVerifiedResearcher(env, req);
+    if (v.error) return v.error;
+    return apiReplyDelete(env, req, v.user, parseInt(m[1], 10), parseInt(m[2], 10));
+  }
 
   m = rest.match(/^materials\/([^/]+)\/files$/);
   if (m && method === 'POST') return admMaterialUpload(env, user, req, m[1]);
@@ -583,7 +629,8 @@ async function admMaterialReview(env, user, req, id, body) {
 
 async function admUsersList(env) {
   const res = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.is_active, u.created_at,
+    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.display_name, u.affiliation,
+            u.created_at,
             (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
      FROM admin_users u ORDER BY u.id ASC`
   ).all();
@@ -1298,7 +1345,7 @@ const ENTITIES = {
   },
   collections: {
     table: 'collections',
-    fields: ['title_ar', 'title_fr', 'description', 'cover_material_id', 'sort_order'],
+    fields: ['title_ar', 'title_fr', 'description', 'description_fr', 'cover_material_id', 'sort_order'],
     required: ['title_ar'],
     searchCols: ['title_ar', 'title_fr'],
     order: 'sort_order, title_ar',

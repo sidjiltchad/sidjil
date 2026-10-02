@@ -52,6 +52,8 @@ const POLICY = [
   { match: (p) => p === '/api/v1/admin/login', limit: 10, window: MIN, scope: 'ip' },        // تسجيل الدخول: الأشد
   { match: (p) => p.includes('/ocr') || p.includes('/segments'), limit: 30, window: MIN, scope: 'ip' }, // OCR والترجمة
   { match: (p) => p.startsWith('/api/v1/admin/'), limit: 300, window: MIN, scope: 'ip' },   // عمليات إدارية
+  { match: (p) => p === '/api/v1/reactions', limit: 30, window: MIN, scope: 'ip' }, // تفاعلات الزوار
+  { match: (p) => p === '/api/v1/researcher/register', limit: 5, window: 60 * MIN, scope: 'ip' }, // تسجيل الباحثين: 5/ساعة
   { match: (p) => p === '/api/v1/search', limit: 60, window: MIN, scope: 'ip' },             // البحث العام
   { match: (p) => p.startsWith('/file/'), limit: 60, window: MIN, scope: 'ip' },            // التنزيلات
 ];

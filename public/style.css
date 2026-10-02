@@ -8,11 +8,50 @@
    - تجاوب مثالي مع الهواتف والأجهزة اللوحية وشاشات الحواسيب
    ============================================================ */
 
+/* ---------- 0. الخطوط المحلية (بدون أي CDN خارجي) ----------
+   Noto Kufi Arabic (متغير 100-900) للعناوين
+   IBM Plex Sans Arabic (400/500/600/700) للنصوص والواجهة */
+@font-face {
+  font-family: 'Noto Kufi Arabic';
+  src: url('/fonts/noto-kufi-arabic-var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  src: url('/fonts/ibm-plex-sans-arabic-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  src: url('/fonts/ibm-plex-sans-arabic-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  src: url('/fonts/ibm-plex-sans-arabic-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  src: url('/fonts/ibm-plex-sans-arabic-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ---------- 1. المتغيرات ونظام الألوان (Design Tokens) ---------- */
 :root {
   /* الخطوط */
-  --font-head: 'Amiri', 'Traditional Arabic', serif;
-  --font-body: 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-head: 'Noto Kufi Arabic', 'Amiri', 'Traditional Arabic', serif;
+  --font-body: 'IBM Plex Sans Arabic', 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* النمط النهاري (ألوان هادئة مستوحاة من الهوية التشادية الأصيلة) */
@@ -2103,6 +2142,8 @@ blockquote {
 }
 
 /* عارض PDF */
+.hidden { display: none !important; }
+
 .pdf-viewer {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -2860,4 +2901,466 @@ blockquote {
   .smap-label-ar { font-size: 11px; }
   .smap-label-fr { font-size: 8px; }
   .smap-tip { max-width: 210px; }
+}
+
+/* ============================================================
+   19. طبقة التحسين الشامل (Design Refresh Layer)
+   - سلم طباعي مرن، إيقاع عمودي موحد
+   - انتقالات موحدة 200ms، حالات تركيز مرئية
+   - تلميع البطاقات/الأزرار/النماذج/الشارات/الترقيم
+   - دعم prefers-reduced-motion، تلميع الوضع الليلي
+   ملاحظة: هذه الطبقة تُحسّن فقط — لا تغيّر أسماء الأصناف.
+   ============================================================ */
+
+/* ---------- 19.1 رموز الطباعة والحركة ---------- */
+:root {
+  --fs-xs: 0.78rem;
+  --fs-sm: 0.88rem;
+  --fs-base: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: clamp(1.25rem, 1.1rem + 0.8vw, 1.5rem);
+  --fs-2xl: clamp(1.5rem, 1.25rem + 1.4vw, 2rem);
+  --fs-3xl: clamp(1.9rem, 1.5rem + 2.2vw, 2.75rem);
+  --leading-tight: 1.35;
+  --leading-base: 1.7;
+  --leading-loose: 1.9;
+  --tr: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --focus-ring: 0 0 0 3px var(--gold-glow);
+  --tap: 44px;
+  --section-gap: clamp(36px, 5vw, 64px);
+}
+
+/* ---------- 19.2 إيقاع عمودي موحد ---------- */
+.section {
+  padding-block: var(--section-gap) 12px;
+}
+.section-head {
+  margin-bottom: 22px;
+}
+.page-title {
+  font-size: var(--fs-2xl);
+  line-height: var(--leading-tight);
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+.section-title {
+  font-size: var(--fs-xl);
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+}
+.hero-title {
+  font-size: var(--fs-3xl);
+  line-height: 1.4;
+  text-wrap: balance;
+}
+.doc-desc, .text-block, .page-desc {
+  line-height: var(--leading-loose);
+}
+
+/* ---------- 19.3 انتقالات موحدة 200ms ---------- */
+.btn, .card, .nav-link, .pg-btn, .pg-num, .chip, .tag-chip,
+.section-tile, .quick-tile, .collection-card, .section-card,
+.icon-btn, .share-ic, .theme-toggle, .lang-switch, .more-link,
+.region-chip, .ver-tab, .smap-chip {
+  transition: background-color var(--tr), border-color var(--tr),
+              color var(--tr), box-shadow var(--tr), transform var(--tr),
+              opacity var(--tr);
+}
+
+/* ---------- 19.4 حلقة تركيز مرئية وموحدة (لوحة المفاتيح) ---------- */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.btn:focus-visible, .pg-btn:focus-visible, .pg-num:focus-visible,
+.icon-btn:focus-visible, .share-ic:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- 19.5 الأزرار: محاذاة وملمس عصري ---------- */
+.btn {
+  min-height: 42px;
+  letter-spacing: 0;
+}
+.btn-small {
+  min-height: 0;
+}
+.btn-primary {
+  box-shadow: 0 2px 10px -2px rgba(26, 54, 93, 0.35);
+}
+.btn-primary:hover {
+  box-shadow: 0 6px 18px -4px rgba(26, 54, 93, 0.45);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn[disabled], .btn.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ---------- 19.6 البطاقات: عمق أنعم وحدود أدق ---------- */
+.card, .section-card, .collection-card, .section-tile, .quick-tile {
+  border: 1px solid var(--line);
+}
+.card:hover, .section-card:hover, .collection-card:hover {
+  border-color: var(--line-strong);
+}
+.card-title {
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* ---------- 19.7 النماذج: إيقاع وحلقة تركيز ----------
+   (مقصورة على سياقات النماذج القياسية حتى لا تتأثر صناديق البحث المركبة) */
+.adv-field input, .adv-field select,
+.filter-field input, .filter-field select {
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  min-height: 42px;
+  transition: border-color var(--tr), box-shadow var(--tr);
+}
+.adv-field input:focus, .adv-field select:focus,
+.filter-field input:focus, .filter-field select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: var(--focus-ring);
+}
+.adv-field input::placeholder, .filter-field input::placeholder {
+  color: var(--muted);
+  opacity: 0.9;
+}
+.adv-field, .filter-field {
+  font-weight: 600;
+}
+.adv-field > span:first-child, .filter-field > span:first-child {
+  margin-bottom: 2px;
+}
+
+/* ---------- 19.8 الشارات والرقائق ---------- */
+.badge, .chip, .tag-chip {
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.6;
+}
+
+/* ---------- 19.9 مسار التنقل (breadcrumbs) ---------- */
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.breadcrumb a {
+  color: var(--teal-soft);
+  font-weight: 600;
+}
+.breadcrumb a:hover {
+  color: var(--gold-deep);
+  text-decoration: underline;
+}
+.breadcrumb > *:not(:last-child)::after {
+  content: "/";
+  margin-inline-start: 8px;
+  color: var(--muted-light);
+  font-weight: 400;
+}
+[dir="ltr"] .breadcrumb > *:not(:last-child)::after {
+  content: "/";
+}
+
+/* ---------- 19.10 ترقيم الصفحات ---------- */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 28px 8px;
+}
+.pg-btn, .pg-num {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.pg-btn:hover, .pg-num:hover {
+  border-color: var(--gold);
+  color: var(--gold-deep);
+  transform: translateY(-1px);
+}
+.pg-num.current, .pg-num[aria-current="page"] {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+  cursor: default;
+}
+.pg-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ---------- 19.11 الترويسة: محاذاة دقيقة للجوال ---------- */
+.header-inner {
+  min-height: 68px;
+  align-items: center;
+}
+.nav-toggle {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0;
+}
+.nav-toggle span {
+  transition: transform var(--tr), opacity var(--tr);
+}
+.nav-toggle[aria-expanded="true"] span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+.nav-toggle[aria-expanded="true"] span:nth-child(2) {
+  opacity: 0;
+}
+.nav-toggle[aria-expanded="true"] span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+/* ---------- 19.12 شبكات مرنة موحدة (سطح المكتب فأعلى) ---------- */
+@media (min-width: 641px) {
+  .cards-grid, .collections-grid, .sections-strip, .quick-grid {
+    display: grid;
+    gap: 18px;
+  }
+  .cards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  }
+  .collections-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  }
+}
+
+/* ---------- 19.13 جداول عامة داخل حاوية تمرير ---------- */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.table-scroll th, .table-scroll td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-subtle);
+  text-align: start;
+  vertical-align: middle;
+}
+.table-scroll th {
+  background: var(--paper-2);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.table-scroll tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- 19.14 تلميع الوضع الليلي ---------- */
+[data-theme="dark"] .card,
+[data-theme="dark"] .section-card,
+[data-theme="dark"] .collection-card {
+  border-color: var(--line);
+}
+[data-theme="dark"] .btn-ghost:hover {
+  color: var(--gold-soft);
+}
+[data-theme="dark"] input:focus, [data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus {
+  box-shadow: 0 0 0 3px rgba(226, 184, 85, 0.28);
+}
+[data-theme="dark"] .pg-num.current,
+[data-theme="dark"] .pg-num[aria-current="page"] {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #14100a;
+}
+
+/* ---------- 19.15 احترام تقليل الحركة ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html.theme-transitioning,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after {
+    transition: none !important;
+  }
+}
+
+/* ---------- 19.16 أهداف لمس مريحة على الشاشات الصغيرة ---------- */
+@media (max-width: 640px) {
+  .btn {
+    min-height: var(--tap);
+  }
+  .nav-link {
+    min-height: var(--tap);
+  }
+  .pg-btn, .pg-num {
+    min-width: var(--tap);
+    min-height: var(--tap);
+  }
+  .page-title {
+    font-size: var(--fs-xl);
+  }
+  .section {
+    padding-block: 32px 8px;
+  }
+}
+
+/* ---------- 19.17 تحسينات LTR (النسخة الفرنسية) ---------- */
+[dir="ltr"] body {
+  letter-spacing: 0;
+}
+[dir="ltr"] .page-title,
+[dir="ltr"] .section-title,
+[dir="ltr"] .hero-title,
+[dir="ltr"] .card-title {
+  line-height: 1.3;
+}
+[dir="ltr"] input, [dir="ltr"] select, [dir="ltr"] textarea {
+  text-align: left;
+}
+
+/* ============================================================
+   مجلس سِجِل — النقاشات العلمية
+   ============================================================ */
+
+.page-head { margin: 1.2rem 0 1rem; }
+.page-head h1 { font-family: var(--font-head); font-size: clamp(1.5rem, 4vw, 2.1rem); margin: 0 0 .4rem; }
+.page-desc { color: var(--muted); max-width: 60ch; line-height: 1.8; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 1.2rem; }
+.chip { display: inline-block; padding: .35rem .95rem; border-radius: var(--radius-pill); border: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: .85rem; background: var(--paper); transition: all .2s; }
+.chip:hover { border-color: var(--gold); }
+.chip.active { background: var(--teal); color: #fff; border-color: var(--teal); }
+
+.d-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+.d-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .55rem; transition: transform .2s, box-shadow .2s; }
+.d-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+.d-card-top { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.d-meta { color: var(--muted); font-size: .78rem; }
+.d-author { font-weight: 600; color: var(--ink); }
+.d-card-title { margin: 0; font-size: 1.08rem; line-height: 1.6; }
+.d-card-title a { color: var(--ink); text-decoration: none; }
+.d-card-title a:hover { color: var(--gold-deep); }
+.d-card-excerpt { color: var(--muted); font-size: .92rem; line-height: 1.8; margin: 0; }
+.d-card-mat { font-size: .82rem; margin: 0; color: var(--muted); }
+.d-card-mat a { color: var(--teal); }
+.d-card-foot { display: flex; align-items: center; gap: 1rem; margin-top: auto; padding-top: .4rem; border-top: 1px dashed var(--line); }
+.d-count { font-size: .85rem; color: var(--muted); }
+.d-more { margin-inline-start: auto; text-decoration: none; font-size: 1.2rem; color: var(--gold-deep); }
+
+.kind-badge { font-size: .72rem; }
+.k-comment { background: #e8eef7; color: #2c4a73; }
+.k-review { background: #e6f4ec; color: #1d6b3c; }
+.k-critique { background: #fdeee3; color: #a3541b; }
+.k-idea { background: #f3e8f7; color: #6b2d8f; }
+.k-text { background: #fdeaea; color: #a33327; }
+[data-theme="dark"] .k-comment { background: #1c2a44; color: #9db9e8; }
+[data-theme="dark"] .k-review { background: #163024; color: #8fd0a8; }
+[data-theme="dark"] .k-critique { background: #3a2a18; color: #e8b47e; }
+[data-theme="dark"] .k-idea { background: #2e1d3d; color: #c9a2e8; }
+[data-theme="dark"] .k-text { background: #3d1d1d; color: #e89a9a; }
+
+.verified-badge { display: inline-flex; align-items: center; gap: .2rem; font-size: .72rem; font-weight: 700; color: #1d6b3c; background: #e6f4ec; border-radius: var(--radius-pill); padding: 1px 8px; }
+[data-theme="dark"] .verified-badge { background: #163024; color: #8fd0a8; }
+
+/* صفحة النقاش الكاملة */
+.page-discussion .d-full { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.4rem; margin-bottom: 1.4rem; }
+.d-title { font-family: var(--font-head); font-size: clamp(1.3rem, 3.5vw, 1.7rem); margin: .6rem 0; line-height: 1.7; }
+.d-body { font-size: 1.02rem; line-height: 2; margin: 1rem 0; text-align: justify; }
+.d-quote { border-inline-start: 3px solid var(--gold); background: var(--paper-2); margin: 1rem 0; padding: .9rem 1.1rem; border-radius: 0 var(--radius) var(--radius) 0; font-size: .95rem; line-height: 1.9; }
+.d-quote-label { font-size: .75rem; font-weight: 700; color: var(--gold-deep); margin-bottom: .3rem; }
+
+.react-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.react-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .42rem .9rem; border-radius: var(--radius-pill); border: 1px solid var(--line); background: var(--paper); cursor: pointer; font-family: var(--font-body); font-size: .85rem; color: var(--ink); transition: all .18s; }
+.react-btn:hover { border-color: var(--gold); transform: translateY(-1px); }
+.react-btn.active { background: var(--teal); border-color: var(--teal); color: #fff; }
+.react-btn:disabled { opacity: .6; cursor: wait; }
+.react-count { font-weight: 700; min-width: 1.2em; text-align: center; }
+
+.d-replies { margin: 1.6rem 0; }
+.d-replies h2 { font-size: 1.15rem; margin-bottom: 1rem; }
+.d-reply { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: .95rem 1.1rem; margin-bottom: .8rem; }
+.d-reply.nested { margin-inline-start: 1.6rem; background: var(--paper-2); }
+.d-reply-head { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin-bottom: .4rem; }
+.d-reply-body { line-height: 1.9; font-size: .95rem; text-align: justify; }
+.d-children { margin-top: .8rem; }
+.d-reply-form { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.2rem; margin-bottom: 2rem; }
+.d-reply-form h3 { margin-top: 0; }
+.reply-to-line { font-size: .85rem; background: var(--paper-2); padding: .4rem .8rem; border-radius: var(--radius); }
+
+.d-list-mini { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+.d-mini { display: flex; align-items: center; gap: .7rem; padding: .6rem .8rem; border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; color: var(--ink); background: var(--paper); transition: border-color .18s; }
+.d-mini:hover { border-color: var(--gold); }
+.d-mini-title { font-weight: 600; font-size: .92rem; flex: 1; }
+.d-mini-meta { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.d-cta { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+.notice { background: #fff8e6; border: 1px solid var(--gold-soft); border-radius: var(--radius); padding: .9rem 1.1rem; }
+[data-theme="dark"] .notice { background: #2a2415; }
+.notice-card { border-color: var(--gold-soft); }
+
+.form-card { max-width: 620px; padding: 1.4rem; }
+.form-msg { min-height: 1.4em; font-size: .9rem; }
+.form-msg.ok { color: #1d6b3c; }
+.form-msg.err { color: #a33327; }
+
+/* شريط سفلي للتطبيق (وضع standalone) */
+.pwa-bar { display: none; }
+@media (display-mode: standalone) {
+  .pwa-bar { display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 60; background: var(--paper); border-top: 1px solid var(--line); padding: .4rem .6rem calc(.4rem + env(safe-area-inset-bottom)); justify-content: space-around; }
+  .pwa-bar a { display: flex; flex-direction: column; align-items: center; gap: 2px; text-decoration: none; color: var(--muted); font-size: .68rem; padding: .25rem .6rem; }
+  .pwa-bar a.active { color: var(--gold-deep); }
+  .pwa-bar svg { width: 22px; height: 22px; }
+  body { padding-bottom: 64px; }
+}
+
+/* الجوال */
+@media (max-width: 640px) {
+  .d-grid { grid-template-columns: 1fr; }
+  .page-discussion .d-full { padding: 1rem; }
+  .react-label { display: none; }
+  .react-btn { padding: .42rem .7rem; }
+  .d-reply.nested { margin-inline-start: .8rem; }
 }

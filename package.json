@@ -11,7 +11,8 @@
     "db:migrate:local": "wrangler d1 migrations apply SIDJIL --local",
     "db:migrate:remote": "wrangler d1 migrations apply SIDJIL --remote",
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "telegram:setup": "node scripts/telegram-setup.mjs"
   },
   "version": "0.1.0"
 }

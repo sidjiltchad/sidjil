@@ -2,6 +2,7 @@
 // يوزّع الطلبات فقط؛ كل المنطق في الوحدات المتخصصة.
 import { routeApi } from './api.js';
 import { routeAdminApi } from './admin-api.js';
+import { routeDiscussionPublic } from './discussions.js';
 import { renderPublic } from './views.js';
 import { renderAdmin, renderResearcher } from './admin-views.js';
 import { getSessionUser } from './lib/auth.js';
@@ -41,6 +42,12 @@ export default {
       return res ?? json404();
     }
 
+    // 1ب) مجلس سِجِل: النقاشات والتفاعلات والتسجيل (عامة)
+    {
+      const res = await routeDiscussionPublic(request, env);
+      if (res) return res;
+    }
+
     // 2) الواجهة البرمجية العامة + الملفات + خريطة الموقع
     if (
       pathname.startsWith('/api/v1/') ||
@@ -68,7 +75,8 @@ export default {
     }
 
     // 3ب) مساحة الباحث (تتطلب جلسة؛ renderResearcher يوجّه المديرين إلى /admin)
-    if (pathname === '/researcher' || pathname.startsWith('/researcher/')) {
+    // استثناء: صفحة تسجيل الباحثين عامة (التوثيق لاحقًا من الإدارة)
+    if (pathname === '/researcher' || (pathname.startsWith('/researcher/') && pathname !== '/researcher/register')) {
       const user = await getSessionUser(request, env);
       if (!user) {
         return Response.redirect(new URL('/admin/login', request.url).toString(), 302);

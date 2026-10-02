@@ -176,6 +176,54 @@
       'aria-label': S('MapLabel')
     }, stage);
 
+    // أدوات التكبير: تغيير viewBox يحافظ على وضوح SVG دون تمديد الصورة.
+    var zoom = 1;
+    var zoomMin = 1;
+    var zoomMax = 4;
+    var zoomStep = 1.25;
+    var zoomTools = document.createElement('div');
+    zoomTools.className = 'smap-zoom';
+    zoomTools.setAttribute('role', 'group');
+    zoomTools.setAttribute('aria-label', S('MapLabel'));
+    function zoomButton(label, symbol, action) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'smap-zoom-btn';
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      b.textContent = symbol;
+      b.addEventListener('click', action);
+      zoomTools.appendChild(b);
+      return b;
+    }
+    function applyZoom() {
+      var w = proj.W / zoom;
+      var h = proj.H / zoom;
+      var x = (proj.W - w) / 2;
+      var y = (proj.H - h) / 2;
+      svg.setAttribute('viewBox', [x, y, w, h].map(function (v) { return v.toFixed(2); }).join(' '));
+      zoomOut.disabled = zoom <= zoomMin;
+      zoomIn.disabled = zoom >= zoomMax;
+      zoomReset.disabled = zoom === zoomMin;
+    }
+    var zoomOut = zoomButton(S('ZoomOut'), '−', function () {
+      zoom = Math.max(zoomMin, zoom / zoomStep); applyZoom();
+    });
+    var zoomReset = zoomButton(S('ZoomReset'), '⟳', function () {
+      zoom = zoomMin; applyZoom();
+    });
+    var zoomIn = zoomButton(S('ZoomIn'), '+', function () {
+      zoom = Math.min(zoomMax, zoom * zoomStep); applyZoom();
+    });
+    stage.appendChild(zoomTools);
+    applyZoom();
+    stage.addEventListener('wheel', function (e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      zoom = e.deltaY < 0 ? Math.min(zoomMax, zoom * zoomStep) : Math.max(zoomMin, zoom / zoomStep);
+      applyZoom();
+    }, { passive: false });
+
     // طبقة الأقاليم
     var gProv = el('g', { class: 'smap-provinces' }, svg);
     features.forEach(function (f) {

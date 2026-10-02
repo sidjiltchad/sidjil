@@ -4,3 +4,8 @@ node_modules/
 backup/
 *.log
 .DS_Store
+
+staging/
+.wrangler-dry-run/
+sidjil-majlis-patch/
+docs/check-*.bin

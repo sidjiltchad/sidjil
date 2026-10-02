@@ -54,6 +54,7 @@ const NAV = [
   ['announcements', '/admin/announcements', 'الإعلانات'],
   ['glossary', '/admin/glossary', 'قاموس الترجمة'],
   ['users', '/admin/users', 'المستخدمون'],
+  ['discussions', '/admin/discussions', 'النقاشات'],
   ['backup', '/admin/backup', 'النسخ الاحتياطي'],
   ['audit', '/admin/audit', 'سجل العمليات'],
 ];
@@ -107,7 +108,13 @@ ${head}
 </head>
 <body>
 <div class="admin-shell">
-  <aside class="sidebar">
+  <div class="topbar">
+    <button class="nav-toggle-admin" id="sideToggle" type="button" aria-expanded="false" aria-controls="adminNav" aria-label="القائمة">
+      <span></span><span></span><span></span>
+    </button>
+    <span class="topbar-brand">سِجِل — لوحة الإدارة</span>
+  </div>
+  <aside class="sidebar" id="adminNav">
     <div class="brand">
       <div class="brand-name">سِجِل</div>
       <div class="brand-sub">لوحة الإدارة</div>
@@ -731,6 +738,7 @@ const ENTITIES = {
       { name: 'title_ar', label: 'العنوان بالعربية *', req: true },
       { name: 'title_fr', label: 'العنوان بالفرنسية', dir: 'auto' },
       { name: 'description', label: 'الوصف', type: 'textarea' },
+      { name: 'description_fr', label: 'الوصف بالفرنسية', type: 'textarea', dir: 'auto' },
       { name: 'sort_order', label: 'الترتيب', type: 'number', dir: 'ltr' },
     ],
   },
@@ -990,21 +998,31 @@ async function reviewPage(env, user) {
 // ---------- 9) المستخدمون ----------
 async function usersPage(env, user) {
   const rows = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.is_active, u.created_at,
+    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.display_name, u.affiliation, u.created_at,
             (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
      FROM admin_users u ORDER BY u.id ASC`).all();
   const bodyRows = (rows.results || []).map(u => {
     const self = Number(u.id) === Number(user.id);
+    const isResearcher = u.role === 'researcher';
+    const verifiedBadge = isResearcher
+      ? (Number(u.is_verified) ? badge('موثّق ✓', 'b-pub') : badge('بانتظار التوثيق', 'b-draft'))
+      : '<span class="muted">—</span>';
+    const verifyBtn = (!self && isResearcher)
+      ? `<button class="btn btn-sm ${Number(u.is_verified) ? 'btn-ghost' : 'btn-primary'}" data-verify-researcher="${u.id}" data-verified="${Number(u.is_verified) ? 0 : 1}" type="button">${Number(u.is_verified) ? 'إلغاء التوثيق' : 'توثيق'}</button>`
+      : '';
     const actions = self ? '<span class="muted small">—</span>' : `
         <button class="btn btn-sm" data-user-role="${u.id}" data-role="${u.role === 'admin' ? 'researcher' : 'admin'}" type="button">${u.role === 'admin' ? 'جعله باحثًا' : 'جعله مديرًا'}</button>
         <button class="btn btn-sm ${Number(u.is_active) ? 'btn-ghost' : 'btn-primary'}" data-user-toggle="${u.id}" data-active="${Number(u.is_active) ? 0 : 1}" type="button">${Number(u.is_active) ? 'إيقاف' : 'تفعيل'}</button>
-        <button class="btn btn-sm btn-ghost" data-user-pass="${u.id}" data-username="${esc(u.username)}" type="button">كلمة مرور جديدة</button>`;
+        <button class="btn btn-sm btn-ghost" data-user-pass="${u.id}" data-username="${esc(u.username)}" type="button">كلمة مرور جديدة</button>
+        ${verifyBtn}`;
+    const nameCell = `<strong>${esc(u.username)}</strong>${u.display_name ? `<br><span class="muted small">${esc(u.display_name)}${u.affiliation ? ' — ' + esc(u.affiliation) : ''}</span>` : ''}${self ? ' <span class="badge b-draft">أنت</span>' : ''}`;
     return `
     <tr>
       <td class="mono">#${u.id}</td>
-      <td><strong>${esc(u.username)}</strong>${self ? ' <span class="badge b-draft">أنت</span>' : ''}</td>
+      <td>${nameCell}</td>
       <td>${u.role === 'admin' ? badge('مدير', 'b-pub') : badge('باحث', 'b-review')}</td>
       <td>${Number(u.is_active) ? badge('نشط', 'b-pub') : badge('موقوف', 'b-hidden')}</td>
+      <td>${verifiedBadge}</td>
       <td class="mono">${u.materials_count}</td>
       <td class="muted">${fmtDate(u.created_at)}</td>
       <td class="row-actions">${actions}</td>
@@ -1017,7 +1035,7 @@ async function usersPage(env, user) {
     <section class="card">
       <h2>حسابات الدخول</h2>
       <div class="table-wrap"><table class="tbl">
-        <thead><tr><th>#</th><th>المستخدم</th><th>الدور</th><th>الحالة</th><th>المواد</th><th>أُنشئ</th><th>إجراءات</th></tr></thead>
+        <thead><tr><th>#</th><th>المستخدم</th><th>الدور</th><th>الحالة</th><th>التوثيق</th><th>المواد</th><th>أُنشئ</th><th>إجراءات</th></tr></thead>
         <tbody>${bodyRows}</tbody>
       </table></div>
     </section>
@@ -1035,6 +1053,46 @@ async function usersPage(env, user) {
     </section>
   </div>`;
   return layout({ title: 'المستخدمون', active: 'users', user, body });
+}
+
+// ---------- الإشراف على النقاشات ----------
+async function adminDiscussionsPage(env, user) {
+  const rows = await env.DB.prepare(
+    `SELECT d.id, d.kind, d.title, d.status, d.created_at,
+            COALESCE(u.display_name, u.username) AS author_name,
+            m.ark AS material_ark,
+            (SELECT COUNT(*) FROM discussion_replies r WHERE r.discussion_id = d.id) AS replies_count
+     FROM discussions d
+     LEFT JOIN admin_users u ON u.id = d.author_id
+     LEFT JOIN materials m ON m.id = d.material_id
+     ORDER BY d.id DESC LIMIT 300`
+  ).all();
+  const kindL = { comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'نقد فكرة', text: 'نقد نص' };
+  const bodyRows = (rows.results || []).map(d => `
+    <tr>
+      <td class="mono">#${d.id}</td>
+      <td><a href="/discussion/${d.id}" target="_blank">${esc(d.title)}</a>
+        ${d.material_ark ? `<br><span class="muted small mono" dir="ltr">${esc(d.material_ark)}</span>` : '<br><span class="muted small">عام</span>'}</td>
+      <td>${esc(d.author_name || '')}</td>
+      <td>${esc(kindL[d.kind] || d.kind)}</td>
+      <td>${d.status === 'published' ? badge('منشور', 'b-pub') : badge('مخفي', 'b-hidden')}</td>
+      <td class="mono">${d.replies_count}</td>
+      <td class="muted">${fmtDate(d.created_at)}</td>
+      <td class="row-actions">
+        <button class="btn btn-sm ${d.status === 'published' ? 'btn-ghost' : 'btn-primary'}" data-disc-mod="${d.id}" data-status="${d.status === 'published' ? 'hidden' : 'published'}" type="button">${d.status === 'published' ? 'إخفاء' : 'إظهار'}</button>
+        <button class="btn btn-sm btn-ghost" data-disc-del="${d.id}" type="button">حذف</button>
+      </td>
+    </tr>`).join('');
+  const body = `
+  ${pageHead('النقاشات', '')}
+  <section class="card">
+    <div class="table-wrap"><table class="tbl">
+      <thead><tr><th>#</th><th>العنوان</th><th>الباحث</th><th>النوع</th><th>الحالة</th><th>الردود</th><th>أُنشئ</th><th>إجراءات</th></tr></thead>
+      <tbody>${bodyRows || '<tr><td colspan="8" class="muted">لا نقاشات بعد.</td></tr>'}</tbody>
+    </table></div>
+  </section>
+  <p class="muted small">الإخفاء يحجب النقاش عن الزوار دون حذفه. الباحثون الموثّقون فقط من ينشر — والتوثيق من صفحة المستخدمين.</p>`;
+  return layout({ title: 'النقاشات', active: 'discussions', user, body });
 }
 
 // ---------- الموجّه ----------
@@ -1064,6 +1122,7 @@ export async function renderAdmin(pathname, req, env, user) {
   if (clean === '/admin/audit') return htmlRes(await auditPage(env, user, req));
   if (clean === '/admin/review') return htmlRes(await reviewPage(env, user));
   if (clean === '/admin/users') return htmlRes(await usersPage(env, user));
+  if (clean === '/admin/discussions') return htmlRes(await adminDiscussionsPage(env, user));
 
   return htmlRes(layout({
     title: 'غير موجود', active: '', user,
@@ -1079,6 +1138,7 @@ const RESEARCHER_NAV = [
   ['mine', '/researcher', 'منشوراتي'],
   ['new', '/researcher/new', '+ مادة جديدة'],
   ['article', '/researcher/article', '+ مقال للمجلة'],
+  ['discussions', '/researcher/discussions', 'نقاشاتي'],
 ];
 
 const RESEARCHER_STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', published: 'منشورة', hidden: 'مخفية' };
@@ -1101,7 +1161,13 @@ ${csrfMeta}
 </head>
 <body>
 <div class="admin-shell">
-  <aside class="sidebar">
+  <div class="topbar">
+    <button class="nav-toggle-admin" id="sideToggle" type="button" aria-expanded="false" aria-controls="adminNav" aria-label="القائمة">
+      <span></span><span></span><span></span>
+    </button>
+    <span class="topbar-brand">سِجِل — مساحة الباحث</span>
+  </div>
+  <aside class="sidebar" id="adminNav">
     <div class="brand">
       <div class="brand-name">سِجِل</div>
       <div class="brand-sub">مساحة الباحث</div>
@@ -1171,6 +1237,75 @@ async function researcherDashPage(env, user) {
   </div>
   <p class="muted small">المسودة تُراجَع من الإدارة قبل النشر. لا يمكن تعديل أو حذف مادة بعد نشرها — تواصل مع الإدارة عند الحاجة.</p>`;
   return researcherLayout({ title: 'منشوراتي', active: 'mine', user, body });
+}
+
+async function researcherDiscussionsPage(env, user, req) {
+  const verified = Number(user.is_verified) === 1;
+  const notice = verified ? '' : `<div class="card notice-card"><strong>حسابك بانتظار التوثيق من الإدارة.</strong> يمكنك تصفح النقاشات، لكن النشر سيُتاح بعد التوثيق.</div>`;
+  const url = new URL(req.url);
+  const preMaterial = url.searchParams.get('material_id') || '';
+
+  const rows = await env.DB.prepare(
+    `SELECT d.id, d.kind, d.title, d.status, d.created_at, d.material_id,
+            m.ark AS material_ark, m.title_ar AS material_title,
+            (SELECT COUNT(*) FROM discussion_replies r WHERE r.discussion_id = d.id) AS replies_count
+     FROM discussions d LEFT JOIN materials m ON m.id = d.material_id
+     WHERE d.author_id = ? ORDER BY d.id DESC LIMIT 200`
+  ).bind(user.id).all();
+
+  const bodyRows = (rows.results || []).map(d => `
+    <tr>
+      <td class="mono">#${d.id}</td>
+      <td><a href="/discussion/${d.id}" target="_blank">${esc(d.title)}</a>
+        ${d.material_id ? `<br><span class="muted small">حول: ${esc(d.material_title || d.material_ark)}</span>` : ''}</td>
+      <td>${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'نقد فكرة', text: 'نقد نص' }[d.kind] || d.kind)}</td>
+      <td>${d.status === 'published' ? badge('منشور', 'b-pub') : badge('مخفي', 'b-hidden')}</td>
+      <td class="mono">${d.replies_count}</td>
+      <td class="muted">${fmtDate(d.created_at)}</td>
+      <td class="row-actions"><button class="btn btn-sm btn-ghost" data-del-discussion="${d.id}" type="button">حذف</button></td>
+    </tr>`).join('');
+
+  const composer = verified ? `
+  <section class="card">
+    <h2>+ نقاش جديد</h2>
+    <form id="discussionForm">
+      <div class="grid-2">
+        <div class="field"><label for="nd-kind">نوع النقاش</label>
+          <select id="nd-kind" name="kind">
+            <option value="comment">تعليق</option>
+            <option value="review">مراجعة</option>
+            <option value="critique">نقد</option>
+            <option value="idea">نقد فكرة</option>
+            <option value="text">نقد نص</option>
+          </select></div>
+        <div class="field"><label for="nd-material">رقم المادة (اختياري — اتركه فارغًا لنقاش عام)</label>
+          <input id="nd-material" name="material_id" dir="ltr" inputmode="numeric" placeholder="مثال: 12" value="${esc(preMaterial)}"></div>
+      </div>
+      <div class="field"><label for="nd-title">العنوان</label><input id="nd-title" name="title" required maxlength="200"></div>
+      <div class="field"><label for="nd-body">النص</label><textarea id="nd-body" name="body" rows="6" required maxlength="20000"></textarea></div>
+      <div class="grid-2">
+        <div class="field"><label for="nd-quote">النص المنتقد بعينه (اختياري)</label><textarea id="nd-quote" name="quote_text" rows="3" maxlength="2000"></textarea></div>
+        <div class="field"><label for="nd-page">رقم الصفحة (اختياري)</label><input id="nd-page" name="page_no" dir="ltr" maxlength="20"></div>
+      </div>
+      <button class="btn btn-primary" type="submit">نشر النقاش</button>
+    </form>
+  </section>` : '';
+
+  const body = `
+  ${pageHead('نقاشاتي', '')}
+  ${notice}
+  <div class="grid-2">
+    ${composer}
+    <section class="card">
+      <h2>نقاشاتي المنشورة</h2>
+      <div class="table-wrap"><table class="tbl">
+        <thead><tr><th>#</th><th>العنوان</th><th>النوع</th><th>الحالة</th><th>الردود</th><th>أُنشئ</th><th></th></tr></thead>
+        <tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا نقاشات بعد.</td></tr>'}</tbody>
+      </table></div>
+    </section>
+  </div>
+  <p class="muted small">النقاشات تظهر فورًا على المنصة للزوار والباحثين. <a href="/discussions" target="_blank">عرض صفحة النقاشات العامة</a></p>`;
+  return researcherLayout({ title: 'نقاشاتي', active: 'discussions', user, body });
 }
 
 async function researcherFormPage(env, user, mode, id) {
@@ -1272,6 +1407,7 @@ export async function renderResearcher(pathname, req, env, user) {
   if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user));
   if (clean === '/researcher/new') return htmlRes(await researcherFormPage(env, user, 'new', null));
   if (clean === '/researcher/article') return htmlRes(await researcherFormPage(env, user, 'article', null));
+  if (clean === '/researcher/discussions') return htmlRes(await researcherDiscussionsPage(env, user, req));
 
   const mEdit = clean.match(/^\/researcher\/(\d+)$/);
   if (mEdit) return htmlRes(await researcherFormPage(env, user, 'edit', parseInt(mEdit[1], 10)));
