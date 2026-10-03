@@ -248,12 +248,16 @@ export async function rebuildSearchBlob(db, materialId) {
   ]);
 }
 
-/** تسجيل عملية إدارية في audit_log */
+/** تسجيل عملية إدارية في audit_log — الفشل هنا لا يجب أن يكسر العملية الأصلية أبدًا */
 export async function audit(db, { userId = null, action, target = null, detail = null, ip = null }) {
-  await db
-    .prepare('INSERT INTO audit_log (user_id, action, target, detail, ip) VALUES (?, ?, ?, ?, ?)')
-    .bind(userId, action, target, detail, ip)
-    .run();
+  try {
+    await db
+      .prepare('INSERT INTO audit_log (user_id, action, target, detail, ip) VALUES (?, ?, ?, ?, ?)')
+      .bind(userId, action, target, detail, ip)
+      .run();
+  } catch (e) {
+    console.error('audit_log insert failed:', e && e.message ? e.message : e);
+  }
 }
 
 /**
