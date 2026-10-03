@@ -162,7 +162,7 @@ export async function routeAdminApi(req, env) {
   if (rest === 'logout' && method === 'POST') {
     await logout(env, getSessionToken(req));
     await audit(env.DB, { userId: user.id, action: 'admin.logout', ip: clientIp(req) });
-    return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie() });
+    return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie(req.url) });
   }
 
   // حساب الباحث: البيانات الشخصية والصورة (لا يغيّر اسم المستخدم هنا)

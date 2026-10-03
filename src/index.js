@@ -25,6 +25,19 @@ function clientIp(req) {
   );
 }
 
+const RESEARCHER_APP_HOST = 'app.sidjil.org';
+
+function isResearcherAppHost(url) {
+  return url.hostname.toLowerCase() === RESEARCHER_APP_HOST;
+}
+
+function researcherAppRedirect(pathname, request) {
+  const target = new URL(request.url);
+  target.hostname = RESEARCHER_APP_HOST;
+  target.pathname = pathname;
+  return Response.redirect(target.toString(), 302);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -41,6 +54,8 @@ export default {
     // تحديد معدل الطلبات على مستوى الخادم (قبل أي توجيه)
     const rl = rateLimitCheck(request, clientIp(request));
     if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
+
+    const researcherAppHost = isResearcherAppHost(url);
 
     // 1) واجهة الإدارة البرمجية
     if (pathname.startsWith('/api/v1/admin/')) {
@@ -74,6 +89,35 @@ export default {
       });
       if (object.size != null) headers.set('Content-Length', String(object.size));
       return new Response(object.body, { headers });
+    }
+
+    // app.sidjil.org is the isolated researcher application. Its entry points
+    // use the existing researcher feed and database instead of the legacy
+    // public council page. Anonymous visitors still receive the login gate.
+    if (researcherAppHost && request.method === 'GET') {
+      if (pathname === '/' || pathname === '/discussions') {
+        const user = await getSessionUser(request, env);
+        if (!user) return renderPublic('/discussions', request, env);
+        if (user.role === 'admin') return Response.redirect('https://sidjil.org/admin', 302);
+        return renderResearcher('/researcher', request, env, user);
+      }
+
+      const appDiscussionMatch = pathname.match(/^\/discussion\/(\d+)$/);
+      if (appDiscussionMatch) {
+        const user = await getSessionUser(request, env);
+        if (!user) return renderPublic(pathname, request, env);
+        if (user.role === 'admin') return Response.redirect('https://sidjil.org/admin', 302);
+        const mapped = new URL('/researcher/discussions', request.url);
+        mapped.searchParams.set('focus', appDiscussionMatch[1]);
+        const mappedRequest = new Request(mapped.toString(), request);
+        return renderResearcher(mapped.pathname, mappedRequest, env, user);
+      }
+    }
+
+    // Keep existing links working while making app.sidjil.org the canonical
+    // home for the private researcher surface.
+    if (!researcherAppHost && (pathname === '/researcher' || pathname.startsWith('/researcher/'))) {
+      return researcherAppRedirect(pathname, request);
     }
 
     // 1ب) مجلس سِجِل: النقاشات والتفاعلات والتسجيل (عامة)

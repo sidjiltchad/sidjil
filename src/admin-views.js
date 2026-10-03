@@ -1235,6 +1235,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | مساحة الباحث</title>
+<link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/admin.css?v=researcher-feed-20261002-v25">
 </head>
 <body class="researcher-body">
