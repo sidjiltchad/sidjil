@@ -5,6 +5,7 @@ import re
 import subprocess
 import tempfile
 import time
+import textwrap
 from pathlib import Path
 from typing import Literal
 
@@ -437,21 +438,38 @@ def app_font(name: str, source: str) -> str:
 def rich_pdf_markup(value: str, language: str) -> str:
     """Turn simple archival structure into ReportLab markup without inventing content."""
     def shape_rtl(part: str) -> str:
+        # ReportLab wraps text after it receives the string.  Since the bidi
+        # renderer below produces visual-order Arabic, wrapping the whole
+        # paragraph first would reverse the order of the resulting lines.  Wrap
+        # the logical Arabic text into conservative word groups, then shape each
+        # line independently so line 1 remains before line 2 when read RTL.
+        logical_lines = textwrap.wrap(
+            part,
+            width=78,
+            break_long_words=False,
+            break_on_hyphens=False,
+            replace_whitespace=False,
+            drop_whitespace=True,
+        ) or ['']
+
+        def shape_line(logical_line: str) -> str:
         # Bidi reordering treats an unmarked number or Latin run as part of the
         # surrounding Arabic paragraph.  That reverses ranges such as 1895-1899,
         # moves ISBN fragments, and can attach a date to the neighbouring word.
         # Mark each LTR run before shaping, then turn the marks into an explicit
         # Latin font span after python-bidi has laid out the line.
-        ltr_token = re.compile(r'(?<![A-Za-z0-9À-ÿ])([A-Za-z0-9À-ÿ][A-Za-z0-9À-ÿ._/+:\-]*)(?![A-Za-z0-9À-ÿ])')
-        marked = ltr_token.sub(lambda m: '\u200e' + m.group(1) + '\u200e', part)
-        shaped = get_display(arabic_reshaper.reshape(marked), base_dir='R')
+            ltr_token = re.compile(r'(?<![A-Za-z0-9À-ÿ])([A-Za-z0-9À-ÿ][A-Za-z0-9À-ÿ._/+:\-]*)(?![A-Za-z0-9À-ÿ])')
+            marked = ltr_token.sub(lambda m: '\u200e' + m.group(1) + '\u200e', logical_line)
+            shaped = get_display(arabic_reshaper.reshape(marked), base_dir='R')
 
-        def latin_span(match: re.Match) -> str:
-            return f'<font name="Helvetica">{match.group(1)}</font>'
+            def latin_span(match: re.Match) -> str:
+                return f'<font name="Helvetica">{match.group(1)}</font>'
 
-        # The LRM delimiters are intentionally removed only after bidi has run;
-        # leaving them in ReportLab would make extraction contain invisible marks.
-        return re.sub('\u200e([^\u200e]+)\u200e', latin_span, shaped)
+            # The LRM delimiters are intentionally removed only after bidi has run;
+            # leaving them in ReportLab would make extraction contain invisible marks.
+            return re.sub('\u200e([^\u200e]+)\u200e', latin_span, shaped)
+
+        return '<br/>'.join(shape_line(line) for line in logical_lines)
 
     safe_lines = []
     for raw in str(value or '').replace('\r\n', '\n').replace('\r', '\n').split('\n'):
@@ -491,7 +509,12 @@ def write_pdf(pages: list[tuple[str, str, str]], destination: Path, target: str,
     font_name = rtl_font if target_rtl else 'Helvetica'
     heading_font = rtl_heading_font if target_rtl else 'Helvetica-Bold'
     body_alignment = TA_RIGHT if target_rtl else TA_JUSTIFY
-    body_wrap = 'RTL' if target_rtl else 'LTR'
+    # Arabic is shaped into visual-order runs in ``rich_pdf_markup`` because
+    # ReportLab does not perform Arabic shaping itself.  The resulting string
+    # must therefore be wrapped as an already-laid-out visual line; using
+    # ReportLab's RTL wrapper a second time moves line starts and makes the
+    # right-aligned paragraph look centred or out of order.
+    body_wrap = 'LTR'
     style = ParagraphStyle('sidjil', parent=styles['BodyText'], fontName=font_name, fontSize=11, leading=19, alignment=body_alignment, wordWrap=body_wrap, splitLongWords=1, spaceAfter=10)
     title = ParagraphStyle('title', parent=style, fontName=heading_font or font_name, fontSize=15, leading=23, alignment=TA_RIGHT if target_rtl else TA_LEFT, spaceAfter=12)
     ltr_title = ParagraphStyle('ltr-title', parent=styles['BodyText'], fontName='Helvetica', fontSize=9, leading=13, alignment=TA_LEFT, textColor='#536273', spaceAfter=3)
@@ -506,7 +529,7 @@ def write_pdf(pages: list[tuple[str, str, str]], destination: Path, target: str,
             original_rtl = rtl_language(original_lang)
             original_font = rtl_font if original_rtl else 'Helvetica'
             original_heading = rtl_heading_font if original_rtl else 'Helvetica-Bold'
-            original_style = ParagraphStyle('original', parent=style, fontName=original_font, alignment=TA_RIGHT if original_rtl else TA_JUSTIFY, wordWrap='RTL' if original_rtl else 'LTR')
+            original_style = ParagraphStyle('original', parent=style, fontName=original_font, alignment=TA_RIGHT if original_rtl else TA_JUSTIFY, wordWrap='LTR')
             original_label = 'النص الأصلي' if original_rtl else 'Original text'
             original_title_style = ParagraphStyle('original-title', parent=title, fontName=original_heading, alignment=TA_RIGHT if original_rtl else TA_LEFT)
             story.append(Paragraph(rich_pdf_markup(original_label, original_lang), original_title_style))
