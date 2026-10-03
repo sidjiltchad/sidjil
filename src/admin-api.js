@@ -161,17 +161,22 @@ export async function routeAdminApi(req, env) {
   if (rest === 'login' && method === 'POST') {
     const body = await readJson(req);
     if (!body) return err('طلب غير صالح', 400);
-    const r = await login(env, body.username, body.password, clientIp(req));
-    if (!r.ok) return err(r.error, 401);
-    const user = await env.DB
-      .prepare('SELECT id, username, role FROM admin_users WHERE username = ?')
-      .bind(String(body.username).trim())
-      .first();
-    return json(
-      { ok: true, user, csrfToken: r.csrfToken },
-      200,
-      { 'Set-Cookie': setSessionCookie(r.token, req.url) }
-    );
+    // تشخيص مؤقت — سيُزال بعد تحديد سبب 500
+    try {
+      const r = await login(env, body.username, body.password, clientIp(req));
+      if (!r.ok) return err(r.error, 401);
+      const user = await env.DB
+        .prepare('SELECT id, username, role FROM admin_users WHERE username = ?')
+        .bind(String(body.username).trim())
+        .first();
+      return json(
+        { ok: true, user, csrfToken: r.csrfToken },
+        200,
+        { 'Set-Cookie': setSessionCookie(r.token, req.url) }
+      );
+    } catch (e) {
+      return json({ error: 'DIAG: ' + String((e && e.message) || e).slice(0, 300) }, 500);
+    }
   }
 
   // باقي المسارات تتطلب جلسة صالحة
