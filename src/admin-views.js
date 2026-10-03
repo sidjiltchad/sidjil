@@ -1233,6 +1233,8 @@ function researcherMaterialData(material, thumbId = '') {
     description: material?.description,
     summary: material?.summary,
     image: thumbId ? `/file/${thumbId}` : '',
+    pdf: material?.pdf_id ? `/file/${material.pdf_id}` : '',
+    pdfDownload: material?.pdf_id ? `/file/${material.pdf_id}?download=1` : '',
   };
   return Object.entries(values)
     .filter(([, value]) => value !== null && value !== undefined && String(value) !== '')
@@ -1259,7 +1261,7 @@ ${THEME_INIT}
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | مساحة الباحث</title>
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261002-v25">
+<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261003-v26">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1305,11 +1307,16 @@ ${csrfMeta}
       <h2 id="researcherMaterialModalTitle"></h2>
       <div class="researcher-material-modal-meta" id="researcherMaterialModalMeta"></div>
       <p id="researcherMaterialModalText"></p>
+      <div class="researcher-material-modal-actions">
+        <button class="btn btn-primary" id="researcherMaterialModalTranslate" type="button" data-translate-document hidden>ترجمة الكتاب</button>
+        <a class="btn btn-ghost" id="researcherMaterialModalDownload" href="#" hidden>تنزيل PDF</a>
+      </div>
       <a class="btn btn-primary" id="researcherMaterialModalDiscussion" href="/researcher/discussions">فتح النقاش داخل مساحة الباحث</a>
     </div>
   </div>
 </div>
 <script src="/researcher-feed-v5.js" defer></script>
+<script src="/translate-inline.js" defer></script>
 <script>
 (() => {
   const init = () => {
@@ -1423,8 +1430,10 @@ async function researcherDashPage(env, user, req) {
             COALESCE((SELECT MAX(a.created_at) FROM audit_log a WHERE a.action = 'material.review_approve' AND a.target = m.ark), m.updated_at) AS approved_at,
             s.name_ar AS source_name_ar, s.name AS source_name,
             p.name_ar AS place_name,
-            (SELECT f.id FROM files f WHERE f.material_id = m.id
+            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind = 'thumbnail' OR f.mime LIKE 'image/%')
              ORDER BY CASE WHEN f.kind = 'thumbnail' THEN 0 WHEN f.mime LIKE 'image/%' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id,
+            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
+             ORDER BY f.id LIMIT 1) AS pdf_id,
             (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
      FROM materials m
      LEFT JOIN sources s ON s.id = m.source_id
@@ -1655,8 +1664,10 @@ async function researcherProfilePage(env, viewer, researcherId) {
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description,
               m.year, m.updated_at,
-              (SELECT f.id FROM files f WHERE f.material_id = m.id
-               ORDER BY CASE WHEN f.kind = 'thumbnail' THEN 0 WHEN f.mime LIKE 'image/%' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id
+              (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind = 'thumbnail' OR f.mime LIKE 'image/%')
+               ORDER BY CASE WHEN f.kind = 'thumbnail' THEN 0 WHEN f.mime LIKE 'image/%' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id,
+              (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
+               ORDER BY f.id LIMIT 1) AS pdf_id
        FROM materials m
        WHERE m.created_by = ? AND m.publish_status = 'published'
        ORDER BY m.updated_at DESC, m.id DESC LIMIT 100`

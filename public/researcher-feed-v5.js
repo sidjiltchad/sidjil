@@ -62,11 +62,22 @@ function openResearcherMaterialModal(trigger) {
   const title = document.getElementById('researcherMaterialModalTitle');
   const meta = document.getElementById('researcherMaterialModalMeta');
   const text = document.getElementById('researcherMaterialModalText');
+  const translate = document.getElementById('researcherMaterialModalTranslate');
+  const download = document.getElementById('researcherMaterialModalDownload');
   const discussion = document.getElementById('researcherMaterialModalDiscussion');
   if (!media || !type || !title || !meta || !text || !discussion) return;
 
   media.textContent = '';
-  if (d.materialImage) {
+  media.classList.toggle('researcher-material-modal-pdf', !!d.materialPdf);
+  if (d.materialPdf) {
+    const frame = document.createElement('iframe');
+    frame.className = 'researcher-material-modal-pdf-frame';
+    frame.src = `${d.materialPdf}#toolbar=1&navpanes=0&view=FitH`;
+    frame.title = `قراءة ${d.materialTitle || 'الكتاب'}`;
+    frame.loading = 'eager';
+    frame.setAttribute('allowfullscreen', 'true');
+    media.appendChild(frame);
+  } else if (d.materialImage) {
     const image = document.createElement('img');
     image.src = d.materialImage;
     image.alt = d.materialTitle || '';
@@ -97,6 +108,29 @@ function openResearcherMaterialModal(trigger) {
   });
   text.textContent = d.materialSummary || d.materialDescription || '';
   const materialId = d.materialId || '';
+  if (translate) {
+    translate.hidden = !d.materialPdf;
+    if (d.materialPdf) {
+      translate.dataset.translateDocument = materialId;
+      translate.dataset.translatePdf = d.materialPdf;
+      translate.dataset.translateTitle = d.materialTitle || '';
+      translate.dataset.translateOriginalDownload = d.materialPdfDownload || d.materialPdf;
+    } else {
+      delete translate.dataset.translateDocument;
+      delete translate.dataset.translatePdf;
+      delete translate.dataset.translateTitle;
+      delete translate.dataset.translateOriginalDownload;
+    }
+  }
+  if (download) {
+    download.hidden = !d.materialPdf;
+    if (d.materialPdf) {
+      download.href = d.materialPdfDownload || `${d.materialPdf}?download=1`;
+      download.textContent = 'تنزيل PDF الأصلي';
+    } else {
+      download.removeAttribute('href');
+    }
+  }
   discussion.href = materialId ? `/researcher/discussions?material_id=${encodeURIComponent(materialId)}` : '/researcher/discussions';
   modal.hidden = false;
   document.body.classList.add('researcher-modal-open');
