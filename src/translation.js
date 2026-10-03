@@ -47,6 +47,41 @@ export class OllamaTranslationProvider extends TranslationProvider {
   }
 }
 
+
+// ---------- مسرد المصطلحات: حماية المصطلحات قبل الترجمة واستعادتها بعدها ----------
+async function loadGlossary(db, source, target) {
+  try {
+    const rows = await db.prepare(
+      'SELECT source_term, target_term FROM glossary WHERE source_lang = ? AND target_lang = ? ORDER BY length(source_term) DESC LIMIT 500'
+    ).bind(source, target).all();
+    return rows.results || [];
+  } catch { return []; }
+}
+function protectGlossaryTerms(text, terms) {
+  let out = String(text);
+  const map = [];
+  terms.forEach((t, i) => {
+    const src = String(t.source_term || '');
+    if (src && out.includes(src)) {
+      out = out.split(src).join(`\uE000${i}\uE001`);
+      map[i] = String(t.target_term || src);
+    }
+  });
+  return { text: out, map };
+}
+function restoreGlossaryTerms(text, map) {
+  let out = String(text);
+  map.forEach((target, i) => {
+    if (target !== undefined) out = out.split(`\uE000${i}\uE001`).join(target);
+  });
+  return out;
+}
+async function glossaryFingerprint(db, source, target) {
+  const terms = await loadGlossary(db, source, target);
+  if (!terms.length) return 'noglossary';
+  return sha256(terms.map(t => `${t.source_term}=${t.target_term}`).join('|'));
+}
+
 async function settings(db) {
   const row = await db.prepare('SELECT * FROM translation_settings WHERE id = 1').first();
   return row || { enabled: 1, text_enabled: 1, document_enabled: 0, ocr_enabled: 0, guest_enabled: 1, max_text_chars: 12000, max_pdf_bytes: 52428800, max_pdf_pages: 300, max_active_jobs: 2, cache_enabled: 1, reuse_existing: 1, allow_force_retranslate: 0, maintenance_mode: 0 };
@@ -85,11 +120,15 @@ async function translateText(req, env) {
   if (text.length > Number(s.max_text_chars)) return fail(`النص يتجاوز الحد المسموح (${s.max_text_chars} حرف)`, 413, 'TEXT_TOO_LARGE');
   if (!validLang(source, true) || !validLang(target) || source === target) return fail('لغة المصدر أو الهدف غير صالحة');
   const contentHash = await sha256(text.replace(/\s+/g, ' ').trim());
-  const fingerprint = await sha256(`${contentHash}|${source}|${target}|ollama|qwen3:8b|sidjil-qwen-v1|text`);
+  const glossFp = await glossaryFingerprint(env.DB, source, target);
+  const fingerprint = await sha256(`${contentHash}|${source}|${target}|ollama|qwen3:8b|sidjil-qwen-v1|text|${glossFp}`);
   const cached = await env.DB.prepare(`SELECT translated_text, source_language, target_language FROM translation_text_cache WHERE fingerprint = ?`).bind(fingerprint).first().catch(() => null);
   if (cached) { await env.DB.prepare('UPDATE translation_text_cache SET access_count = access_count + 1, last_accessed_at = datetime(\'now\') WHERE fingerprint = ?').bind(fingerprint).run().catch(() => {}); return json({ success: true, translatedText: cached.translated_text, source: cached.source_language, target: cached.target_language, cached: true }); }
   try {
-    const result = await new OllamaTranslationProvider(env).translate({ text, source, target });
+    const glossaryTerms = await loadGlossary(env.DB, source, target);
+    const protected_ = protectGlossaryTerms(text, glossaryTerms);
+    const result = await new OllamaTranslationProvider(env).translate({ text: protected_.text, source, target });
+    result.translatedText = restoreGlossaryTerms(result.translatedText, protected_.map);
     await env.DB.prepare(`INSERT OR IGNORE INTO translation_text_cache (fingerprint, content_hash, source_language, target_language, engine, engine_version, original_text, translated_text) VALUES (?, ?, ?, ?, 'ollama', 'qwen3:8b', ?, ?)`).bind(fingerprint, contentHash, result.source || source, target, text, result.translatedText).run().catch(() => {});
     return json({ success: true, translatedText: result.translatedText, source: result.source || source, target, cached: false });
   } catch (e) { console.error('translation text provider error', e?.message || e); return fail('تعذر تنفيذ الترجمة الآن. حاول مرة أخرى لاحقًا.', 503, 'TRANSLATION_UNAVAILABLE'); }

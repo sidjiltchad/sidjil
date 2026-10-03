@@ -759,6 +759,37 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ---------- مسرد المصطلحات ----------
+  const glossaryScope = document.querySelector('[data-glossary-manage]');
+  if (glossaryScope) {
+    const rowsEl = glossaryScope.querySelector('[data-glossary-rows]');
+    const escG = (v) => String(v || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    async function loadGlossary() {
+      try {
+        const data = await api('/api/v1/admin/glossary');
+        const items = data.items || [];
+        rowsEl.innerHTML = items.length ? items.map(g => `<tr><td dir="ltr" class="mono small">${escG(g.source_lang)} → ${escG(g.target_lang)}</td><td><strong>${escG(g.source_term)}</strong></td><td><strong>${escG(g.target_term)}</strong></td><td class="muted small">${escG(g.notes || '')}</td><td><button class="btn btn-sm btn-danger" type="button" data-glossary-delete="${g.id}">حذف</button></td></tr>`).join('')
+          : '<tr><td colspan="5" class="muted">المسرد فارغ — أضف أول مصطلح.</td></tr>';
+        rowsEl.querySelectorAll('[data-glossary-delete]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('حذف هذا المصطلح من المسرد؟')) return;
+            try { await api(`/api/v1/admin/glossary/${btn.dataset.glossaryDelete}`, 'DELETE'); toast('حُذف المصطلح'); loadGlossary(); }
+            catch (e) { toast(e.message, false); }
+          });
+        });
+      } catch (e) { rowsEl.innerHTML = `<tr><td colspan="5" class="muted">تعذر التحميل: ${escG(e.message)}</td></tr>`; }
+    }
+    glossaryScope.querySelector('[data-glossary-form]')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      try {
+        await api('/api/v1/admin/glossary', 'POST', Object.fromEntries(fd.entries()));
+        toast('أُضيف المصطلح للمسرد'); e.target.reset(); loadGlossary();
+      } catch (err) { toast(err.message, false); }
+    });
+    loadGlossary();
+  }
+
   // ---------- إدارة ترجمة الكتب والوثائق ----------
   const translationManage = document.querySelector('[data-translation-manage]');
   if (translationManage) {

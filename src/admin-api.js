@@ -117,6 +117,39 @@ async function requireOwnDraft(db, user, idOrArk) {
 
 // ---------- الموجّه ----------
 
+
+// ---------- مسرد المصطلحات ----------
+async function admGlossaryList(env, url) {
+  const rows = await env.DB.prepare(
+    'SELECT id, source_lang, target_lang, source_term, target_term, notes, created_at FROM glossary ORDER BY source_lang, target_lang, source_term LIMIT 1000'
+  ).all();
+  return json({ items: rows.results || [] });
+}
+async function admGlossaryAdd(env, user, req, body) {
+  const sl = String(body.source_lang || '').trim().slice(0, 8);
+  const tl = String(body.target_lang || '').trim().slice(0, 8);
+  const st = String(body.source_term || '').trim().slice(0, 200);
+  const tt = String(body.target_term || '').trim().slice(0, 200);
+  const notes = String(body.notes || '').trim().slice(0, 500) || null;
+  if (!sl || !tl || !st || !tt) return err('كل الحقول مطلوبة');
+  if (sl === tl) return err('لغتا المصدر والهدف مختلفتان');
+  try {
+    const r = await env.DB.prepare(
+      'INSERT INTO glossary (source_lang, target_lang, source_term, target_term, notes, created_by) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(sl, tl, st, tt, notes, user.id).run();
+    await audit(env.DB, { userId: user.id, action: 'glossary.add', target: `${sl}>${tl}:${st}`, ip: clientIp(req) });
+    return json({ ok: true, id: r.meta.last_row_id }, 201);
+  } catch (e) {
+    if (String(e.message || '').includes('UNIQUE')) return err('المصطلح موجود مسبقًا لهذا الزوج اللغوي', 409);
+    throw e;
+  }
+}
+async function admGlossaryDelete(env, user, req, id) {
+  await env.DB.prepare('DELETE FROM glossary WHERE id = ?').bind(id).run();
+  await audit(env.DB, { userId: user.id, action: 'glossary.delete', target: String(id), ip: clientIp(req) });
+  return json({ ok: true });
+}
+
 export async function routeAdminApi(req, env) {
   const url = new URL(req.url);
   const path = normPath(url.pathname);
@@ -276,6 +309,13 @@ export async function routeAdminApi(req, env) {
     return withJsonBody(req, (body) => admTranslationJobsCleanup(env, user, req, body));
   m = rest.match(/^translation-jobs\/([^/]+)$/);
   if (m && method === 'DELETE') return admTranslationJobDelete(env, user, req, decodeURIComponent(m[1]));
+
+  // مسرد المصطلحات (تثبيت الأسماء قبل الترجمة الآلية)
+  if (rest === 'glossary' && method === 'GET') return admGlossaryList(env, url);
+  if (rest === 'glossary' && method === 'POST')
+    return withJsonBody(req, (body) => admGlossaryAdd(env, user, req, body));
+  m = rest.match(/^glossary\/(\d+)$/);
+  if (m && method === 'DELETE') return admGlossaryDelete(env, user, req, parseInt(m[1], 10));
 
   // OCR اليدوي (لا يعمل تلقائيًا عند الرفع — تكلفة)
   m = rest.match(/^materials\/([^/]+)\/ocr$/);
