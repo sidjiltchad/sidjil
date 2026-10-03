@@ -1301,7 +1301,7 @@ ${csrfMeta}
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
   <div class="topbar">
-    <a class="topbar-brand researcher-brand-logo" href="/researcher" aria-label="العودة إلى الصفحة الرئيسية لمساحة الباحث"><img class="researcher-logo" src="/sidjil-logo.png" alt="سِجِل"></a>
+    <a class="topbar-brand researcher-brand-logo" href="/researcher" aria-label="العودة إلى الصفحة الرئيسية لمساحة الباحث"><img class="researcher-logo" src="/sidjil-logo.png" alt="سِجِل"><span class="researcher-wordmark">سجل</span></a>
     <div class="researcher-account-wrap">
       <button class="researcher-profile-chip" id="researcherAccountToggle" type="button" aria-expanded="false" aria-controls="researcherAccountMenu">
         ${researcherAvatarMarkup(user, 'small')}<span class="researcher-profile-name">${esc(displayName)}</span><span class="researcher-account-chevron" aria-hidden="true"></span>
@@ -1346,6 +1346,7 @@ ${csrfMeta}
   <button type="button" class="bn-bell" id="notifBell" aria-label="التنبيهات" aria-haspopup="true" aria-expanded="false"><span class="bn-icon">${SJ_ICONS.bell}<span class="notif-badge" id="notifBadge" hidden></span></span><span class="bn-label">التنبيهات</span></button>
   <a href="/researcher/discussions?view=community" class="${active === 'discussions' ? 'active' : ''}"><span class="bn-icon">${SJ_ICONS.chat}</span><span class="bn-label">المجتمع</span></a>
   <a href="/researcher/journal" class="${active === 'journal' ? 'active' : ''}"><span class="bn-icon">${SJ_ICONS.journal}</span><span class="bn-label">المجلة</span></a>
+  <a href="/researcher/profile/${encodeURIComponent(user?.id || '')}" class="${active === 'profile' ? 'active' : ''}"><span class="bn-icon">${SJ_ICONS.user}</span><span class="bn-label">صفحتي</span></a>
   <div class="notif-panel" id="notifPanel" hidden><div class="notif-panel-head"><strong>التنبيهات</strong><button type="button" class="notif-panel-close" id="notifPanelClose" aria-label="إغلاق اللوحة">×</button></div><div id="notifList"></div></div>
 </nav>
 <div class="researcher-modal-veil" id="researcherMaterialModal" hidden>
@@ -1357,11 +1358,11 @@ ${csrfMeta}
       <h2 id="researcherMaterialModalTitle"></h2>
       <div class="researcher-material-modal-meta" id="researcherMaterialModalMeta"></div>
       <p id="researcherMaterialModalText"></p>
-      <div class="researcher-material-modal-actions">
-        <button class="btn btn-primary" id="researcherMaterialModalTranslate" type="button" data-translate-document hidden>ترجمة الكتاب</button>
-        <a class="btn btn-ghost" id="researcherMaterialModalDownload" href="#" hidden>تنزيل PDF</a>
+      <div class="researcher-material-modal-actions researcher-pdf-actions">
+        <button class="rpdf-action" id="researcherMaterialModalTranslate" type="button" data-translate-document hidden><span class="rpdf-action-icon" aria-hidden="true">🌐</span><span class="rpdf-action-label">ترجمة الكتاب</span></button>
+        <a class="rpdf-action" id="researcherMaterialModalDownload" href="#" hidden><span class="rpdf-action-icon" aria-hidden="true">⬇️</span><span class="rpdf-action-label">تنزيل PDF الأصلي</span></a>
+        <a class="rpdf-action" id="researcherMaterialModalDiscussion" href="/researcher/discussions"><span class="rpdf-action-icon" aria-hidden="true">💬</span><span class="rpdf-action-label">فتح النقاش</span></a>
       </div>
-      <a class="btn btn-primary" id="researcherMaterialModalDiscussion" href="/researcher/discussions">فتح النقاش داخل مساحة الباحث</a>
     </div>
   </div>
 </div>
@@ -1429,8 +1430,9 @@ function researcherMaterialCard(m, feed, verified) {
   const inlineId = `researcherInlineDiscussion${m.id}`;
   const materialData = researcherMaterialData(m, m.thumb_id);
   const image = m.thumb_id
-    ? `<button class="researcher-media-trigger" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}"><img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="${esc(title)}" loading="lazy"></button>`
+    ? `<button class="researcher-media-trigger" type="button" data-material-lightbox="/file/${m.thumb_id}" aria-label="عرض الصورة ${esc(title)}"><img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="${esc(title)}" loading="lazy"></button>`
     : `<button class="researcher-media-trigger researcher-feed-placeholder" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}">${esc(TYPE_LABELS[m.type] || m.type)}</button>`;
+  const detailsButton = `<button class="researcher-details-btn" type="button" data-material-details ${materialData}>عرض التفاصيل</button>`;
   const excerpt = m.summary || m.description || '';
   const sourceDetails = [
     `المعرف الأرشيفي: ${m.ark}`,
@@ -1474,6 +1476,7 @@ function researcherMaterialCard(m, feed, verified) {
     <div class="post-head"><div class="post-avatar feed-brand-avatar">${esc(cardAvatar)}</div><div><strong>${esc(cardAuthor)}</strong><div class="post-meta">${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
     <button class="researcher-feed-title researcher-material-trigger" type="button" data-material-details ${materialData}>${esc(title)}</button>
     ${image}
+    ${detailsButton}
     ${excerpt ? `<p class="researcher-feed-excerpt">${esc(String(excerpt).slice(0, 420))}</p>` : ''}
     <div class="researcher-feed-actions">
       ${discussionAction('comment', '💬 علّق')}
@@ -1534,14 +1537,6 @@ async function researcherDashPage(env, user, req) {
      FROM materials m WHERE m.created_by = ? ORDER BY m.updated_at DESC LIMIT 200`
   ).bind(user.id).all();
   const items = rows.results || [];
-  const counts = { draft: 0, in_review: 0, published: 0, hidden: 0 };
-  items.forEach(m => { counts[m.publish_status] = (counts[m.publish_status] || 0) + 1; });
-
-  const cards = [
-    ['المسودات', counts.draft, 'k-draft'],
-    ['قيد المراجعة', counts.in_review, 'k-review'],
-    ['المنشورة', counts.published, 'k-pub'],
-  ].map(([t, n, k]) => `<div class="stat-card ${k}"><div class="stat-num">${n}</div><div class="stat-label">${t}</div></div>`).join('');
 
   // تبويب «اعتمادات الإدارة» هو صندوق تنبيهات للباحث: يعرض مواده ومقالاته
   // التي سجلت الإدارة اعتمادها ونشرتها، بدل إعادة عرض مواد الأرشيف العامة.
@@ -1699,8 +1694,6 @@ async function researcherDashPage(env, user, req) {
   <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?feed=discover#feed">اكتشف</a><a class="researcher-feed-tab${feed === 'following' ? ' active' : ''}" href="/researcher?feed=following#feed">المتابَعون</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?feed=latest#feed">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?feed=official#feed">اعتمادات الإدارة</a></section>
   <section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions?view=community">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين موثقة بعد.</p>'}</section>
   ${dashboardComposer}
-  <div class="composer-shortcuts dashboard-shortcuts"><a href="/researcher/discussions?view=my&kind=comment">💬 كل نقاشاتي</a><a href="/researcher/discussions?view=my&kind=review">✦ مراجعاتي</a><a href="/researcher/discussions?view=my&kind=text">📝 تلخيصاتي</a><a href="/researcher/new">＋ إضافة مادة</a></div>
-  <div class="stats researcher-stats">${cards}</div>
   ${feed === 'following' ? '' : `<div class="researcher-category-tabs" aria-label="أقسام الموجز">${categoryTabs}</div>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
   <div class="researcher-published-feed">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
@@ -1838,17 +1831,29 @@ async function researcherProfilePage(env, viewer, researcherId) {
 
   const profileName = target.display_name || target.username || 'باحث';
   const profileIsViewer = Number(viewer?.id) === Number(target.id);
-  const profileMeta = [target.job_title, target.affiliation, target.specialty].filter(Boolean).map(esc).join(' · ');
+  const jobTitle = String(target.job_title || '').trim();
+  const affiliation = String(target.affiliation || '').trim();
+  const specialty = String(target.specialty || '').trim();
   const bio = String(target.bio || '').trim();
   const socialLink = String(target.website || '').trim();
   const body = `
   <section class="researcher-profile-cover social-card">
     <div class="researcher-profile-cover-art"></div>
     <div class="researcher-profile-card">
-      ${researcherAvatarMarkup(target, 'profile-avatar')}
-      <div class="researcher-profile-identity"><h1>${esc(profileName)}</h1><p class="post-meta">@${esc(target.username || '')}${profileMeta ? ` · ${profileMeta}` : ''}</p>${bio ? `<div class="researcher-profile-bio">${researcherBioMarkup(bio)}</div>` : ''}${socialLink ? `<a class="researcher-profile-social" href="${esc(socialLink)}" target="_blank" rel="noopener noreferrer">فيسبوك</a>` : ''}</div>
-      ${profileIsViewer ? '' : `<button class="btn btn-primary" type="button" data-follow-toggle="${target.id}">تابِع</button>`}
-      <a class="btn btn-ghost researcher-profile-back" href="/researcher">مساحة الباحث</a>
+      <div class="researcher-profile-avatar-wrap">
+        ${researcherAvatarMarkup(target, 'profile-avatar')}
+        <span class="researcher-verified-badge" title="باحث موثّق" aria-label="باحث موثّق">✓</span>
+      </div>
+      <div class="researcher-profile-identity">
+        <h1 class="researcher-profile-name">${esc(profileName)}</h1>
+        <p class="researcher-profile-username">@${esc(target.username || '')}</p>
+        ${jobTitle ? `<p class="researcher-profile-role">${esc(jobTitle)}</p>` : ''}
+        ${affiliation ? `<p class="researcher-profile-org">${esc(affiliation)}</p>` : ''}
+        ${specialty && specialty !== jobTitle ? `<p class="researcher-profile-specialty">${esc(specialty)}</p>` : ''}
+        ${bio ? `<div class="researcher-profile-bio">${researcherBioMarkup(bio)}</div>` : ''}
+        ${socialLink ? `<a class="researcher-profile-social" href="${esc(socialLink)}" target="_blank" rel="noopener noreferrer">فيسبوك</a>` : ''}
+      </div>
+      ${profileIsViewer ? '' : `<button class="btn btn-primary researcher-follow-btn" type="button" data-follow-toggle="${target.id}">تابِع</button>`}
     </div>
   </section>
   <section class="researcher-profile-stats social-card"><span><strong>${(discussionRows.results || []).length}</strong><small>منشورًا ونقاشًا</small></span><span><strong>${(replyRows.results || []).length}</strong><small>ردًا وتعليقًا</small></span><span><strong>${(materialRows.results || []).length}</strong><small>مادة منشورة</small></span><span><strong data-followers-count>${Number(followCounts?.followers || 0)}</strong><small>متابِع</small></span><span><strong>${Number(followCounts?.following || 0)}</strong><small>يتابع</small></span></section>
@@ -1856,7 +1861,7 @@ async function researcherProfilePage(env, viewer, researcherId) {
   <section class="social-section-head researcher-profile-section-head"><div><h2>${profileIsViewer ? 'نقاشاتي ومراجعاتي' : `نقاشات ومراجعات ${esc(profileName)}`}</h2><p>المراجعات والتلخيصات والأفكار التي شاركها في المجتمع.</p></div>${profileIsViewer ? '<a class="btn btn-ghost" href="/researcher/discussions?view=received">ردود الباحثين علي</a>' : ''}</section>
   <div class="researcher-profile-feed">${discussionCards || '<div class="social-card empty-state">لا توجد منشورات أو مناقشات منشورة بعد.</div>'}</div>
   ${replyCards ? `<section class="social-section-head researcher-profile-section-head"><div><h2>التعليقات والردود</h2><p>مداخلاته في نقاشات الباحثين الآخرين.</p></div></section><div class="researcher-profile-feed">${replyCards}</div>` : ''}`;
-  return researcherLayout({ title: profileName, active: 'discussions', user: viewer, body });
+  return researcherLayout({ title: profileName, active: 'profile', user: viewer, body });
 }
 
 async function researcherDiscussionsPage(env, user, req) {

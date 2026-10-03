@@ -197,7 +197,11 @@ export async function routeAdminApi(req, env) {
   if (rest === 'logout' && method === 'POST') {
     await logout(env, getSessionToken(req));
     await audit(env.DB, { userId: user.id, action: 'admin.logout', ip: clientIp(req) });
-    return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie(req.url) });
+    // امسح نسختي الكوكي: نطاق النطاق (.sidjil.org) والنسخة host-only — أيهما وُجد
+    const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8' });
+    headers.append('Set-Cookie', clearSessionCookie(req.url));
+    headers.append('Set-Cookie', clearSessionCookie(''));
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
   }
 
   // حساب الباحث: البيانات الشخصية والصورة (لا يغيّر اسم المستخدم هنا)
