@@ -513,8 +513,9 @@ function initResearcherPage() {
         button.setAttribute('aria-expanded', (!alreadyOpen && button === trigger) ? 'true' : 'false');
       });
       if (!alreadyOpen) {
-        const select = composer.querySelector('select[name="kind"]');
-        if (select) select.value = trigger.dataset.discussionKind || 'comment';
+        const kindVal = trigger.dataset.discussionKind || 'comment';
+        const radio = composer.querySelector(`input[name="kind"][value="${kindVal}"]`);
+        if (radio) radio.checked = true;
         const body = composer.querySelector('textarea[name="body"]');
         if (body) setTimeout(() => body.focus(), 0);
       }
@@ -535,7 +536,7 @@ function initResearcherPage() {
     inlineForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const btn = inlineForm.querySelector('[type="submit"]');
-      const kind = inlineForm.querySelector('[name="kind"]')?.value || 'comment';
+      const kind = inlineForm.querySelector('[name="kind"]:checked')?.value || inlineForm.querySelector('[name="kind"]')?.value || 'comment';
       const title = inlineForm.querySelector('[name="title"]')?.value.trim() || '';
       const body = inlineForm.querySelector('[name="body"]')?.value.trim() || '';
       if (!title || !body) { toast('العنوان والنص مطلوبان', false); return; }
@@ -558,7 +559,7 @@ function initResearcherPage() {
       e.preventDefault();
       const btn = dForm.querySelector('[type="submit"]');
       const payload = {
-        kind: document.getElementById('nd-kind').value,
+        kind: (dForm.querySelector('[name="kind"]:checked') || {}).value || 'comment',
         title: document.getElementById('nd-title').value.trim(),
         body: document.getElementById('nd-body').value.trim(),
         quote_text: (document.getElementById('nd-quote') || { value: '' }).value.trim(),
@@ -646,7 +647,7 @@ function setFollowBtn(btn, following) {
   btn.classList.toggle('btn-primary', !following);
 }
 
-/* ---------- جرس التنبيهات ---------- */
+/* ---------- جرس التنبيهات (في الشريط السفلي) ---------- */
 async function initNotificationBell() {
   const bell = document.getElementById('notifBell');
   if (!bell || bell.dataset.sjBound) return;
@@ -654,7 +655,12 @@ async function initNotificationBell() {
   const badge = document.getElementById('notifBadge');
   const panel = document.getElementById('notifPanel');
   const list = document.getElementById('notifList');
+  const closeBtn = document.getElementById('notifPanelClose');
 
+  const setOpen = (open) => {
+    if (panel) panel.hidden = !open;
+    bell.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
   async function refresh() {
     try {
       const data = await api('/api/v1/social/notifications?limit=15');
@@ -674,61 +680,127 @@ async function initNotificationBell() {
   }
   bell.addEventListener('click', async (e) => {
     e.stopPropagation();
-    const open = panel && !panel.hidden;
-    if (panel) panel.hidden = open;
-    if (!open) {
+    const willOpen = panel && panel.hidden;
+    setOpen(!!willOpen);
+    if (willOpen) {
       await refresh();
       try { await api('/api/v1/social/notifications/read', 'POST', { all: true }); } catch {}
       if (badge) badge.hidden = true;
       bell.classList.remove('has-new');
     }
   });
+  if (closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); setOpen(false); });
   document.addEventListener('click', (e) => {
-    if (panel && !panel.hidden && !e.target.closest('#notifWrap')) panel.hidden = true;
+    if (panel && !panel.hidden && !e.target.closest('.researcher-bottom-nav')) setOpen(false);
   });
   // تحديث دوري خفيف كل دقيقتين
   refresh();
   setInterval(refresh, 120000);
 }
 
-/* ---------- تبويب «المتابَعون» في الخلاصة ---------- */
-function initFollowingTab() {
-  const tab = document.querySelector('[data-following-tab]');
-  const container = document.querySelector('.researcher-published-feed');
-  if (!tab || !container || tab.dataset.sjBound) return;
-  tab.dataset.sjBound = '1';
-  tab.addEventListener('click', async (e) => {
-    e.preventDefault();
-    document.querySelectorAll('.researcher-feed-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    container.innerHTML = '<div class="social-card empty-state">جارٍ تحميل خلاصة المتابَعين…</div>';
-    try {
-      const data = await api('/api/v1/social/feed?limit=30');
-      const items = data.items || [];
-      container.innerHTML = items.length ? items.map(renderFeedItem).join('')
-        : '<div class="social-card empty-state">تابع باحثين لترى جديد موادهم ونقاشاتهم هنا.</div>';
-    } catch (err) {
-      container.innerHTML = `<div class="social-card empty-state">تعذر تحميل الخلاصة: ${escHtml(err.message)}</div>`;
+/* ---------- مؤلف فيسبوك: خانة واحدة تتمدد ---------- */
+function initFbComposer() {
+  const trigger = document.getElementById('fbComposerTrigger');
+  const form = document.getElementById('discussionForm');
+  if (!trigger || !form || trigger.dataset.sjBound) return;
+  trigger.dataset.sjBound = '1';
+  const setOpen = (open) => {
+    form.hidden = !open;
+    trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    trigger.style.display = open ? 'none' : '';
+    if (open) {
+      const title = form.querySelector('[name="title"]');
+      if (title) setTimeout(() => title.focus(), 50);
     }
+  };
+  trigger.addEventListener('click', () => setOpen(true));
+  const cancel = document.getElementById('fbComposerCancel');
+  if (cancel) cancel.addEventListener('click', () => setOpen(false));
+}
+
+/* ---------- تمدد تلقائي لحقول النص ---------- */
+function initAutogrow() {
+  document.querySelectorAll('textarea[data-autogrow]').forEach((ta) => {
+    if (ta.dataset.sjBound) return;
+    ta.dataset.sjBound = '1';
+    const grow = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; };
+    ta.addEventListener('input', grow);
+    grow();
   });
 }
-function renderFeedItem(it) {
-  const isMat = it.item_type === 'material';
-  const link = isMat ? `/researcher/discussions` : `/researcher/discussions?focus=${encodeURIComponent(it.item_id)}`;
-  return `<article class="social-card researcher-feed-post">
-    <div class="post-head"><div class="post-avatar">${escHtml(String(it.author_name || 'ب').slice(0, 1))}</div>
-    <div><strong><a class="post-author-link" href="/researcher/profile/${encodeURIComponent(it.author_id)}">${escHtml(it.author_name || 'باحث')}</a></strong>
-    <div class="post-meta">${isMat ? 'مادة جديدة' : escHtml(it.sub_kind || 'نقاش')} · ${escHtml(it.created_at || '')}</div></div></div>
-    <h3><a href="${link}">${escHtml(it.title || '—')}</a></h3>
-    ${it.excerpt ? `<p class="researcher-feed-excerpt">${escHtml(it.excerpt)}</p>` : ''}
-    ${it.material_title ? `<div class="post-linked">حول: ${escHtml(it.material_title)}</div>` : ''}
-  </article>`;
+
+/* ---------- أزرار المشاركة (نسخ الرابط) ---------- */
+function initShareButtons() {
+  document.querySelectorAll('[data-share-discussion]').forEach((btn) => {
+    if (btn.dataset.sjBound) return;
+    btn.dataset.sjBound = '1';
+    btn.addEventListener('click', async () => {
+      const url = `${location.origin}/researcher/discussions?view=community&focus=${encodeURIComponent(btn.dataset.shareDiscussion)}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast('نُسخ رابط النقاش — شاركه مع الباحثين');
+      } catch {
+        prompt('انسخ رابط النقاش:', url);
+      }
+    });
+  });
+}
+
+/* ---------- نموذج مقال المجلة (إنشاء + مرفق) ---------- */
+function initJournalArticleForm() {
+  const form = document.getElementById('journalArticleForm');
+  if (!form || form.dataset.sjBound) return;
+  form.dataset.sjBound = '1';
+  const fileInput = document.getElementById('ja-file');
+  const fileName = document.getElementById('jaFileName');
+  const status = document.getElementById('jaStatus');
+  const submitBtn = document.getElementById('jaSubmit');
+  if (fileInput && fileName) {
+    fileInput.addEventListener('change', () => {
+      fileName.textContent = fileInput.files && fileInput.files[0] ? fileInput.files[0].name : 'لم يُختر ملف';
+    });
+  }
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = form.querySelector('[name="title"]').value.trim();
+    const body = form.querySelector('[name="body"]').value.trim();
+    if (!title || !body) { toast('العنوان والنص مطلوبان', false); return; }
+    if (submitBtn) submitBtn.disabled = true;
+    if (status) status.textContent = 'جارٍ إرسال المقال...';
+    try {
+      const data = await api('/api/v1/admin/materials', 'POST', {
+        type: 'article', title_ar: title, description: body, language: 'ar', collectionIds: [],
+      });
+      const file = fileInput && fileInput.files && fileInput.files[0];
+      if (file && data && data.id) {
+        if (status) status.textContent = 'جارٍ رفع المرفق...';
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('kind', 'attachment');
+        const headers = {};
+        const token = csrfToken();
+        if (token) headers['X-CSRF-Token'] = token;
+        const res = await fetch(`/api/v1/admin/materials/${data.id}/files`, { method: 'POST', credentials: 'same-origin', headers, body: fd });
+        if (!res.ok) throw new Error('فشل رفع المرفق');
+      }
+      toast('أُرسل المقال — تجده في مسوداتك بانتظار الإرسال للمراجعة');
+      if (status) status.textContent = '';
+      setTimeout(() => { location.href = `/researcher/${data.id}`; }, 900);
+    } catch (err) {
+      if (status) status.textContent = '';
+      toast(err.message || 'تعذر إرسال المقال', false);
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
 }
 
 function initSocial() {
   initFollowButtons();
   initNotificationBell();
-  initFollowingTab();
+  initFbComposer();
+  initAutogrow();
+  initShareButtons();
+  initJournalArticleForm();
 }
 
 // يعمل السكربت أحيانًا بعد DOMContentLoaded بسبب التخزين المؤقت في المتصفح؛

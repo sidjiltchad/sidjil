@@ -1412,3 +1412,206 @@ body.translation-workspace-open { overflow: hidden; }
 .rpdf-quote-preview p { margin: .3rem 0 0; color: var(--muted); }
 .rpdf-error { color: #b02a2a; padding: 1rem; text-align: center; }
 .rpdf-error[hidden] { display: none; }
+
+/* ============================================================
+   SIDJIL — تحسينات تجربة الباحث v28 (أسلوب اجتماعي موحد)
+   ============================================================ */
+
+/* --- منطقة الكاميرا/الإشعارات بنفس لون رأس الصفحة --- */
+.researcher-shell .topbar { padding-top: env(safe-area-inset-top, 0); }
+
+/* --- زر الجرس داخل الشريط السفلي --- */
+.researcher-bottom-nav button.bn-bell {
+  display: flex; flex-direction: column; align-items: center; gap: .18rem;
+  padding: .45rem .2rem .35rem; border: 0; border-radius: 1rem;
+  color: var(--muted); background: transparent; font-family: inherit;
+  font-size: .68rem; font-weight: 600; cursor: pointer;
+  transition: color .18s ease, transform .18s ease;
+}
+.researcher-bottom-nav button.bn-bell .bn-icon {
+  position: relative; display: grid; place-items: center;
+  width: 3rem; height: 1.9rem; border-radius: 999px;
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+.researcher-bottom-nav button.bn-bell .bn-icon svg { width: 1.35rem; height: 1.35rem; }
+.researcher-bottom-nav button.bn-bell:hover .bn-icon,
+.researcher-bottom-nav button.bn-bell:focus-visible .bn-icon { background: var(--teal-soft); color: var(--teal); outline: 0; }
+.researcher-bottom-nav button.bn-bell.has-new { color: var(--teal); }
+.researcher-bottom-nav button.bn-bell.has-new .bn-icon { background: var(--teal-soft); }
+.researcher-bottom-nav button.bn-bell:active { transform: scale(.94); }
+.researcher-bottom-nav .notif-badge { top: 1px; inset-inline-end: 8px; }
+.researcher-bottom-nav .notif-panel {
+  position: absolute; inset-inline: .6rem; bottom: calc(100% + .6rem); top: auto;
+  width: auto; max-height: 56vh;
+}
+.notif-panel-close {
+  border: 0; background: transparent; color: var(--muted); font-size: 1.3rem;
+  line-height: 1; cursor: pointer; padding: .1rem .4rem; border-radius: 8px;
+}
+.notif-panel-close:hover { color: var(--danger); background: var(--surface-2); }
+.notif-panel-head { display: flex; align-items: center; justify-content: space-between; }
+
+/* --- القائمة المنسدلة للحساب: تصميم منظم --- */
+.researcher-account-menu-head {
+  display: flex; align-items: center; gap: .7rem;
+  padding: .75rem .75rem .65rem; margin-bottom: .25rem;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+}
+.researcher-account-menu-id strong { display: block; font-size: .95rem; }
+.researcher-account-menu-id .post-meta { display: flex; align-items: center; gap: .3rem; margin-top: .15rem; }
+.researcher-verified-chip {
+  display: inline-block; font-size: .66rem; font-weight: 800; color: #0f7a5f;
+  background: rgba(15, 122, 95, .13); border-radius: 999px; padding: .08rem .55rem;
+}
+.researcher-account-menu-group { display: grid; gap: .1rem; padding: .15rem 0; }
+.researcher-account-menu .researcher-account-nav-link,
+.researcher-account-menu button[data-account-logout] {
+  display: flex !important; align-items: center; gap: .65rem;
+  width: 100%; padding: .62rem .75rem; border: 0; border-radius: 10px;
+  background: transparent; color: var(--ink); font: inherit; font-size: .9rem; font-weight: 600;
+  text-align: start; text-decoration: none; cursor: pointer;
+}
+.researcher-account-menu .researcher-account-nav-link:hover,
+.researcher-account-menu button[data-account-logout]:hover { background: var(--surface-2); color: var(--teal); }
+.researcher-account-menu .researcher-account-nav-link.active { background: var(--teal-soft); color: var(--teal); }
+.researcher-account-menu button[data-account-logout] { color: #b3261e; }
+.researcher-account-menu button[data-account-logout]:hover { background: rgba(179, 38, 30, .08); color: #b3261e; }
+.ran-icon { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 9px; background: var(--surface-2); color: var(--muted); flex: none; }
+.ran-icon svg { width: 1.05rem; height: 1.05rem; }
+.researcher-account-nav-link:hover .ran-icon, .researcher-account-nav-link.active .ran-icon { background: var(--teal-soft); color: var(--teal); }
+button[data-account-logout] .ran-icon { background: rgba(179, 38, 30, .1); color: #b3261e; }
+
+/* --- مؤلف فيسبوك: خانة واحدة تتمدد --- */
+.fb-composer { padding: .85rem; }
+.fb-composer-trigger {
+  display: flex; align-items: center; gap: .7rem; width: 100%;
+  padding: .15rem; border: 0; background: transparent; cursor: pointer;
+  font: inherit; text-align: start; color: inherit;
+}
+.fb-composer-trigger .researcher-avatar-link { pointer-events: none; flex: none; }
+.fb-composer-hint {
+  flex: 1; background: var(--surface-2); border-radius: 999px;
+  padding: .78rem 1.15rem; color: var(--muted); font-size: .93rem;
+  transition: background .15s ease; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fb-composer-trigger:hover .fb-composer-hint { background: var(--line); color: var(--ink); }
+.fb-composer-form { margin-top: .85rem; border-top: 1px solid var(--line-soft, var(--line)); padding-top: .85rem; }
+.fb-composer-form[hidden] { display: none; }
+.fb-composer-form .field { margin-bottom: .6rem; }
+.fb-composer-form input[name="title"] {
+  width: 100%; border: 1px solid var(--line); border-radius: .9rem;
+  padding: .65rem .95rem; font: inherit; background: var(--card); color: var(--ink);
+}
+.fb-composer-form textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 1rem;
+  padding: .7rem .95rem; font: inherit; background: var(--card); color: var(--ink);
+  resize: none; overflow-y: hidden; min-height: 5.2rem; line-height: 1.8;
+}
+.fb-composer-form input:focus, .fb-composer-form textarea:focus {
+  outline: none; border-color: var(--teal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 14%, transparent);
+}
+.fb-kind-chips { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .7rem; }
+.fb-kind-chip { position: relative; }
+.fb-kind-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.fb-kind-chip span {
+  display: inline-block; padding: .42rem .85rem; border-radius: 999px;
+  background: var(--surface-2); font-size: .8rem; font-weight: 700; color: var(--muted);
+  cursor: pointer; border: 1px solid transparent; transition: all .15s ease;
+}
+.fb-kind-chip:hover span { border-color: var(--teal); color: var(--teal); }
+.fb-kind-chip input:checked + span { background: var(--teal); color: #fff; }
+.fb-kind-chip input:focus-visible + span { outline: 2px solid var(--gold); outline-offset: 2px; }
+.fb-composer-form .composer-footer { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .6rem; }
+
+/* --- صناديق التعليق بأسلوب فيسبوك --- */
+.fb-composer-box { background: var(--card); }
+.fb-comment-row { display: flex; gap: .6rem; align-items: flex-start; }
+.fb-comment-avatar { flex: none; margin-top: .2rem; }
+.fb-comment-main { flex: 1; min-width: 0; }
+.fb-comment-main .fb-kind-chips { margin-bottom: .55rem; }
+.fb-comment-main .field { margin-bottom: .5rem; }
+.fb-comment-main input[name="title"] {
+  width: 100%; border: 1px solid var(--line); border-radius: .9rem;
+  padding: .55rem .9rem; font: inherit; font-size: .88rem; background: var(--surface-2); color: var(--ink);
+}
+.fb-comment-main textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 1.1rem;
+  padding: .65rem .95rem; font: inherit; font-size: .92rem; background: var(--surface-2); color: var(--ink);
+  resize: none; overflow-y: hidden; min-height: 2.9rem; line-height: 1.8;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.fb-comment-main input:focus, .fb-comment-main textarea:focus {
+  outline: none; background: var(--card); border-color: var(--teal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 14%, transparent);
+}
+.fb-comment-footer { display: flex; justify-content: space-between; align-items: center; margin-top: .5rem; gap: .5rem; }
+.fb-comment-collapse {
+  flex: none; width: 2rem; height: 2rem; border-radius: 50%; border: 0;
+  background: var(--surface-2); color: var(--muted); font-size: 1.15rem; line-height: 1;
+  cursor: pointer; margin-top: .2rem;
+}
+.fb-comment-collapse:hover { background: var(--line); color: var(--danger); }
+
+/* نموذج الرد السريع (فيسبوك) */
+.fb-reply-form { display: flex; gap: .5rem; align-items: center; margin-top: .75rem; }
+.fb-reply-avatar { flex: none; display: inline-flex; }
+.fb-reply-avatar .researcher-avatar.small { width: 2.1rem; height: 2.1rem; font-size: .85rem; }
+.fb-reply-form textarea {
+  flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface-2); padding: .6rem 1.05rem; font: inherit; font-size: .88rem; color: var(--ink);
+  resize: none; overflow-y: hidden; min-height: 2.5rem; max-height: 9rem; line-height: 1.7;
+  transition: background .15s ease, border-color .15s ease;
+}
+.fb-reply-form textarea:focus { outline: none; background: var(--card); border-color: var(--teal); border-radius: 1.2rem; }
+.fb-reply-send {
+  flex: none; width: 2.5rem; height: 2.5rem; border-radius: 50%; border: 0;
+  background: var(--teal); color: #fff; display: grid; place-items: center; cursor: pointer;
+  transition: transform .15s ease, opacity .15s ease;
+}
+.fb-reply-send:hover { transform: scale(1.06); }
+.fb-reply-send:disabled { opacity: .5; cursor: default; transform: none; }
+.fb-reply-send svg { width: 1.1rem; height: 1.1rem; transform: scaleX(-1); }
+.post-action-icon { display: inline-grid; place-items: center; vertical-align: -3px; margin-inline-end: .25rem; }
+.post-action-icon svg { width: 1rem; height: 1rem; }
+
+/* --- صفحة المجلة --- */
+.journal-issues { display: grid; gap: 1rem; margin-bottom: 1.2rem; }
+.journal-card { display: flex; gap: 1rem; padding: 1rem; align-items: flex-start; }
+.journal-card-cover {
+  flex: none; width: 104px; height: 140px; border-radius: 10px; overflow: hidden;
+  background: var(--surface-2); display: grid; place-items: center; font-size: 2.2rem;
+  border: 1px solid var(--line);
+}
+.journal-card-cover img { width: 100%; height: 100%; object-fit: cover; }
+.journal-card-body { flex: 1; min-width: 0; }
+.journal-card-body h3 { margin: 0 0 .3rem; font-size: 1.05rem; }
+.journal-card-body p { margin: .4rem 0 .7rem; color: var(--muted); font-size: .88rem; line-height: 1.8; }
+.journal-card-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.journal-write { padding: 1.1rem 1.2rem; }
+.journal-write h2 { margin: 0 0 .3rem; font-size: 1.1rem; }
+.journal-write .field { margin-bottom: .75rem; }
+.journal-write textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 1rem; padding: .75rem 1rem;
+  font: inherit; line-height: 1.9; background: var(--card); color: var(--ink);
+  resize: none; overflow-y: hidden; min-height: 9rem;
+}
+.journal-write textarea:focus, .journal-write input:focus {
+  outline: none; border-color: var(--teal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--teal) 14%, transparent);
+}
+.journal-attach-row { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
+.journal-attach-btn { cursor: pointer; }
+#jaFileName { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- تبويبات محسنة للهاتف --- */
+@media (max-width: 640px) {
+  .researcher-feed-tabs { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 57px); z-index: 120; background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 14px; }
+  .researcher-feed-tab { flex: 1 0 auto; padding: .62rem .5rem; font-size: .78rem; }
+  .researcher-activity-tabs { gap: .3rem; }
+  .researcher-activity-tab { padding: .65rem .4rem; font-size: .76rem; }
+  .journal-card { flex-direction: column; }
+  .journal-card-cover { width: 100%; height: 170px; }
+  .fb-comment-row { gap: .45rem; }
+  .researcher-account-menu { min-width: min(78vw, 280px); }
+}
