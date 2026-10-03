@@ -1,6 +1,7 @@
 // SIDJIL — الواجهة العامة (صفحات الزوار)
 // renderPublic(pathname, req, env) → Response (HTML, server-side)
 import { SUPPORTED_LANGS, t, htmlDir } from './i18n.js';
+import { APP_HOST } from './app.js';
 import { discussionsPage, discussionPage, registerPage, discussionSectionHTML } from './discussion-views.js';
 import { searchMaterials } from './lib/search.js';
 import { getMaterialFull } from './lib/db.js';
@@ -67,6 +68,9 @@ export function displayTitle(lang, m) {
 
 function head(ctx, { title, description, ogImage, canonical }) {
   const { lang, dir } = ctx;
+  // الـPWA القابل للتثبيت مقتصر على نطاق التطبيق (app.sidjil.org) وحده
+  const isApp = (() => { try { return new URL(ctx.url).hostname === APP_HOST; } catch { return false; } })();
+  const manifestLink = isApp ? '<link rel="manifest" href="/app-manifest.json">' : '';
   const site = t(lang, 'site_name');
   const fullTitle = title ? `${title} — ${site}` : `${site} — ${t(lang, 'site_sub')}`;
   const desc = description || t(lang, 'footer_about');
@@ -98,7 +102,7 @@ ${ogUrl}
 <meta name="theme-color" content="#1f4276" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#101724" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/logo.png" type="image/png">
-<link rel="manifest" href="/manifest.json">
+${manifestLink}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">

@@ -5,7 +5,8 @@ workers_dev = true
 
 routes = [
   { pattern = "sidjil.org", custom_domain = true },
-  { pattern = "www.sidjil.org", custom_domain = true }
+  { pattern = "www.sidjil.org", custom_domain = true },
+  { pattern = "app.sidjil.org", custom_domain = true }
 ]
 
 # قاعدة البيانات (D1) — الإنتاج

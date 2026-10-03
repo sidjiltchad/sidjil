@@ -3,6 +3,7 @@
 import { routeApi } from './api.js';
 import { routeAdminApi } from './admin-api.js';
 import { routeDiscussionPublic } from './discussions.js';
+import { isAppHost, routeApp } from './app.js';
 import { renderPublic } from './views.js';
 import { renderAdmin, renderResearcher } from './admin-views.js';
 import { getSessionUser } from './lib/auth.js';
@@ -35,6 +36,12 @@ export default {
     // تحديد معدل الطلبات على مستوى الخادم (قبل أي توجيه)
     const rl = rateLimitCheck(request, clientIp(request));
     if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
+
+    // 0) نطاق التطبيق app.sidjil.org — مساحة الباحثين المستقلة (تفتح على الدخول)
+    if (isAppHost(url.hostname)) {
+      const appRes = await routeApp(request, env, url);
+      if (appRes) return appRes;
+    }
 
     // 1) واجهة الإدارة البرمجية
     if (pathname.startsWith('/api/v1/admin/')) {
