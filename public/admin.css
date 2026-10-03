@@ -952,7 +952,7 @@ input[type="checkbox"], input[type="radio"] {
 @media (max-width: 900px) {
   .researcher-shell { display: flex; flex-direction: column; }
   .researcher-shell .sidebar { width: 250px; }
-  .researcher-shell .topbar { position: sticky; z-index: 260; }
+  .researcher-shell .topbar { position: static; }
   .researcher-shell .nav-toggle-admin { position: relative; z-index: 270; pointer-events: auto; }
   .researcher-shell .sidebar.open { transform: translateX(0) !important; visibility: visible; }
   .researcher-shell #adminNav:target { transform: translateX(0) !important; visibility: visible; }
@@ -1064,23 +1064,20 @@ input[type="checkbox"], input[type="radio"] {
 .researcher-composer { border-radius: 16px; }
 
 /* رأس مساحة الباحث شفاف وفاتح، مع بقاء الشعار رابطًا للصفحة الرئيسية */
+/* بلا شريط علوي: اللوجو وأيقونة الحساب فقط دون فاصل عن المحتوى */
 .researcher-shell .topbar {
-  background: rgba(255, 255, 255, .5);
-  color: #17345f;
-  border-bottom-color: rgba(191, 161, 80, .55);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: inherit;
 }
 .researcher-shell .researcher-brand-logo { color: inherit; text-decoration: none; }
 .researcher-shell .researcher-profile-chip { color: #17345f; border-color: rgba(23, 52, 95, .18); }
 .researcher-shell .researcher-profile-chip:hover,
 .researcher-shell .researcher-profile-chip:focus-visible { color: var(--teal); }
 .researcher-shell .researcher-account-chevron { border-color: currentColor; }
-[data-theme="dark"] .researcher-shell .topbar {
-  background: rgba(11, 18, 32, .82);
-  color: var(--chrome-ink);
-  border-bottom-color: rgba(226, 184, 85, .4);
-}
 [data-theme="dark"] .researcher-shell .researcher-profile-chip { color: var(--chrome-ink); border-color: rgba(233, 227, 212, .25); }
 
 /* الملف الشخصي للباحث */
@@ -1613,7 +1610,7 @@ button[data-account-logout] .ran-icon { background: rgba(179, 38, 30, .1); color
 
 /* --- تبويبات محسنة للهاتف --- */
 @media (max-width: 640px) {
-  .researcher-feed-tabs { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 57px); z-index: 120; background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 14px; }
+  .researcher-feed-tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 120; background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 14px; }
   .researcher-feed-tab { flex: 1 0 auto; padding: .62rem .5rem; font-size: .78rem; }
   .researcher-activity-tabs { gap: .3rem; }
   .researcher-activity-tab { padding: .65rem .4rem; font-size: .76rem; }
