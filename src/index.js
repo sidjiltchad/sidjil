@@ -172,6 +172,9 @@ export default {
         if (url.searchParams.get('lang')) loginUrl.searchParams.set('lang', url.searchParams.get('lang'));
         return Response.redirect(loginUrl.toString(), 302);
       }
+      if (researcherAppHost && user.role === 'admin') {
+        return Response.redirect('https://sidjil.org/admin', 302);
+      }
       return renderResearcher(pathname, request, env, user);
     }
 
