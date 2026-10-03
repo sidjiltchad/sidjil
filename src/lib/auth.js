@@ -172,20 +172,18 @@ export async function getSessionUser(req, env) {
       .prepare(
         `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.display_name, u.avatar_url, u.avatar_r2_key,
                 u.email, u.phone, u.affiliation, u.job_title, u.bio, u.specialty, u.website, u.is_public_profile,
-                s.csrf_token AS csrfToken FROM admin_users u
+                s.csrf_token AS csrfToken, s.expires_at AS sessionExpiresAt FROM admin_users u
          JOIN sessions s ON s.user_id = u.id
          WHERE s.token = ? AND s.expires_at > datetime('now')`
       )
       .bind(token)
       .first();
     if (!user || Number(user.is_active) === 0) return null;
+    const { sessionExpiresAt, ...sessionUser } = user;
     // تجديد انزلاقي: إذا انقضى أكثر من نصف العمر، مدّد الجلسة (كتابة واحدة خفيفة)
     try {
-      const row = await env.DB.prepare(
-        'SELECT expires_at FROM sessions WHERE token = ?'
-      ).bind(token).first();
-      if (row && row.expires_at) {
-        const expMs = new Date(String(row.expires_at).replace(' ', 'T') + 'Z').getTime();
+      if (sessionExpiresAt) {
+        const expMs = new Date(String(sessionExpiresAt).replace(' ', 'T') + 'Z').getTime();
         if (Date.now() > expMs - (SESSION_TTL_SEC * 1000) / 2) {
           const newExp = new Date(Date.now() + SESSION_TTL_SEC * 1000)
             .toISOString().slice(0, 19).replace('T', ' ');
@@ -194,7 +192,7 @@ export async function getSessionUser(req, env) {
         }
       }
     } catch { /* التجديد تحسين اختياري — لا يفشل الطلب */ }
-    return user;
+    return sessionUser;
   } catch {
     return null;
   }

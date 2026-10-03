@@ -26,6 +26,18 @@ function clientIp(req) {
   );
 }
 
+function publicHomeCacheKey(request) {
+  const url = new URL(request.url);
+  const requestedLang = url.searchParams.get('lang');
+  const cookieLang = (request.headers.get('cookie') || '').match(/(?:^|;\s*)archifouna_lang=(ar|fr)/)?.[1];
+  const lang = requestedLang === 'fr' || requestedLang === 'ar'
+    ? requestedLang
+    : (cookieLang || 'ar');
+  url.search = '';
+  url.searchParams.set('lang', lang);
+  return new Request(url.toString(), { method: 'GET' });
+}
+
 const RESEARCHER_APP_HOST = 'app.sidjil.org';
 
 function isResearcherAppHost(url) {
@@ -128,6 +140,35 @@ export default {
     if (!researcherAppHost && (pathname === '/researcher' || pathname.startsWith('/researcher/'))) {
       const legacyUser = await getSessionUser(request, env);
       return researcherAppRedirect(pathname, request, legacyUser ? getSessionToken(request) : '');
+    }
+
+    // Cache the public home page at each edge location so repeated visits do
+    // not rerun its several aggregate D1 queries on every request.
+    if (!researcherAppHost && pathname === '/' && request.method === 'GET') {
+      const cache = caches.default;
+      const cacheKey = publicHomeCacheKey(request);
+      const cached = await cache.match(cacheKey);
+      if (cached) {
+        const response = new Response(cached.body, cached);
+        const requestedLang = url.searchParams.get('lang');
+        if (requestedLang === 'ar' || requestedLang === 'fr') {
+          response.headers.append('Set-Cookie', `archifouna_lang=${requestedLang}; Path=/; SameSite=Lax; Max-Age=31536000`);
+        }
+        return response;
+      }
+      const response = await renderPublic(pathname, request, env);
+      if (response.status === 200) {
+        const headers = new Headers(response.headers);
+        headers.delete('Set-Cookie');
+        headers.set('Cache-Control', 'public, max-age=300');
+        const cacheable = new Response(response.clone().body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+        ctx.waitUntil(cache.put(cacheKey, cacheable));
+      }
+      return response;
     }
 
     // 1ب) مجلس سِجِل: النقاشات والتفاعلات والتسجيل (عامة)

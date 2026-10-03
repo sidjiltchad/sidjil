@@ -1548,6 +1548,9 @@ async function researcherDashPage(env, user, req) {
   const officialFilter = feed === 'official'
     ? ` AND m.created_by = ? AND EXISTS (SELECT 1 FROM audit_log approval WHERE approval.action = 'material.review_approve' AND approval.target = m.ark)`
     : '';
+  const approvedAtSelect = feed === 'official'
+    ? `COALESCE((SELECT MAX(a.created_at) FROM audit_log a WHERE a.action = 'material.review_approve' AND a.target = m.ark), m.updated_at) AS approved_at,`
+    : `m.updated_at AS approved_at,`;
   const feedOrder = feed === 'discover'
     ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
     : 'ORDER BY m.updated_at DESC, m.id DESC';
@@ -1557,7 +1560,7 @@ async function researcherDashPage(env, user, req) {
   const publishedQuery =
     `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
             m.author, m.photographer, m.archive_ref, m.updated_at,
-            COALESCE((SELECT MAX(a.created_at) FROM audit_log a WHERE a.action = 'material.review_approve' AND a.target = m.ark), m.updated_at) AS approved_at,
+            ${approvedAtSelect}
             s.name_ar AS source_name_ar, s.name AS source_name,
             p.name_ar AS place_name,
             (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind = 'thumbnail' OR f.mime LIKE 'image/%')

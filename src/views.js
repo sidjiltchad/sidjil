@@ -1679,7 +1679,15 @@ export async function renderPublic(pathname, req, env) {
     }
   } catch (err) {
     console.error('renderPublic error:', err);
-    result = notFoundPage(ctx);
+    // A render/database failure is a server error, not a missing route.
+    // Returning the 404 page here hid homepage failures as "page not found".
+    result = {
+      html: layout(ctx, {
+        title: lang === 'fr' ? 'Erreur du serveur' : 'خطأ في الخادم',
+        content: `<div class="wrap section not-found"><h1 class="page-title">${lang === 'fr' ? 'Une erreur est survenue' : 'حدث خطأ أثناء تحميل الصفحة'}</h1><p class="page-desc">${lang === 'fr' ? 'Veuillez réessayer dans quelques instants.' : 'يرجى إعادة المحاولة بعد قليل.'}</p><a class="btn btn-primary" href="${langPath(ctx, '/')}">${esc(t(lang, 'back_home'))}</a></div>`,
+      }),
+      status: 500,
+    };
   }
 
   const html = typeof result === 'string' ? result : result.html;
