@@ -1417,8 +1417,10 @@ body.translation-workspace-open { overflow: hidden; }
    SIDJIL — تحسينات تجربة الباحث v28 (أسلوب اجتماعي موحد)
    ============================================================ */
 
-/* --- منطقة الكاميرا/الإشعارات بنفس لون رأس الصفحة --- */
-.researcher-shell .topbar { padding-top: env(safe-area-inset-top, 0); }
+/* --- منطقة الكاميرا/الإشعارات بنفس لون رأس الصفحة (Edge-to-Edge) ---
+   الخلفية تمتد من أعلى بكسل (الـpadding داخل الهيدر نفسه)،
+   والمحتوى التفاعلي يُدفع للأسفل فقط بمقدار منطقة الأمان. */
+.researcher-shell .topbar { padding-top: calc(10px + env(safe-area-inset-top, 0)); }
 
 /* --- زر الجرس داخل الشريط السفلي --- */
 .researcher-bottom-nav button.bn-bell {

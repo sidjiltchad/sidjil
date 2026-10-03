@@ -1,1 +1,34 @@
-{"background_color":"#f7f4ec","description":"تطبيق الباحثين لمنصة سِجِل: نقاشات علمية موثّقة حول الكتب والوثائق والأفكار — التعليق والمراجعة والنقد.","dir":"rtl","display":"standalone","icons":[{"purpose":"any","sizes":"192x192","src":"/icons/icon-192.png","type":"image/png"},{"purpose":"any","sizes":"512x512","src":"/icons/icon-512.png","type":"image/png"},{"purpose":"maskable","sizes":"512x512","src":"/icons/maskable-512.png","type":"image/png"}],"id":"https://app.sidjil.org/","lang":"ar","name":"مجلس سِجِل — مساحة الباحثين","orientation":"portrait","scope":"/","short_name":"مجلس سِجِل","start_url":"/","theme_color":"#1f4276"}
+{
+  "background_color": "#f7f4ec",
+  "description": "تطبيق الباحثين لمنصة سِجِل: نقاشات علمية موثّقة حول الكتب والوثائق والأفكار — التعليق والمراجعة والنقد.",
+  "dir": "rtl",
+  "display": "standalone",
+  "icons": [
+    {
+      "purpose": "any",
+      "sizes": "192x192",
+      "src": "/icons/icon-192.png",
+      "type": "image/png"
+    },
+    {
+      "purpose": "any",
+      "sizes": "512x512",
+      "src": "/icons/icon-512.png",
+      "type": "image/png"
+    },
+    {
+      "purpose": "maskable",
+      "sizes": "512x512",
+      "src": "/icons/maskable-512.png",
+      "type": "image/png"
+    }
+  ],
+  "id": "https://app.sidjil.org/",
+  "lang": "ar",
+  "name": "مجلس سِجِل — مساحة الباحثين",
+  "orientation": "portrait",
+  "scope": "/",
+  "short_name": "مجلس سِجِل",
+  "start_url": "/",
+  "theme_color": "#ffffff"
+}
