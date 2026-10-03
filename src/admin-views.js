@@ -1253,6 +1253,16 @@ function researcherMaterialData(material, thumbId = '') {
     .join(' ');
 }
 
+/* أيقونات SVG حديثة موحدة لمساحة الباحث (Feather-style بخط 1.8) */
+const SJ_SVG = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${inner}</svg>`;
+const SJ_ICONS = {
+  bell: SJ_SVG('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>'),
+  home: SJ_SVG('<path d="M3 9.5 12 3l9 6.5V20a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 22v-8h6v8"/>'),
+  plus: SJ_SVG('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'),
+  chat: SJ_SVG('<path d="M4 5.5h16a1 1 0 0 1 1 1V15a1 1 0 0 1-1 1H9l-5 4.5v-14a1 1 0 0 1 1-1Z"/>'),
+  user: SJ_SVG('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+};
+
 function researcherLayout({ title, active, user, body }) {
   const nav = RESEARCHER_NAV.map(([key, href, label]) =>
     `<a href="${href}" class="nav-item${active === key ? ' active' : ''}">${esc(label)}</a>`
@@ -1277,14 +1287,14 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261003-v26">
+<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261003-v27">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
   <div class="topbar">
     <a class="topbar-brand researcher-brand-logo" href="/researcher" aria-label="العودة إلى الصفحة الرئيسية لمساحة الباحث"><img class="researcher-logo" src="/sidjil-logo.png" alt="سِجِل"></a>
     <div class="notif-wrap" id="notifWrap">
-      <button class="notif-bell" id="notifBell" type="button" aria-label="التنبيهات" aria-haspopup="true">🔔<span class="notif-badge" id="notifBadge" hidden></span></button>
+      <button class="notif-bell" id="notifBell" type="button" aria-label="التنبيهات" aria-haspopup="true">${SJ_ICONS.bell}<span class="notif-badge" id="notifBadge" hidden></span></button>
       <div class="notif-panel" id="notifPanel" hidden><div class="notif-panel-head"><strong>التنبيهات</strong></div><div id="notifList"></div></div>
     </div>
     <div class="researcher-account-wrap">
@@ -1318,11 +1328,11 @@ ${csrfMeta}
   </main>
 </div>
 <nav class="researcher-bottom-nav" aria-label="تنقل الهاتف">${[
-    ['mine', '/researcher', '⌂', 'الرئيسية'],
-    ['new', '/researcher/new', '＋', 'إنشاء'],
-    ['discussions', '/researcher/discussions', '💬', 'المجتمع'],
-    ['account', '/researcher/account', '◉', 'حسابي'],
-  ].map(([k, href, icon, label]) => `<a href="${href}" class="${active === k ? 'active' : ''}"><span>${icon}</span>${label}</a>`).join('')}</nav>
+    ['mine', '/researcher', SJ_ICONS.home, 'الرئيسية'],
+    ['new', '/researcher/new', SJ_ICONS.plus, 'إنشاء'],
+    ['discussions', '/researcher/discussions', SJ_ICONS.chat, 'المجتمع'],
+    ['account', '/researcher/account', SJ_ICONS.user, 'حسابي'],
+  ].map(([k, href, icon, label]) => `<a href="${href}" class="${active === k ? 'active' : ''}"><span class="bn-icon">${icon}</span><span class="bn-label">${label}</span></a>`).join('')}</nav>
 <div class="researcher-modal-veil" id="researcherMaterialModal" hidden>
   <div class="researcher-material-modal" role="dialog" aria-modal="true" aria-labelledby="researcherMaterialModalTitle">
     <button class="researcher-modal-close" type="button" data-researcher-modal-close aria-label="إغلاق">×</button>
@@ -1346,7 +1356,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261003-rpdf1"></script>
-<script src="/researcher-feed-v5.js?v=20261003-pdf-modal" defer></script>
+<script src="/researcher-feed-v5.js?v=20261003-notif2" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
 (() => {

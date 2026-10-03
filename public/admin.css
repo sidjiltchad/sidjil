@@ -995,12 +995,18 @@ input[type="checkbox"], input[type="radio"] {
   .researcher-composer { padding: .9rem; }
   .researcher-profile-name { display: none; }
   .researcher-profile-chip { padding-inline: .35rem; }
-  .researcher-bottom-nav { position: fixed; inset-inline: 0; bottom: 0; z-index: 240; display: grid; grid-template-columns: repeat(4, 1fr); padding: .35rem .25rem calc(.35rem + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--card) 94%, transparent); border-top: 1px solid var(--line); box-shadow: 0 -4px 18px rgba(17,24,39,.1); backdrop-filter: blur(14px); }
-  .researcher-bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: .12rem; color: var(--muted); text-decoration: none; font-size: .69rem; }
-  .researcher-bottom-nav a:hover, .researcher-bottom-nav a:focus-visible, .researcher-bottom-nav a.active { color: var(--teal); outline: 0; }
-  .researcher-bottom-nav span { font-size: 1.05rem; line-height: 1; }
-  /* مساحة سفلية حتى لا يختفي المحتوى خلف شريط التنقل الثابت */
-  .researcher-body .researcher-main { padding-bottom: calc(4.2rem + env(safe-area-inset-bottom)); }
+  /* شريط تنقل سفلي عائم بتصميم حديث */
+  .researcher-bottom-nav { position: fixed; inset-inline: .8rem; bottom: calc(.8rem + env(safe-area-inset-bottom)); z-index: 240; display: grid; grid-template-columns: repeat(4, 1fr); gap: .15rem; padding: .45rem .5rem; background: color-mix(in srgb, var(--card) 93%, transparent); border: 1px solid var(--line); border-radius: 1.4rem; box-shadow: 0 12px 32px rgba(17,24,39,.18); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .researcher-bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: .18rem; padding: .45rem .2rem .35rem; border-radius: 1rem; color: var(--muted); text-decoration: none; font-size: .68rem; font-weight: 600; transition: color .18s ease, transform .18s ease; }
+  .researcher-bottom-nav a .bn-icon { display: grid; place-items: center; width: 3rem; height: 1.9rem; border-radius: 999px; transition: background .18s ease, color .18s ease, box-shadow .18s ease; }
+  .researcher-bottom-nav a .bn-icon svg { width: 1.35rem; height: 1.35rem; }
+  .researcher-bottom-nav a .bn-label { line-height: 1.2; }
+  .researcher-bottom-nav a:hover .bn-icon, .researcher-bottom-nav a:focus-visible .bn-icon { background: var(--teal-soft); color: var(--teal); outline: 0; }
+  .researcher-bottom-nav a.active { color: var(--teal); }
+  .researcher-bottom-nav a.active .bn-icon { background: linear-gradient(135deg, var(--teal), var(--teal-dark)); color: #fff; box-shadow: 0 4px 12px rgba(31,66,118,.35); }
+  .researcher-bottom-nav a:active { transform: scale(.94); }
+  /* مساحة سفلية حتى لا يختفي المحتوى خلف الشريط العائم */
+  .researcher-body .researcher-main { padding-bottom: calc(5.8rem + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- موجز الباحث — توزيع اجتماعي واضح ---------- */
@@ -1360,12 +1366,18 @@ body.translation-workspace-open { overflow: hidden; }
   .translation-cleanup .btn { width: 100%; }
 }
 
-/* ---------- الشبكة الاجتماعية: جرس التنبيهات ---------- */
+/* ---------- الشبكة الاجتماعية: جرس التنبيهات (تصميم حديث) ---------- */
 .notif-wrap { position: relative; margin-inline-start: auto; }
-.notif-bell { position: relative; background: none; border: 1px solid var(--line); border-radius: 999px; width: 2.4rem; height: 2.4rem; font-size: 1.15rem; cursor: pointer; display: grid; place-items: center; }
-.notif-bell:hover { border-color: var(--gold); }
-.notif-badge { position: absolute; top: -4px; inset-inline-end: -4px; min-width: 1.15rem; height: 1.15rem; border-radius: 999px; background: #b02a2a; color: #fff; font-size: .68rem; font-weight: 700; display: grid; place-items: center; padding: 0 .25rem; }
+.notif-bell { position: relative; width: 2.6rem; height: 2.6rem; border-radius: 999px; display: grid; place-items: center; cursor: pointer; color: var(--teal); background: linear-gradient(160deg, var(--card), var(--teal-soft)); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(21,47,91,.10); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.notif-bell:hover { transform: translateY(-1px); border-color: var(--gold); box-shadow: 0 6px 16px rgba(21,47,91,.16); }
+.notif-bell:active { transform: translateY(0) scale(.94); }
+.notif-bell:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.notif-bell svg { width: 1.3rem; height: 1.3rem; }
+.notif-bell.has-new svg { animation: sjBellRing 1.8s ease-in-out infinite; transform-origin: top center; }
+.notif-badge { position: absolute; top: -3px; inset-inline-end: -3px; min-width: 1.2rem; height: 1.2rem; padding: 0 .3rem; border-radius: 999px; background: linear-gradient(135deg, #d6544c, #a93226); color: #fff; font-size: .68rem; font-weight: 800; display: grid; place-items: center; border: 2px solid var(--card); box-shadow: 0 2px 6px rgba(169,50,38,.45); }
 .notif-badge[hidden] { display: none; }
+@keyframes sjBellRing { 0%,100% { transform: rotate(0deg); } 12% { transform: rotate(16deg); } 24% { transform: rotate(-13deg); } 36% { transform: rotate(9deg); } 48% { transform: rotate(-5deg); } 60% { transform: rotate(0deg); } }
+@media (prefers-reduced-motion: reduce) { .notif-bell.has-new svg { animation: none; } }
 .notif-panel { position: absolute; top: calc(100% + .5rem); inset-inline-end: 0; width: min(22rem, 86vw); max-height: 24rem; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 300; }
 .notif-panel[hidden] { display: none; }
 .notif-panel-head { padding: .7rem 1rem; border-bottom: 1px solid var(--line); font-weight: 700; }

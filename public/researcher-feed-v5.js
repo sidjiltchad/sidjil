@@ -661,6 +661,7 @@ async function initNotificationBell() {
       if (badge) {
         badge.textContent = data.unread > 99 ? '99+' : data.unread;
         badge.hidden = !data.unread;
+        bell.classList.toggle('has-new', !!data.unread);
       }
       if (list) {
         list.innerHTML = (data.items || []).map(n => `
@@ -679,6 +680,7 @@ async function initNotificationBell() {
       await refresh();
       try { await api('/api/v1/social/notifications/read', 'POST', { all: true }); } catch {}
       if (badge) badge.hidden = true;
+      bell.classList.remove('has-new');
     }
   });
   document.addEventListener('click', (e) => {
