@@ -1076,7 +1076,12 @@ input[type="checkbox"], input[type="radio"] {
 .researcher-shell .researcher-profile-chip:hover,
 .researcher-shell .researcher-profile-chip:focus-visible { color: var(--teal); }
 .researcher-shell .researcher-account-chevron { border-color: currentColor; }
-[data-theme="dark"] .researcher-shell .topbar { background: rgba(255, 255, 255, .5); color: #17345f; }
+[data-theme="dark"] .researcher-shell .topbar {
+  background: rgba(11, 18, 32, .82);
+  color: var(--chrome-ink);
+  border-bottom-color: rgba(226, 184, 85, .4);
+}
+[data-theme="dark"] .researcher-shell .researcher-profile-chip { color: var(--chrome-ink); border-color: rgba(233, 227, 212, .25); }
 
 /* الملف الشخصي للباحث */
 .post-profile-link { display: inline-flex; align-items: center; justify-content: center; color: inherit; text-decoration: none; }
