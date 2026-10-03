@@ -1189,7 +1189,7 @@ const RESEARCHER_NAV = [
   ['mine', '/researcher', 'منشوراتي'],
   ['new', '/researcher/new', '+ مادة جديدة'],
   ['article', '/researcher/article', '+ مقال للمجلة'],
-  ['discussions', '/researcher/discussions', 'نقاشاتي'],
+  ['discussions', '/researcher/discussions', 'نقاشاتي ومراجعاتي'],
 ];
 
 const RESEARCHER_STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', published: 'منشورة', hidden: 'مخفية' };
@@ -1215,6 +1215,29 @@ function researcherBioMarkup(value) {
 function researcherSelfAvatarLink(user, size = '') {
   const href = `/researcher/profile/${encodeURIComponent(user?.id || '')}`;
   return `<a class="researcher-avatar-link" href="${href}" aria-label="صفحتي الشخصية">${researcherAvatarMarkup(user, size)}</a>`;
+}
+
+function researcherMaterialData(material, thumbId = '') {
+  const values = {
+    id: material?.id,
+    title: material?.title_ar || material?.title_orig || material?.ark || 'مادة من الأرشيف',
+    type: TYPE_LABELS[material?.type] || material?.type || 'مادة',
+    year: material?.year,
+    ark: material?.ark,
+    source: material?.source_name_ar || material?.source_name,
+    author: material?.author,
+    photographer: material?.photographer,
+    place: material?.place_name,
+    archive: material?.archive_ref,
+    date: material?.date_text,
+    description: material?.description,
+    summary: material?.summary,
+    image: thumbId ? `/file/${thumbId}` : '',
+  };
+  return Object.entries(values)
+    .filter(([, value]) => value !== null && value !== undefined && String(value) !== '')
+    .map(([key, value]) => `data-material-${key}="${esc(String(value).slice(0, 1600))}"`)
+    .join(' ');
 }
 
 function researcherLayout({ title, active, user, body }) {
@@ -1251,7 +1274,6 @@ ${csrfMeta}
         ${accountNav}
         <div class="researcher-account-menu-divider"></div>
         <a class="researcher-account-nav-link${active === 'account' ? ' active' : ''}" href="/researcher/account">حسابي</a>
-        <a href="/researcher/discussions">نقاشاتي ومراجعاتي</a>
         ${THEME_TOGGLE_ADMIN}
         <button type="button" data-account-logout>تسجيل الخروج</button>
       </div>
@@ -1274,6 +1296,19 @@ ${csrfMeta}
   </main>
 </div>
 <nav class="researcher-bottom-nav" aria-label="تنقل الهاتف"><a href="/researcher"><span>⌂</span>الرئيسية</a><a href="/researcher/new"><span>＋</span>إنشاء</a><a href="/researcher/discussions"><span>💬</span>المجتمع</a><a href="/researcher/account"><span>◉</span>حسابي</a></nav>
+<div class="researcher-modal-veil" id="researcherMaterialModal" hidden>
+  <div class="researcher-material-modal" role="dialog" aria-modal="true" aria-labelledby="researcherMaterialModalTitle">
+    <button class="researcher-modal-close" type="button" data-researcher-modal-close aria-label="إغلاق">×</button>
+    <div class="researcher-material-modal-media" id="researcherMaterialModalMedia"></div>
+    <div class="researcher-material-modal-content">
+      <span class="eyebrow" id="researcherMaterialModalType"></span>
+      <h2 id="researcherMaterialModalTitle"></h2>
+      <div class="researcher-material-modal-meta" id="researcherMaterialModalMeta"></div>
+      <p id="researcherMaterialModalText"></p>
+      <a class="btn btn-primary" id="researcherMaterialModalDiscussion" href="/researcher/discussions">فتح النقاش داخل مساحة الباحث</a>
+    </div>
+  </div>
+</div>
 <script src="/researcher-feed-v5.js" defer></script>
 <script>
 (() => {
@@ -1406,9 +1441,10 @@ async function researcherDashPage(env, user, req) {
   const publishedFeed = (publishedRows.results || []).map(m => {
     const title = m.title_ar || m.title_orig || m.ark;
     const inlineId = `researcherInlineDiscussion${m.id}`;
+    const materialData = researcherMaterialData(m, m.thumb_id);
     const image = m.thumb_id
-      ? `<img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="" loading="lazy">`
-      : `<div class="researcher-feed-placeholder">${esc(TYPE_LABELS[m.type] || m.type)}</div>`;
+      ? `<button class="researcher-media-trigger" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}"><img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="${esc(title)}" loading="lazy"></button>`
+      : `<button class="researcher-media-trigger researcher-feed-placeholder" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}">${esc(TYPE_LABELS[m.type] || m.type)}</button>`;
     const excerpt = m.summary || m.description || '';
     const sourceDetails = [
       `المعرف الأرشيفي: ${m.ark}`,
@@ -1442,7 +1478,7 @@ async function researcherDashPage(env, user, req) {
       ${officialNotice}
       ${sourceBlock}
       <div class="post-head"><div class="post-avatar feed-brand-avatar">س</div><div><strong>أرشيف سِجِل</strong><div class="post-meta">${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
-      <h3 class="researcher-feed-title">${esc(title)}</h3>
+      <button class="researcher-feed-title researcher-material-trigger" type="button" data-material-details ${materialData}>${esc(title)}</button>
       ${image}
       ${excerpt ? `<p class="researcher-feed-excerpt">${esc(String(excerpt).slice(0, 420))}</p>` : ''}
       <div class="researcher-feed-actions">
@@ -1540,7 +1576,6 @@ async function researcherAccountPage(user) {
   const v = (key) => esc(user?.[key] || '');
   const body = `
   <section class="researcher-hero social-card researcher-account-hero" aria-label="حسابي">
-    ${researcherSelfAvatarLink(user, 'large')}
     <p class="researcher-account-intro">عدّل بياناتك وصورتك الشخصية التي تظهر في مشاركاتك.</p>
   </section>
   <section class="researcher-account-grid">
@@ -1569,7 +1604,18 @@ async function researcherAccountPage(user) {
       <div class="composer-footer"><span class="muted small" data-profile-status></span><button class="btn btn-primary" type="submit">حفظ بيانات الحساب</button></div>
     </form>
   </section>`;
-  return researcherLayout({ title: 'حسابي', active: 'account', user, body });
+  const passwordBody = `
+  <form id="researcherPasswordForm" class="social-card researcher-password-card" novalidate>
+    <div class="social-section-head"><div><h2>تغيير كلمة المرور</h2><p>أدخل كلمة المرور الحالية ثم اختر كلمة مرور جديدة لحماية حسابك.</p></div></div>
+    <div class="researcher-password-fields">
+      <div class="field researcher-password-field"><label for="currentPassword">كلمة المرور الحالية</label><div class="researcher-password-control"><input id="currentPassword" name="current_password" type="password" required autocomplete="current-password"><button type="button" class="password-visibility-toggle" data-password-target="currentPassword" aria-label="إظهار كلمة المرور">إظهار</button></div></div>
+      <div class="field researcher-password-field"><label for="newPassword">كلمة المرور الجديدة</label><div class="researcher-password-control"><input id="newPassword" name="new_password" type="password" required minlength="8" autocomplete="new-password"><button type="button" class="password-visibility-toggle" data-password-target="newPassword" aria-label="إظهار كلمة المرور">إظهار</button></div><div class="researcher-password-strength" data-password-strength><span></span></div><small class="muted" data-password-strength-label>8 أحرف على الأقل</small></div>
+      <div class="field researcher-password-field"><label for="confirmPassword">تأكيد كلمة المرور الجديدة</label><div class="researcher-password-control"><input id="confirmPassword" name="confirm_password" type="password" required minlength="8" autocomplete="new-password"><button type="button" class="password-visibility-toggle" data-password-target="confirmPassword" aria-label="إظهار كلمة المرور">إظهار</button></div><small class="muted" data-password-match></small></div>
+    </div>
+    <div class="composer-footer"><span class="muted small" data-password-status></span><button class="btn btn-primary" type="submit">تغيير كلمة المرور</button></div>
+  </form>`;
+  const completeBody = body + passwordBody;
+  return researcherLayout({ title: 'حسابي', active: 'account', user, body: completeBody });
 }
 
 async function researcherProfilePage(env, viewer, researcherId) {
@@ -1636,10 +1682,11 @@ async function researcherProfilePage(env, viewer, researcherId) {
 
   const materialCards = (materialRows.results || []).map(m => {
     const title = m.title_ar || m.title_orig || m.ark;
+    const materialData = researcherMaterialData(m, m.thumb_id);
     const image = m.thumb_id
       ? `<img class="researcher-profile-material-image" src="/file/${m.thumb_id}" alt="" loading="lazy">`
       : `<div class="researcher-profile-material-image researcher-feed-placeholder">${esc(TYPE_LABELS[m.type] || m.type)}</div>`;
-    return `<a class="researcher-profile-material social-card" href="/researcher/discussions?material_id=${encodeURIComponent(m.id)}">${image}<span class="researcher-profile-material-body"><strong>${esc(title)}</strong><small>${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''}</small></span></a>`;
+    return `<button class="researcher-profile-material social-card researcher-material-trigger" type="button" data-material-details ${materialData}>${image}<span class="researcher-profile-material-body"><strong>${esc(title)}</strong><small>${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''}</small></span></button>`;
   }).join('');
 
   const profileName = target.display_name || target.username || 'باحث';
@@ -1778,7 +1825,7 @@ async function researcherDiscussionsPage(env, user, req) {
     <section class="researcher-feed-column">${activityContent}</section>
   </div>
   <p class="muted small">المشاركة والردود متاحة للباحثين المسجلين، بينما تعتمد الإدارة الحسابات وتدير المخالفات.</p>`;
-  return researcherLayout({ title: 'نقاشاتي', active: 'discussions', user, body });
+  return researcherLayout({ title: 'نقاشاتي ومراجعاتي', active: 'discussions', user, body });
 }
 
 async function researcherFormPage(env, user, mode, id) {
