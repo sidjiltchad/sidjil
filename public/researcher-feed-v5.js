@@ -47,13 +47,191 @@ async function api(path, method = 'GET', body) {
   try { data = await res.json(); } catch (_) { /* ليس JSON */ }
   if (!res.ok) {
     const msg = (data && data.error) || `خطأ في الخادم (${res.status})`;
-    if (res.status === 401) { location.href = '/admin/login'; }
+    if (res.status === 401) { location.href = document.body.classList.contains('researcher-body') ? '/discussions' : '/admin/login'; }
     throw new Error(msg);
   }
   return data;
 }
 
+function openResearcherMaterialModal(trigger) {
+  const modal = document.getElementById('researcherMaterialModal');
+  if (!modal || !trigger) return;
+  const d = trigger.dataset;
+  const media = document.getElementById('researcherMaterialModalMedia');
+  const type = document.getElementById('researcherMaterialModalType');
+  const title = document.getElementById('researcherMaterialModalTitle');
+  const meta = document.getElementById('researcherMaterialModalMeta');
+  const text = document.getElementById('researcherMaterialModalText');
+  const translate = document.getElementById('researcherMaterialModalTranslate');
+  const download = document.getElementById('researcherMaterialModalDownload');
+  const discussion = document.getElementById('researcherMaterialModalDiscussion');
+  if (!media || !type || !title || !meta || !text || !discussion) return;
+
+  media.textContent = '';
+  media.classList.toggle('researcher-material-modal-pdf', !!d.materialPdf);
+  if (d.materialPdf) {
+    const frame = document.createElement('iframe');
+    frame.className = 'researcher-material-modal-pdf-frame';
+    frame.src = `${d.materialPdf}#toolbar=1&navpanes=0&view=FitH`;
+    frame.title = `قراءة ${d.materialTitle || 'الكتاب'}`;
+    frame.loading = 'eager';
+    frame.setAttribute('allowfullscreen', 'true');
+    media.appendChild(frame);
+  } else if (d.materialImage) {
+    const image = document.createElement('img');
+    image.src = d.materialImage;
+    image.alt = d.materialTitle || '';
+    image.loading = 'eager';
+    media.appendChild(image);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'researcher-material-modal-placeholder';
+    placeholder.textContent = d.materialType || 'مادة من الأرشيف';
+    media.appendChild(placeholder);
+  }
+  type.textContent = d.materialType || 'مادة من الأرشيف';
+  title.textContent = d.materialTitle || 'مادة من الأرشيف';
+  meta.textContent = '';
+  [
+    ['المعرف الأرشيفي', d.materialArk],
+    ['السنة', d.materialYear],
+    ['المصدر', d.materialSource],
+    ['المؤلف / الجهة', d.materialAuthor],
+    ['المصور', d.materialPhotographer],
+    ['الموضع', d.materialPlace],
+    ['المرجع', d.materialArchive],
+    ['التاريخ', d.materialDate],
+  ].filter(([, value]) => value).forEach(([label, value]) => {
+    const item = document.createElement('span');
+    item.textContent = `${label}: ${value}`;
+    meta.appendChild(item);
+  });
+  text.textContent = d.materialSummary || d.materialDescription || '';
+  const materialId = d.materialId || '';
+  if (translate) {
+    translate.hidden = !d.materialPdf;
+    if (d.materialPdf) {
+      translate.dataset.translateDocument = materialId;
+      translate.dataset.translatePdf = d.materialPdf;
+      translate.dataset.translateTitle = d.materialTitle || '';
+      translate.dataset.translateOriginalDownload = d.materialPdfDownload || d.materialPdf;
+    } else {
+      delete translate.dataset.translateDocument;
+      delete translate.dataset.translatePdf;
+      delete translate.dataset.translateTitle;
+      delete translate.dataset.translateOriginalDownload;
+    }
+  }
+  if (download) {
+    download.hidden = !d.materialPdf;
+    if (d.materialPdf) {
+      download.href = d.materialPdfDownload || `${d.materialPdf}?download=1`;
+      download.textContent = 'تنزيل PDF الأصلي';
+    } else {
+      download.removeAttribute('href');
+    }
+  }
+  discussion.href = materialId ? `/researcher/discussions?material_id=${encodeURIComponent(materialId)}` : '/researcher/discussions';
+  modal.hidden = false;
+  document.body.classList.add('researcher-modal-open');
+  const close = modal.querySelector('[data-researcher-modal-close]');
+  if (close) close.focus();
+}
+
+function closeResearcherMaterialModal() {
+  const modal = document.getElementById('researcherMaterialModal');
+  if (!modal) return;
+  modal.hidden = true;
+  document.body.classList.remove('researcher-modal-open');
+}
+
 function initResearcherPage() {
+
+  // ---------- عارض الصور وتفاصيل المواد داخل مساحة الباحث ----------
+  document.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-material-details]');
+    if (trigger) {
+      event.preventDefault();
+      openResearcherMaterialModal(trigger);
+      return;
+    }
+    if (event.target.closest('[data-researcher-modal-close]')) {
+      event.preventDefault();
+      closeResearcherMaterialModal();
+      return;
+    }
+    const modal = document.getElementById('researcherMaterialModal');
+    if (modal && event.target === modal) closeResearcherMaterialModal();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeResearcherMaterialModal();
+  });
+
+  // ---------- تغيير كلمة المرور ----------
+  document.querySelectorAll('[data-password-target]').forEach((toggle) => {
+    if (toggle.dataset.sjBound) return;
+    toggle.dataset.sjBound = '1';
+    toggle.addEventListener('click', () => {
+      const input = document.getElementById(toggle.dataset.passwordTarget);
+      if (!input) return;
+      const visible = input.type === 'text';
+      input.type = visible ? 'password' : 'text';
+      toggle.textContent = visible ? 'إظهار' : 'إخفاء';
+      toggle.setAttribute('aria-label', visible ? 'إظهار كلمة المرور' : 'إخفاء كلمة المرور');
+    });
+  });
+  const passwordForm = document.getElementById('researcherPasswordForm');
+  if (passwordForm && !passwordForm.dataset.sjBound) {
+    passwordForm.dataset.sjBound = '1';
+    const newPassword = passwordForm.querySelector('[name="new_password"]');
+    const confirmPassword = passwordForm.querySelector('[name="confirm_password"]');
+    const strength = passwordForm.querySelector('[data-password-strength]');
+    const strengthLabel = passwordForm.querySelector('[data-password-strength-label]');
+    const matchLabel = passwordForm.querySelector('[data-password-match]');
+    const updatePasswordHints = () => {
+      const value = newPassword ? newPassword.value : '';
+      let score = 0;
+      if (value.length >= 8) score++;
+      if (/[A-ZÀ-ÖØ-Ý]/.test(value)) score++;
+      if (/[a-zà-öø-ÿ]/.test(value)) score++;
+      if (/\d/.test(value)) score++;
+      if (/[^A-Za-zÀ-ÿ\d]/.test(value)) score++;
+      if (strength) { strength.dataset.level = value ? String(Math.max(1, score)) : '0'; }
+      if (strengthLabel) strengthLabel.textContent = !value ? '8 أحرف على الأقل' : score >= 4 ? 'كلمة مرور قوية' : score >= 2 ? 'كلمة مرور متوسطة' : 'كلمة مرور ضعيفة';
+      if (matchLabel && confirmPassword && confirmPassword.value) {
+        matchLabel.textContent = value === confirmPassword.value ? 'كلمتا المرور متطابقتان' : 'كلمتا المرور غير متطابقتين';
+        matchLabel.className = value === confirmPassword.value ? 'researcher-password-match ok' : 'researcher-password-match err';
+      } else if (matchLabel) { matchLabel.textContent = ''; matchLabel.className = 'muted researcher-password-match'; }
+    };
+    [newPassword, confirmPassword].forEach((input) => input && input.addEventListener('input', updatePasswordHints));
+    passwordForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const status = passwordForm.querySelector('[data-password-status]');
+      const button = passwordForm.querySelector('[type="submit"]');
+      const fd = new FormData(passwordForm);
+      const payload = {
+        current_password: String(fd.get('current_password') || ''),
+        new_password: String(fd.get('new_password') || ''),
+        confirm_password: String(fd.get('confirm_password') || ''),
+      };
+      if (payload.new_password !== payload.confirm_password) {
+        if (status) status.textContent = 'كلمتا المرور الجديدتان غير متطابقتين';
+        toast('كلمتا المرور الجديدتان غير متطابقتين', false);
+        return;
+      }
+      if (button) button.disabled = true;
+      try {
+        await api('/api/v1/admin/profile/password', 'POST', payload);
+        passwordForm.reset();
+        updatePasswordHints();
+        if (status) status.textContent = 'تم تغيير كلمة المرور وإبطال الجلسات الأخرى.';
+        toast('تم تغيير كلمة المرور بنجاح');
+      } catch (error) {
+        if (status) status.textContent = error.message;
+        toast(error.message, false);
+      } finally { if (button) button.disabled = false; }
+    });
+  }
 
   // ---------- رأس المساحة والقائمة الجانبية ----------
   const sideToggle = document.getElementById('sideToggle');

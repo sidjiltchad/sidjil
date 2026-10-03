@@ -209,14 +209,28 @@ export async function logout(env, token) {
  * setSessionCookie(token, reqUrl?)
  * + Secure إذا كان reqUrl يبدأ بـ https
  */
+function sessionCookieDomain(reqUrl = '') {
+  try {
+    const host = new URL(String(reqUrl)).hostname.toLowerCase();
+    // The researcher app lives on app.sidjil.org while the public archive
+    // remains on sidjil.org. Share only the SIDJIL zone session between them;
+    // local Wrangler hosts intentionally keep a host-only cookie.
+    if (host === 'sidjil.org' || host.endsWith('.sidjil.org')) return '; Domain=.sidjil.org';
+  } catch {
+    // Ignore malformed or absent URLs and keep a host-only cookie.
+  }
+  return '';
+}
+
 export function setSessionCookie(token, reqUrl = '') {
   let c = `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_TTL_SEC}`;
   if (String(reqUrl).startsWith('https')) c += '; Secure';
+  c += sessionCookieDomain(reqUrl);
   return c;
 }
 
-export function clearSessionCookie() {
-  return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`;
+export function clearSessionCookie(reqUrl = '') {
+  return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${sessionCookieDomain(reqUrl)}`;
 }
 
 /** استخراج التوكن الخام من الكوكي (للاستخدام الداخلي) */

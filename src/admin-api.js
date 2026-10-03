@@ -14,6 +14,7 @@ import {
   login,
   logout,
   hashPassword,
+  verifyPassword,
   getSessionUser,
   getSessionToken,
   setSessionCookie,
@@ -87,6 +88,7 @@ async function findMaterial(db, idOrArk) {
 function researcherAllowed(rest, method) {
   if (rest === 'profile' && (method === 'GET' || method === 'PATCH')) return true;
   if (rest === 'profile/avatar' && (method === 'POST' || method === 'DELETE')) return true;
+  if (rest === 'profile/password' && method === 'POST') return true;
   if (method === 'GET' && rest === 'materials') return true;      // تُفلتر لمواده داخل الدالة
   if (method === 'GET' && rest === 'collections') return true;    // لاختيار الأقسام في النموذج
   if (method === 'POST' && rest === 'materials') return true;     // إنشاء كمسودة حصرًا
@@ -162,7 +164,7 @@ export async function routeAdminApi(req, env) {
   if (rest === 'logout' && method === 'POST') {
     await logout(env, getSessionToken(req));
     await audit(env.DB, { userId: user.id, action: 'admin.logout', ip: clientIp(req) });
-    return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie() });
+    return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie(req.url) });
   }
 
   // حساب الباحث: البيانات الشخصية والصورة (لا يغيّر اسم المستخدم هنا)
@@ -172,6 +174,8 @@ export async function routeAdminApi(req, env) {
   }
   if (rest === 'profile' && method === 'PATCH')
     return withJsonBody(req, (body) => admProfileUpdate(env, user, req, body));
+  if (rest === 'profile/password' && method === 'POST')
+    return withJsonBody(req, (body) => admProfilePasswordUpdate(env, user, req, body));
   if (rest === 'profile/avatar' && method === 'POST') return admProfileAvatarUpload(env, user, req);
   if (rest === 'profile/avatar' && method === 'DELETE') return admProfileAvatarDelete(env, user, req);
 
@@ -681,6 +685,38 @@ async function admProfileUpdate(env, user, req, body) {
   ).bind(displayName, email, phone, affiliation || null, jobTitle, bio, specialty || null, website || null, user.id).run();
   await audit(db, { userId: user.id, action: 'researcher.profile_update', target: user.username, detail: 'تحديث بيانات الحساب', ip: clientIp(req) });
   return json({ ok: true });
+}
+
+async function admProfilePasswordUpdate(env, user, req, body) {
+  const currentPassword = String(body.current_password || '');
+  const newPassword = String(body.new_password || '');
+  const confirmPassword = String(body.confirm_password || '');
+  if (!currentPassword || !newPassword || !confirmPassword) return err('جميع حقول كلمة المرور مطلوبة', 400);
+  if (newPassword.length < 8) return err('كلمة المرور الجديدة 8 أحرف على الأقل', 400);
+  if (newPassword !== confirmPassword) return err('كلمتا المرور الجديدتان غير متطابقتين', 400);
+  if (newPassword === currentPassword) return err('اختر كلمة مرور جديدة مختلفة', 400);
+
+  const account = await env.DB.prepare('SELECT username, password_hash FROM admin_users WHERE id = ?').bind(user.id).first();
+  if (!account || !(await verifyPassword(currentPassword, account.password_hash))) {
+    await audit(env.DB, { userId: user.id, action: 'account.password_change_failed', target: user.username, detail: 'كلمة المرور الحالية غير صحيحة', ip: clientIp(req) });
+    return err('كلمة المرور الحالية غير صحيحة', 400);
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await env.DB.prepare(
+    `UPDATE admin_users SET password_hash = ?, password_changed_at = datetime('now'),
+      must_change_password = 0, updated_at = datetime('now') WHERE id = ?`
+  ).bind(passwordHash, user.id).run();
+
+  // Keep the current session usable while invalidating every other device.
+  const currentToken = getSessionToken(req);
+  if (currentToken) {
+    await env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').bind(user.id, currentToken).run();
+  } else {
+    await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id).run();
+  }
+  await audit(env.DB, { userId: user.id, action: 'account.password_changed', target: user.username, detail: 'تغيير كلمة المرور وإبطال الجلسات الأخرى', ip: clientIp(req) });
+  return json({ ok: true, sessionsRevoked: true });
 }
 
 function avatarExtension(file) {

@@ -29,6 +29,7 @@ not_found_handling = "none"
 [vars]
 SITE_NAME = "سِجِل"
 SITE_URL = "https://sidjil.org"
+APP_URL = "https://app.sidjil.org"
 ADMIN_USERNAME = "admin"
 # ADMIN_PASSWORD_HASH يُضبط كسرّ (wrangler secret) ولا يوضع هنا أبدًا
 
