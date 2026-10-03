@@ -1334,6 +1334,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
 </script>
+<script type="module" src="/js/researcher-pdf.js?v=20261003-rpdf1"></script>
 <script src="/researcher-feed-v5.js?v=20261003-pdf-modal" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>

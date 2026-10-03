@@ -53,6 +53,7 @@ async function api(path, method = 'GET', body) {
   return data;
 }
 
+let activePdfReader = null;
 function openResearcherMaterialModal(trigger) {
   const modal = document.getElementById('researcherMaterialModal');
   if (!modal || !trigger) return;
@@ -70,13 +71,25 @@ function openResearcherMaterialModal(trigger) {
   media.textContent = '';
   media.classList.toggle('researcher-material-modal-pdf', !!d.materialPdf);
   if (d.materialPdf) {
-    const frame = document.createElement('iframe');
-    frame.className = 'researcher-material-modal-pdf-frame';
-    frame.src = `${d.materialPdf}#toolbar=1&navpanes=0&view=FitH`;
-    frame.title = `قراءة ${d.materialTitle || 'الكتاب'}`;
-    frame.loading = 'eager';
-    frame.setAttribute('allowfullscreen', 'true');
-    media.appendChild(frame);
+    const readerBox = document.createElement('div');
+    readerBox.className = 'researcher-material-modal-pdf-reader';
+    media.appendChild(readerBox);
+    if (window.SidjilPdfReader && window.SidjilPdfReader.mount) {
+      window.SidjilPdfReader.mount(readerBox, {
+        url: d.materialPdf,
+        materialId: d.materialId || '',
+        materialTitle: d.materialTitle || 'الكتاب',
+      }).then(reader => { activePdfReader = reader; }).catch(() => {});
+    } else {
+      // بديل: iframe عند تعذر تحميل الوحدة
+      const frame = document.createElement('iframe');
+      frame.className = 'researcher-material-modal-pdf-frame';
+      frame.src = `${d.materialPdf}#toolbar=1&navpanes=0&view=FitH`;
+      frame.title = `قراءة ${d.materialTitle || 'الكتاب'}`;
+      frame.loading = 'eager';
+      frame.setAttribute('allowfullscreen', 'true');
+      readerBox.appendChild(frame);
+    }
   } else if (d.materialImage) {
     const image = document.createElement('img');
     image.src = d.materialImage;
@@ -139,6 +152,7 @@ function openResearcherMaterialModal(trigger) {
 }
 
 function closeResearcherMaterialModal() {
+  if (activePdfReader) { try { activePdfReader.destroy(); } catch {} activePdfReader = null; }
   const modal = document.getElementById('researcherMaterialModal');
   if (!modal) return;
   modal.hidden = true;
