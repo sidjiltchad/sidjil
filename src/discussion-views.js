@@ -3,8 +3,9 @@
 // /discussions — /discussion/:id — /researcher/register
 // ============================================================
 
-import { esc, langPath, paginationHTML, truncate, layout, shareHTML } from './views.js';
+import { esc, langPath, paginationHTML, truncate, layout, shareHTML, enrichMaterials } from './views.js';
 import { t } from './i18n.js';
+import { getSessionUser } from './lib/auth.js';
 import {
   fetchDiscussions,
   getDiscussionFull,
@@ -79,10 +80,77 @@ function discussionCard(ctx, d) {
   </article>`;
 }
 
+function authErrorText(lang, code) {
+  return code && t(lang, 'discussion_auth_error_' + code) !== 'discussion_auth_error_' + code
+    ? t(lang, 'discussion_auth_error_' + code) : '';
+}
+
+function discussionAuthGate(ctx) {
+  const { lang } = ctx;
+  const url = new URL(ctx.url);
+  const error = authErrorText(lang, url.searchParams.get('auth_error'));
+  const requestedNext = String(url.searchParams.get('next') || '').trim();
+  url.searchParams.delete('auth_error');
+  url.searchParams.delete('next');
+  const currentNext = `${url.pathname}${url.search}`;
+  const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : currentNext;
+  return `<div class="wrap social-auth-page">
+    <div class="social-auth-card">
+      <div class="social-auth-mark" aria-hidden="true">سِ</div>
+      <span class="eyebrow">${esc(t(lang, 'site_name'))}</span>
+      <h1>${esc(t(lang, 'discussion_login_title'))}</h1>
+      <p class="social-auth-intro">${esc(t(lang, 'discussion_login_intro'))}</p>
+      ${error ? `<div class="notice notice-error" role="alert">${esc(error)}</div>` : ''}
+      <form id="discussionLoginForm" class="social-auth-form" data-next="${esc(next)}" novalidate>
+        <label class="sr-only" for="discussionLoginUsername">${esc(t(lang, 'register_username'))}</label>
+        <input id="discussionLoginUsername" name="username" required autocomplete="username" placeholder="${esc(t(lang, 'register_username'))}">
+        <label class="sr-only" for="discussionLoginPassword">${esc(t(lang, 'register_password'))}</label>
+        <input id="discussionLoginPassword" name="password" required type="password" autocomplete="current-password" placeholder="${esc(t(lang, 'register_password'))}">
+        <p class="form-msg" id="discussionLoginMsg" role="status"></p>
+        <button class="btn btn-primary btn-block" type="submit">${esc(t(lang, 'discussion_login_button'))}</button>
+      </form>
+      <div class="social-auth-divider"><span>أو</span></div>
+      <a class="btn btn-google btn-block" href="/auth/google/start?next=${encodeURIComponent(next)}">${esc(t(lang, 'discussion_google_button'))}</a>
+      <p class="social-auth-note">${esc(t(lang, 'discussion_google_note'))}</p>
+      <div class="social-auth-register"><span>${esc(t(lang, 'discussion_login_hint'))}</span> <a href="${langPath(ctx, '/researcher/register')}">${esc(t(lang, 'register_researcher'))}</a></div>
+    </div>
+  </div><script src="/js/discussions.js" defer></script>`;
+}
+
+function materialPostCard(ctx, material) {
+  const { lang } = ctx;
+  const title = material.title_ar || material.title_orig || material.ark;
+  const image = material._thumb
+    ? `<img class="material-post-image" src="/file/${material._thumb}" alt="" loading="lazy">`
+    : `<div class="material-post-image material-post-placeholder">${esc(t(lang, 'type_' + material.type))}</div>`;
+  const description = material.summary || material.description || '';
+  const materialUrl = langPath(ctx, `/document/${encodeURIComponent(material.ark)}`);
+  const reviewUrl = `/researcher/discussions?material_id=${encodeURIComponent(material.id)}`;
+  return `<article class="material-post social-card">
+    <div class="post-head">
+      <div class="post-avatar" aria-hidden="true">س</div>
+      <div><strong>أرشيف سِجِل</strong><div class="post-meta">${esc(t(lang, 'type_' + material.type))}${material.year ? ` · ${esc(material.year)}` : ''}</div></div>
+      <span class="post-kind">${esc(t(lang, 'discussion_feed_title'))}</span>
+    </div>
+    <a class="material-post-title" href="${materialUrl}">${esc(title)}</a>
+    ${image}
+    ${description ? `<p class="material-post-text">${esc(truncate(description, 360))}</p>` : ''}
+    <div class="post-actions">
+      <a class="post-action" href="${materialUrl}">↗ ${esc(t(lang, 'discussion_open_material'))}</a>
+      <a class="post-action" href="${reviewUrl}">💬 ${esc(t(lang, 'discussion_start_review'))}</a>
+    </div>
+  </article>`;
+}
+
 // ---------- صفحة /discussions ----------
 
 export async function discussionsPage(ctx) {
   const { lang, env } = ctx;
+  const user = await getSessionUser(ctx.req, env);
+  if (!user) {
+    const content = `<header class="page-head"><h1>${esc(t(lang, 'discussions_title'))}</h1></header>${discussionAuthGate(ctx)}`;
+    return layout(ctx, { title: t(lang, 'discussions_title'), description: t(lang, 'discussion_login_intro'), active: '/discussions', content });
+  }
   const url = new URL(ctx.url);
   const kind = url.searchParams.get('kind');
   const page = url.searchParams.get('page') || 1;
@@ -99,15 +167,27 @@ export async function discussionsPage(ctx) {
     ? `<div class="d-grid">${items.map((d) => discussionCard(ctx, d)).join('')}</div>`
     : `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`;
 
+  const materialRows = await env.DB.prepare(
+    `SELECT id, ark, type, title_ar, title_orig, description, summary, year, updated_at
+     FROM materials WHERE publish_status = 'published' ORDER BY updated_at DESC, id DESC LIMIT 24`
+  ).all();
+  const materials = await enrichMaterials(env, materialRows.results || []);
+  const materialFeed = materials.length
+    ? materials.map((m) => materialPostCard(ctx, m)).join('')
+    : `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`;
+
   const base = langPath(ctx, '/discussions') + (kind ? `?kind=${kind}&` : '?');
 
   const content = `
   <div class="wrap page-discussions">
     <nav class="breadcrumb"><a href="${langPath(ctx, '/')}">${esc(t(lang, 'nav_home'))}</a> / ${esc(t(lang, 'discussions_title'))}</nav>
-    <header class="page-head">
+    <header class="page-head social-page-head">
       <h1>${esc(t(lang, 'discussions_title'))}</h1>
       <p class="page-desc">${esc(t(lang, 'discussions_intro'))}</p>
     </header>
+    <section class="social-feed-intro social-card"><strong>${esc(t(lang, 'discussion_feed_title'))}</strong><span>${esc(t(lang, 'discussion_feed_intro'))}</span></section>
+    <div class="material-feed">${materialFeed}</div>
+    <section class="social-section-head"><div><h2>${esc(t(lang, 'discussions_title'))}</h2><p>${esc(t(lang, 'discussion_feed_intro'))}</p></div><a class="btn btn-primary" href="${langPath(ctx, '/researcher/discussions')}">${esc(t(lang, 'discussion_start_review'))}</a></section>
     <div class="chip-row" role="navigation" aria-label="${esc(t(lang, 'discussion_kind_ph'))}">${chips}</div>
     ${cards}
     ${paginationHTML(ctx, page, perPage, total, base)}
@@ -127,6 +207,11 @@ export async function discussionsPage(ctx) {
 
 export async function discussionPage(ctx, id) {
   const { lang, env, req } = ctx;
+  const sessionUser = await getSessionUser(req, env);
+  if (!sessionUser) {
+    const content = `<header class="page-head"><h1>${esc(t(lang, 'discussions_title'))}</h1></header>${discussionAuthGate(ctx)}`;
+    return layout(ctx, { title: t(lang, 'discussion_login_title'), description: t(lang, 'discussion_login_intro'), active: '/discussions', content });
+  }
   const full = await getDiscussionFull(env.DB, id);
   if (!full) {
     const content = `<div class="wrap"><p class="empty">${esc(t(lang, 'discussion_not_found'))}</p>
@@ -225,19 +310,70 @@ export function registerPage(ctx) {
     <nav class="breadcrumb"><a href="${langPath(ctx, '/')}">${esc(t(lang, 'nav_home'))}</a> / ${esc(t(lang, 'register_researcher'))}</nav>
     <header class="page-head"><h1>${esc(t(lang, 'register_researcher'))}</h1>
       <p class="page-desc">${esc(t(lang, 'register_intro'))}</p></header>
-    <form id="registerForm" class="card form-card" novalidate>
-      <div class="field"><label for="rg-name">${esc(t(lang, 'register_name'))}</label>
-        <input id="rg-name" name="display_name" required maxlength="80"></div>
-      <div class="field"><label for="rg-aff">${esc(t(lang, 'register_affiliation'))}</label>
-        <input id="rg-aff" name="affiliation" maxlength="160"></div>
-      <div class="field"><label for="rg-bio">${esc(t(lang, 'register_bio'))}</label>
-        <textarea id="rg-bio" name="bio" rows="3" maxlength="500"></textarea></div>
-      <div class="field"><label for="rg-user">${esc(t(lang, 'register_username'))}</label>
-        <input id="rg-user" name="username" required minlength="3" dir="ltr" placeholder="مثال: researcher_ahmed"></div>
-      <div class="field"><label for="rg-pass">${esc(t(lang, 'register_password'))}</label>
-        <input id="rg-pass" name="password" type="password" required minlength="8" dir="ltr"></div>
-      <p class="form-msg" id="registerMsg" role="status" data-done="${esc(t(lang, 'register_done'))}"></p>
-      <button class="btn btn-primary" type="submit">${esc(t(lang, 'register_submit'))}</button>
+    <form id="registerForm" class="card form-card register-card" novalidate>
+      <div class="register-card-head">
+        <div class="register-card-mark" aria-hidden="true">سِ</div>
+        <div><span class="eyebrow">${esc(t(lang, 'site_name'))}</span><h2>${esc(t(lang, 'register_researcher'))}</h2></div>
+      </div>
+      <div class="register-form-section">
+        <h2 class="register-section-title"><span>1</span>${esc(t(lang, 'register_profile_title'))}</h2>
+        <div class="register-fields">
+          <div class="register-field">
+            <label for="rg-name"><span class="register-label-main">${esc(t(lang, 'register_name'))} <b aria-hidden="true">*</b></span><small>${esc(t(lang, 'register_required'))}</small></label>
+            <div class="register-control"><input id="rg-name" name="display_name" required maxlength="80" autocomplete="name"></div>
+            <p class="register-help">${esc(t(lang, 'register_name_help'))}</p>
+          </div>
+          <div class="register-fields register-contact-fields">
+            <div class="register-field">
+              <label for="rg-email"><span class="register-label-main">${esc(t(lang, 'register_email'))} <b aria-hidden="true">*</b></span><small>${esc(t(lang, 'register_required'))}</small></label>
+              <div class="register-control"><input id="rg-email" name="email" type="email" required maxlength="160" autocomplete="email" dir="ltr"></div>
+              <p class="register-help">${esc(t(lang, 'register_email_help'))}</p>
+            </div>
+            <div class="register-field">
+              <label for="rg-phone"><span class="register-label-main">${esc(t(lang, 'register_phone'))} <b aria-hidden="true">*</b></span><small>${esc(t(lang, 'register_required'))}</small></label>
+              <div class="register-control"><input id="rg-phone" name="phone" type="tel" required maxlength="40" autocomplete="tel" dir="ltr"></div>
+              <p class="register-help">${esc(t(lang, 'register_phone_help'))}</p>
+            </div>
+          </div>
+          <div class="register-field">
+            <label for="rg-aff"><span class="register-label-main">${esc(t(lang, 'register_affiliation'))}</span><small>${esc(t(lang, 'register_affiliation').match(/\(([^)]+)\)/)?.[1] || '')}</small></label>
+            <div class="register-control"><input id="rg-aff" name="affiliation" maxlength="160" autocomplete="organization"></div>
+            <p class="register-help">${esc(t(lang, 'register_affiliation_help'))}</p>
+          </div>
+          <div class="register-field">
+            <label for="rg-title"><span class="register-label-main">${esc(t(lang, 'register_job_title'))} <b aria-hidden="true">*</b></span><small>${esc(t(lang, 'register_required'))}</small></label>
+            <div class="register-control"><input id="rg-title" name="job_title" required maxlength="160" autocomplete="organization-title"></div>
+            <p class="register-help">${esc(t(lang, 'register_job_title_help'))}</p>
+          </div>
+          <div class="register-field">
+            <label for="rg-bio"><span class="register-label-main">${esc(t(lang, 'register_bio'))} <b aria-hidden="true">*</b></span><small>${esc(t(lang, 'register_required'))}</small></label>
+            <div class="register-control"><textarea id="rg-bio" name="bio" rows="4" required maxlength="500"></textarea></div>
+            <p class="register-help">${esc(t(lang, 'register_bio_help'))}</p>
+          </div>
+        </div>
+      </div>
+      <div class="register-form-section">
+        <h2 class="register-section-title"><span>2</span>${esc(t(lang, 'register_account_title'))}</h2>
+        <div class="register-fields register-account-fields">
+          <div class="register-field">
+            <label for="rg-user"><span class="register-label-main">${esc(t(lang, 'register_username'))} <b aria-hidden="true">*</b></span><small>${esc(t(lang, 'register_required'))}</small></label>
+            <div class="register-control"><input id="rg-user" name="username" required minlength="3" dir="ltr" autocomplete="username" placeholder="${esc(lang === 'ar' ? 'مثال: researcher_ahmed' : 'ex. researcher_ahmed')}"></div>
+            <p class="register-help">${esc(t(lang, 'register_username_help'))}</p>
+          </div>
+          <div class="register-field">
+            <label for="rg-pass"><span class="register-label-main">${esc(t(lang, 'register_password'))} <b aria-hidden="true">*</b></span><small>${esc(t(lang, 'register_required'))}</small></label>
+            <div class="register-control register-password-control"><input id="rg-pass" name="password" type="password" required minlength="8" dir="ltr" autocomplete="new-password"><button type="button" class="password-toggle" data-password-toggle="rg-pass" data-show-label="${esc(t(lang, 'register_show_password'))}" data-hide-label="${esc(t(lang, 'register_hide_password'))}" aria-label="${esc(t(lang, 'register_show_password'))}" title="${esc(t(lang, 'register_show_password'))}">◉</button></div>
+            <p class="register-help">${esc(t(lang, 'register_password_help'))}</p>
+          </div>
+        </div>
+      </div>
+      <div class="register-form-actions">
+        <p class="form-msg" id="registerMsg" role="status" data-done="${esc(t(lang, 'register_done'))}"></p>
+        <button class="btn btn-primary register-submit" type="submit">${esc(t(lang, 'register_submit'))}</button>
+      </div>
+      <div class="social-auth-divider"><span>${esc(lang === 'ar' ? 'أو' : 'ou')}</span></div>
+      <a class="btn btn-google btn-block" href="/auth/google/start?next=${encodeURIComponent('/researcher')}">${esc(t(lang, 'discussion_google_button'))}</a>
+      <p class="social-auth-note">${esc(t(lang, 'discussion_google_note'))}</p>
     </form>
   </div>
   <script src="/js/discussions.js" defer></script>`;

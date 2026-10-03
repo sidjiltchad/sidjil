@@ -241,25 +241,35 @@ export async function apiResearcherRegister(env, req) {
   const username = String(body.username || '').trim();
   const password = String(body.password || '');
   const displayName = String(body.display_name || '').trim().slice(0, 80);
+  const email = String(body.email || '').trim().toLowerCase().slice(0, 160);
+  const phone = String(body.phone || '').trim().slice(0, 40);
   const affiliation = String(body.affiliation || '').trim().slice(0, 160);
+  const jobTitle = String(body.job_title || '').trim().slice(0, 160);
   const bio = String(body.bio || '').trim().slice(0, 500);
 
   if (username.length < 3) return err('اسم المستخدم 3 أحرف على الأقل', 400);
   if (!/^[A-Za-z0-9_.-]+$/.test(username)) return err('اسم المستخدم: أحرف لاتينية وأرقام و _ . - فقط', 400);
   if (password.length < 8) return err('كلمة المرور 8 أحرف على الأقل', 400);
   if (!displayName) return err('الاسم الكريم مطلوب', 400);
+  if (!email) return err('البريد الإلكتروني مطلوب', 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return err('أدخل بريدًا إلكترونيًا صحيحًا', 400);
+  if (!phone || phone.replace(/[\s()+\-]/g, '').length < 6) return err('رقم الهاتف مطلوب وصالح', 400);
+  if (!jobTitle) return err('الصفة أو المسمى الوظيفي مطلوب', 400);
+  if (!bio) return err('النبذة التعريفية مطلوبة', 400);
 
   const db = env.DB;
   const exists = await db.prepare('SELECT id FROM admin_users WHERE username = ?').bind(username).first();
   if (exists) return err('اسم المستخدم موجود مسبقًا', 400);
+  const emailExists = await db.prepare('SELECT id FROM admin_users WHERE lower(email) = ?').bind(email).first();
+  if (emailExists) return err('البريد الإلكتروني مستخدم مسبقًا', 400);
 
   const password_hash = await hashPassword(password);
   const res = await db
     .prepare(
-      `INSERT INTO admin_users (username, password_hash, role, is_active, is_verified, display_name, affiliation, bio)
-       VALUES (?, ?, 'researcher', 1, 0, ?, ?, ?)`
+      `INSERT INTO admin_users (username, password_hash, role, is_active, is_verified, display_name, email, phone, affiliation, job_title, bio)
+       VALUES (?, ?, 'researcher', 1, 0, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(username, password_hash, displayName, affiliation || null, bio || null)
+    .bind(username, password_hash, displayName, email, phone, affiliation || null, jobTitle, bio)
     .run();
   await audit(db, {
     userId: null,

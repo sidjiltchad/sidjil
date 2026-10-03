@@ -9,6 +9,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   if (!box) return;
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+  var pdfRenderOptions = { disableFontFace: false, useSystemFonts: true, isEvalSupported: true };
 
   var url = box.getAttribute('data-pdf');
   var canvas = box.querySelector('[data-pdf-canvas]');
@@ -19,6 +20,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var wrap = box.querySelector('#pdfCanvasWrap');
   var readingPages = box.querySelector('[data-pdf-reading-pages]');
   var readBtn = box.querySelector('[data-pdf-read]');
+  var hasReadingMode = !!(readingPages && readBtn);
 
   var pdfDoc = null;
   var pageNum = 1;
@@ -49,6 +51,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       canvas.height = Math.floor(viewport.height * dpr);
       canvas.style.width = Math.floor(viewport.width) + 'px';
       canvas.style.height = Math.floor(viewport.height) + 'px';
+      canvas.style.imageRendering = 'auto';
       return page.render({
         canvasContext: ctx,
         viewport: viewport,
@@ -95,6 +98,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       pageCanvas.height = Math.floor(viewport.height * dpr);
       pageCanvas.style.width = Math.floor(viewport.width) + 'px';
       pageCanvas.style.height = Math.floor(viewport.height) + 'px';
+      pageCanvas.style.imageRendering = 'auto';
       return page.render({
         canvasContext: pageCanvas.getContext('2d'),
         viewport: viewport,
@@ -109,7 +113,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   }
 
   function enterReadingMode() {
-    if (!pdfDoc || readingMode) return;
+    if (!hasReadingMode || !pdfDoc || readingMode) return;
     readingMode = true;
     wrap.classList.add('hidden');
     readingPages.classList.remove('hidden');
@@ -139,7 +143,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   }
 
   function leaveReadingMode() {
-    if (!readingMode) return;
+    if (!hasReadingMode || !readingMode) return;
     readingMode = false;
     if (readingObserver) readingObserver.disconnect();
     readingObserver = null;
@@ -159,10 +163,12 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     fitMode = true;
     renderPage();
   });
-  readBtn.addEventListener('click', function () {
-    if (readingMode) leaveReadingMode();
-    else enterReadingMode();
-  });
+  if (hasReadingMode) {
+    readBtn.addEventListener('click', function () {
+      if (readingMode) leaveReadingMode();
+      else enterReadingMode();
+    });
+  }
   box.querySelector('[data-pdf-full]').addEventListener('click', function () {
     var el = box;
     try {
@@ -179,7 +185,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     resizeTimer = setTimeout(renderPage, 200);
   });
 
-  pdfjsLib.getDocument({ url: url, withCredentials: true }).promise.then(function (doc) {
+  pdfjsLib.getDocument({ url: url, withCredentials: true, ...pdfRenderOptions }).promise.then(function (doc) {
     pdfDoc = doc;
     countEl.textContent = String(doc.numPages);
     renderPage();
