@@ -997,8 +997,10 @@ input[type="checkbox"], input[type="radio"] {
   .researcher-profile-chip { padding-inline: .35rem; }
   .researcher-bottom-nav { position: fixed; inset-inline: 0; bottom: 0; z-index: 240; display: grid; grid-template-columns: repeat(4, 1fr); padding: .35rem .25rem calc(.35rem + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--card) 94%, transparent); border-top: 1px solid var(--line); box-shadow: 0 -4px 18px rgba(17,24,39,.1); backdrop-filter: blur(14px); }
   .researcher-bottom-nav a { display: flex; flex-direction: column; align-items: center; gap: .12rem; color: var(--muted); text-decoration: none; font-size: .69rem; }
-  .researcher-bottom-nav a:hover, .researcher-bottom-nav a:focus-visible { color: var(--teal); outline: 0; }
+  .researcher-bottom-nav a:hover, .researcher-bottom-nav a:focus-visible, .researcher-bottom-nav a.active { color: var(--teal); outline: 0; }
   .researcher-bottom-nav span { font-size: 1.05rem; line-height: 1; }
+  /* مساحة سفلية حتى لا يختفي المحتوى خلف شريط التنقل الثابت */
+  .researcher-body .researcher-main { padding-bottom: calc(4.2rem + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- موجز الباحث — توزيع اجتماعي واضح ---------- */

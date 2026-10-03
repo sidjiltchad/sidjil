@@ -142,6 +142,9 @@ export async function login(env, username, password, ip) {
     return { ok: false, error: 'هذا الحساب موقوف — تواصل مع الإدارة' };
   }
 
+  // تنظيف الجلسات المنتهية (صيانة خفيفة عند الدخول)
+  try { await db.prepare("DELETE FROM sessions WHERE expires_at <= datetime('now')").run(); } catch {}
+
   const token = randomHex(32);
   const csrfToken = randomHex(32); // رمز CSRF مستقل لكل جلسة
   const expiresAt = new Date(Date.now() + SESSION_TTL_SEC * 1000)
@@ -176,6 +179,21 @@ export async function getSessionUser(req, env) {
       .bind(token)
       .first();
     if (!user || Number(user.is_active) === 0) return null;
+    // تجديد انزلاقي: إذا انقضى أكثر من نصف العمر، مدّد الجلسة (كتابة واحدة خفيفة)
+    try {
+      const row = await env.DB.prepare(
+        'SELECT expires_at FROM sessions WHERE token = ?'
+      ).bind(token).first();
+      if (row && row.expires_at) {
+        const expMs = new Date(String(row.expires_at).replace(' ', 'T') + 'Z').getTime();
+        if (Date.now() > expMs - (SESSION_TTL_SEC * 1000) / 2) {
+          const newExp = new Date(Date.now() + SESSION_TTL_SEC * 1000)
+            .toISOString().slice(0, 19).replace('T', ' ');
+          await env.DB.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?')
+            .bind(newExp, token).run();
+        }
+      }
+    } catch { /* التجديد تحسين اختياري — لا يفشل الطلب */ }
     return user;
   } catch {
     return null;

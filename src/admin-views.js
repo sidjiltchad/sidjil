@@ -1261,6 +1261,11 @@ ${THEME_INIT}
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | مساحة الباحث</title>
 <link rel="manifest" href="/app-manifest.json">
+<meta name="theme-color" content="#1f4276">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="/admin.css?v=researcher-feed-20261003-v26">
 </head>
 <body class="researcher-body">
@@ -1297,7 +1302,12 @@ ${csrfMeta}
     <footer class="researcher-footer"><span>سِجِل · مجتمع الباحثين والذاكرة الرقمية لتشاد</span><nav><a class="researcher-exit-link" href="/">الخروج إلى الموقع العام</a></nav></footer>
   </main>
 </div>
-<nav class="researcher-bottom-nav" aria-label="تنقل الهاتف"><a href="/researcher"><span>⌂</span>الرئيسية</a><a href="/researcher/new"><span>＋</span>إنشاء</a><a href="/researcher/discussions"><span>💬</span>المجتمع</a><a href="/researcher/account"><span>◉</span>حسابي</a></nav>
+<nav class="researcher-bottom-nav" aria-label="تنقل الهاتف">${[
+    ['mine', '/researcher', '⌂', 'الرئيسية'],
+    ['new', '/researcher/new', '＋', 'إنشاء'],
+    ['discussions', '/researcher/discussions', '💬', 'المجتمع'],
+    ['account', '/researcher/account', '◉', 'حسابي'],
+  ].map(([k, href, icon, label]) => `<a href="${href}" class="${active === k ? 'active' : ''}"><span>${icon}</span>${label}</a>`).join('')}</nav>
 <div class="researcher-modal-veil" id="researcherMaterialModal" hidden>
   <div class="researcher-material-modal" role="dialog" aria-modal="true" aria-labelledby="researcherMaterialModalTitle">
     <button class="researcher-modal-close" type="button" data-researcher-modal-close aria-label="إغلاق">×</button>
@@ -1315,6 +1325,11 @@ ${csrfMeta}
     </div>
   </div>
 </div>
+<script>
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname))) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}
+</script>
 <script src="/researcher-feed-v5.js?v=20261003-pdf-modal" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
