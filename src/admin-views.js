@@ -1272,6 +1272,10 @@ ${csrfMeta}
 <div class="admin-shell researcher-shell">
   <div class="topbar">
     <a class="topbar-brand researcher-brand-logo" href="/researcher" aria-label="العودة إلى الصفحة الرئيسية لمساحة الباحث"><img class="researcher-logo" src="/sidjil-logo.png" alt="سِجِل"></a>
+    <div class="notif-wrap" id="notifWrap">
+      <button class="notif-bell" id="notifBell" type="button" aria-label="التنبيهات" aria-haspopup="true">🔔<span class="notif-badge" id="notifBadge" hidden></span></button>
+      <div class="notif-panel" id="notifPanel" hidden><div class="notif-panel-head"><strong>التنبيهات</strong></div><div id="notifList"></div></div>
+    </div>
     <div class="researcher-account-wrap">
       <button class="researcher-profile-chip" id="researcherAccountToggle" type="button" aria-expanded="false" aria-controls="researcherAccountMenu">
         ${researcherAvatarMarkup(user, 'small')}<span class="researcher-profile-name">${esc(displayName)}</span><span class="researcher-account-chevron" aria-hidden="true"></span>
@@ -1579,7 +1583,7 @@ async function researcherDashPage(env, user, req) {
   </section>` : `<section class="researcher-composer social-card researcher-composer-locked"><div class="composer-profile">${researcherSelfAvatarLink(user, 'small')}<div><strong>المنشورات متاحة بعد توثيق الحساب</strong><span class="post-meta">يمكنك تصفح المواد الآن، وستتمكن من التعليق والمراجعة بعد اعتماد الإدارة لحسابك.</span></div></div></section>`;
   const body = `
   <section class="researcher-hero social-card">${researcherSelfAvatarLink(user, 'hero-avatar')}<div><span class="eyebrow">مساحة الباحث · مجتمع المعرفة</span><h1>مرحبًا ${esc(user.display_name || user.username || 'ب')}</h1><p>شارك المعرفة، ناقش المصادر، وساهم في بناء أرشيف سِجِل.</p></div><a class="btn btn-primary" href="/researcher/new">+ مادة جديدة</a></section>
-  <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?lang=ar&feed=discover#discover">اكتشف</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?lang=ar&feed=latest#latest">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?lang=ar&feed=official#official">اعتمادات الإدارة</a></section>
+  <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?lang=ar&feed=discover#discover">اكتشف</a><a class="researcher-feed-tab" data-following-tab href="/researcher?lang=ar&feed=following#following">المتابَعون</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?lang=ar&feed=latest#latest">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?lang=ar&feed=official#official">اعتمادات الإدارة</a></section>
   <section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين موثقة بعد.</p>'}</section>
   ${dashboardComposer}
   <div class="composer-shortcuts dashboard-shortcuts"><a href="/researcher/discussions?kind=comment">💬 كل نقاشاتي</a><a href="/researcher/discussions?kind=review">✦ مراجعاتي</a><a href="/researcher/discussions?kind=text">📝 تلخيصاتي</a><a href="/researcher/new">＋ إضافة مادة</a></div>
@@ -1657,7 +1661,7 @@ async function researcherProfilePage(env, viewer, researcherId) {
   }
 
   target.avatar_public_path = `/researcher/avatar/${encodeURIComponent(target.id)}`;
-  const [discussionRows, replyRows, materialRows] = await Promise.all([
+  const [discussionRows, replyRows, materialRows, followCounts] = await Promise.all([
     env.DB.prepare(
       `SELECT d.id, d.title, d.body, d.kind, d.created_at, d.material_id,
               m.title_ar AS material_title, m.ark AS material_ark,
@@ -1687,6 +1691,10 @@ async function researcherProfilePage(env, viewer, researcherId) {
        WHERE m.created_by = ? AND m.publish_status = 'published'
        ORDER BY m.updated_at DESC, m.id DESC LIMIT 100`
     ).bind(target.id).all(),
+    env.DB.prepare(
+      `SELECT (SELECT COUNT(*) FROM researcher_follows WHERE followed_id = ?) AS followers,
+              (SELECT COUNT(*) FROM researcher_follows WHERE follower_id = ?) AS following`
+    ).bind(target.id, target.id).first(),
   ]);
 
   const kindLabels = { comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' };
@@ -1726,10 +1734,11 @@ async function researcherProfilePage(env, viewer, researcherId) {
     <div class="researcher-profile-card">
       ${researcherAvatarMarkup(target, 'profile-avatar')}
       <div class="researcher-profile-identity"><h1>${esc(profileName)}</h1><p class="post-meta">@${esc(target.username || '')}${profileMeta ? ` · ${profileMeta}` : ''}</p>${bio ? `<div class="researcher-profile-bio">${researcherBioMarkup(bio)}</div>` : ''}${socialLink ? `<a class="researcher-profile-social" href="${esc(socialLink)}" target="_blank" rel="noopener noreferrer">فيسبوك</a>` : ''}</div>
+      ${profileIsViewer ? '' : `<button class="btn btn-primary" type="button" data-follow-toggle="${target.id}">تابِع</button>`}
       <a class="btn btn-ghost researcher-profile-back" href="/researcher">مساحة الباحث</a>
     </div>
   </section>
-  <section class="researcher-profile-stats social-card"><span><strong>${(discussionRows.results || []).length}</strong><small>منشورًا ونقاشًا</small></span><span><strong>${(replyRows.results || []).length}</strong><small>ردًا وتعليقًا</small></span><span><strong>${(materialRows.results || []).length}</strong><small>مادة منشورة</small></span></section>
+  <section class="researcher-profile-stats social-card"><span><strong>${(discussionRows.results || []).length}</strong><small>منشورًا ونقاشًا</small></span><span><strong>${(replyRows.results || []).length}</strong><small>ردًا وتعليقًا</small></span><span><strong>${(materialRows.results || []).length}</strong><small>مادة منشورة</small></span><span><strong data-followers-count>${Number(followCounts?.followers || 0)}</strong><small>متابِع</small></span><span><strong>${Number(followCounts?.following || 0)}</strong><small>يتابع</small></span></section>
   ${materialCards ? `<section class="social-section-head researcher-profile-section-head"><div><h2>المواد المنشورة</h2><p>المواد التي أضافها الباحث إلى أرشيف سِجِل.</p></div></section><div class="researcher-profile-materials">${materialCards}</div>` : ''}
   <section class="social-section-head researcher-profile-section-head"><div><h2>${profileIsViewer ? 'نقاشاتي ومراجعاتي' : `نقاشات ومراجعات ${esc(profileName)}`}</h2><p>المراجعات والتلخيصات والأفكار التي شاركها في المجتمع.</p></div>${profileIsViewer ? '<a class="btn btn-ghost" href="/researcher/discussions?view=received">ردود الباحثين علي</a>' : ''}</section>
   <div class="researcher-profile-feed">${discussionCards || '<div class="social-card empty-state">لا توجد منشورات أو مناقشات منشورة بعد.</div>'}</div>

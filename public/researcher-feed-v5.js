@@ -146,6 +146,7 @@ function closeResearcherMaterialModal() {
 }
 
 function initResearcherPage() {
+  initSocial();
 
   // ---------- عارض الصور وتفاصيل المواد داخل مساحة الباحث ----------
   document.addEventListener('click', (event) => {
@@ -588,6 +589,130 @@ function initResearcherPage() {
       } catch (err) { toast(err.message, false); }
     });
   });
+}
+
+
+/* ============================================================
+   الشبكة الاجتماعية: المتابعة + الخلاصة + التنبيهات
+   ============================================================ */
+function escHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function initFollowButtons() {
+  const btns = document.querySelectorAll('[data-follow-toggle]');
+  for (const btn of btns) {
+    if (btn.dataset.sjBound) continue;
+    btn.dataset.sjBound = '1';
+    const targetId = btn.dataset.followToggle;
+    // الحالة الأولية
+    try {
+      const st = await api(`/api/v1/social/follow-status?user_id=${encodeURIComponent(targetId)}`);
+      setFollowBtn(btn, !!st.following);
+    } catch { /* يبقى النص الافتراضي */ }
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const res = await api('/api/v1/social/follow', 'POST', { followed_id: Number(targetId) });
+        setFollowBtn(btn, !!res.following);
+        const countEl = document.querySelector('[data-followers-count]');
+        if (countEl) {
+          const st = await api(`/api/v1/social/follow-status?user_id=${encodeURIComponent(targetId)}`);
+          countEl.textContent = st.followers;
+        }
+        toast(res.following ? 'تمت المتابعة' : 'أُلغيت المتابعة');
+      } catch (e) { toast(e.message || 'تعذر تنفيذ الأمر', false); }
+      btn.disabled = false;
+    });
+  }
+}
+function setFollowBtn(btn, following) {
+  btn.textContent = following ? '✓ تتابعه' : 'تابِع';
+  btn.classList.toggle('btn-ghost', following);
+  btn.classList.toggle('btn-primary', !following);
+}
+
+/* ---------- جرس التنبيهات ---------- */
+async function initNotificationBell() {
+  const bell = document.getElementById('notifBell');
+  if (!bell || bell.dataset.sjBound) return;
+  bell.dataset.sjBound = '1';
+  const badge = document.getElementById('notifBadge');
+  const panel = document.getElementById('notifPanel');
+  const list = document.getElementById('notifList');
+
+  async function refresh() {
+    try {
+      const data = await api('/api/v1/social/notifications?limit=15');
+      if (badge) {
+        badge.textContent = data.unread > 99 ? '99+' : data.unread;
+        badge.hidden = !data.unread;
+      }
+      if (list) {
+        list.innerHTML = (data.items || []).map(n => `
+          <a class="notif-item${n.is_read ? '' : ' unread'}" href="${escHtml(n.link || '#')}" data-notif-id="${n.id}">
+            <strong>${escHtml(n.title)}</strong><span>${escHtml(n.body || '')}</span>
+            <small>${escHtml(n.created_at || '')}</small>
+          </a>`).join('') || '<div class="notif-empty">لا تنبيهات بعد.</div>';
+      }
+    } catch { /* تجاهل */ }
+  }
+  bell.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const open = panel && !panel.hidden;
+    if (panel) panel.hidden = open;
+    if (!open) {
+      await refresh();
+      try { await api('/api/v1/social/notifications/read', 'POST', { all: true }); } catch {}
+      if (badge) badge.hidden = true;
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (panel && !panel.hidden && !e.target.closest('#notifWrap')) panel.hidden = true;
+  });
+  // تحديث دوري خفيف كل دقيقتين
+  refresh();
+  setInterval(refresh, 120000);
+}
+
+/* ---------- تبويب «المتابَعون» في الخلاصة ---------- */
+function initFollowingTab() {
+  const tab = document.querySelector('[data-following-tab]');
+  const container = document.querySelector('.researcher-published-feed');
+  if (!tab || !container || tab.dataset.sjBound) return;
+  tab.dataset.sjBound = '1';
+  tab.addEventListener('click', async (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.researcher-feed-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    container.innerHTML = '<div class="social-card empty-state">جارٍ تحميل خلاصة المتابَعين…</div>';
+    try {
+      const data = await api('/api/v1/social/feed?limit=30');
+      const items = data.items || [];
+      container.innerHTML = items.length ? items.map(renderFeedItem).join('')
+        : '<div class="social-card empty-state">تابع باحثين لترى جديد موادهم ونقاشاتهم هنا.</div>';
+    } catch (err) {
+      container.innerHTML = `<div class="social-card empty-state">تعذر تحميل الخلاصة: ${escHtml(err.message)}</div>`;
+    }
+  });
+}
+function renderFeedItem(it) {
+  const isMat = it.item_type === 'material';
+  const link = isMat ? `/researcher/discussions` : `/researcher/discussions?focus=${encodeURIComponent(it.item_id)}`;
+  return `<article class="social-card researcher-feed-post">
+    <div class="post-head"><div class="post-avatar">${escHtml(String(it.author_name || 'ب').slice(0, 1))}</div>
+    <div><strong><a class="post-author-link" href="/researcher/profile/${encodeURIComponent(it.author_id)}">${escHtml(it.author_name || 'باحث')}</a></strong>
+    <div class="post-meta">${isMat ? 'مادة جديدة' : escHtml(it.sub_kind || 'نقاش')} · ${escHtml(it.created_at || '')}</div></div></div>
+    <h3><a href="${link}">${escHtml(it.title || '—')}</a></h3>
+    ${it.excerpt ? `<p class="researcher-feed-excerpt">${escHtml(it.excerpt)}</p>` : ''}
+    ${it.material_title ? `<div class="post-linked">حول: ${escHtml(it.material_title)}</div>` : ''}
+  </article>`;
+}
+
+function initSocial() {
+  initFollowButtons();
+  initNotificationBell();
+  initFollowingTab();
 }
 
 // يعمل السكربت أحيانًا بعد DOMContentLoaded بسبب التخزين المؤقت في المتصفح؛

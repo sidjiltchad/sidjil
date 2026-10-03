@@ -9,6 +9,7 @@
 import { getSessionUser, hashPassword } from './lib/auth.js';
 import { check } from './lib/ratelimit.js';
 import { audit } from './lib/db.js';
+import { notifyUser } from './social.js';
 
 export const DISCUSSION_KINDS = ['comment', 'review', 'critique', 'idea', 'text'];
 export const REACTION_KINDS = ['like', 'support', 'useful', 'oppose'];
@@ -381,6 +382,14 @@ export async function apiReplyCreate(env, req, user, discussionId) {
     'INSERT INTO discussion_replies (discussion_id, parent_id, author_id, body) VALUES (?, ?, ?, ?)'
   ).bind(discussionId, parentId, user.id, text).run();
   await audit(db, { userId: user.id, action: 'discussion.reply', target: String(discussionId), ip: clientIp(req) });
+  try {
+    const d = await db.prepare('SELECT author_id, title FROM discussions WHERE id = ?').bind(discussionId).first();
+    if (d && Number(d.author_id) !== Number(user.id)) {
+      const me = user.display_name || user.username || 'باحث';
+      await notifyUser(db, d.author_id, 'reply', 'رد جديد على نقاشك',
+        `${me} ردّ على: ${String(d.title || '').slice(0, 80)}`, `/researcher/discussions?focus=${discussionId}`);
+    }
+  } catch {}
   return json({ ok: true, id: res.meta.last_row_id }, 201);
 }
 

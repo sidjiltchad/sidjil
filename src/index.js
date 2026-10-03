@@ -3,6 +3,7 @@
 import { routeApi } from './api.js';
 import { routeAdminApi } from './admin-api.js';
 import { routeDiscussionPublic } from './discussions.js';
+import { routeSocialApi } from './social.js';
 import { renderPublic } from './views.js';
 import { renderAdmin, renderResearcher } from './admin-views.js';
 import { getSessionUser, getSessionToken, setSessionCookie } from './lib/auth.js';
@@ -132,6 +133,12 @@ export default {
     // 1ب) مجلس سِجِل: النقاشات والتفاعلات والتسجيل (عامة)
     {
       const res = await routeDiscussionPublic(request, env);
+      if (res) return res;
+    }
+
+    // 1ج) الشبكة الاجتماعية: المتابعة والخلاصة والتنبيهات (جلسة باحث)
+    if (pathname.startsWith('/api/v1/social/')) {
+      const res = await routeSocialApi(request, env);
       if (res) return res;
     }
 

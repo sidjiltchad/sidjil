@@ -1359,3 +1359,20 @@ body.translation-workspace-open { overflow: hidden; }
   .translation-cleanup { align-items: stretch; flex-direction: column; }
   .translation-cleanup .btn { width: 100%; }
 }
+
+/* ---------- الشبكة الاجتماعية: جرس التنبيهات ---------- */
+.notif-wrap { position: relative; margin-inline-start: auto; }
+.notif-bell { position: relative; background: none; border: 1px solid var(--line); border-radius: 999px; width: 2.4rem; height: 2.4rem; font-size: 1.15rem; cursor: pointer; display: grid; place-items: center; }
+.notif-bell:hover { border-color: var(--gold); }
+.notif-badge { position: absolute; top: -4px; inset-inline-end: -4px; min-width: 1.15rem; height: 1.15rem; border-radius: 999px; background: #b02a2a; color: #fff; font-size: .68rem; font-weight: 700; display: grid; place-items: center; padding: 0 .25rem; }
+.notif-badge[hidden] { display: none; }
+.notif-panel { position: absolute; top: calc(100% + .5rem); inset-inline-end: 0; width: min(22rem, 86vw); max-height: 24rem; overflow-y: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 300; }
+.notif-panel[hidden] { display: none; }
+.notif-panel-head { padding: .7rem 1rem; border-bottom: 1px solid var(--line); font-weight: 700; }
+.notif-item { display: block; padding: .7rem 1rem; border-bottom: 1px solid var(--line-soft, var(--line)); text-decoration: none; color: inherit; }
+.notif-item:last-child { border-bottom: 0; }
+.notif-item.unread { background: color-mix(in srgb, var(--gold) 8%, transparent); }
+.notif-item strong { display: block; font-size: .9rem; }
+.notif-item span { display: block; font-size: .82rem; color: var(--muted); margin-top: .15rem; }
+.notif-item small { font-size: .72rem; color: var(--muted); }
+.notif-empty { padding: 1.2rem; text-align: center; color: var(--muted); }
