@@ -85,6 +85,8 @@ async function findMaterial(db, idOrArk) {
 
 // ---------- صلاحيات الباحث ----------
 function researcherAllowed(rest, method) {
+  if (rest === 'profile' && (method === 'GET' || method === 'PATCH')) return true;
+  if (rest === 'profile/avatar' && (method === 'POST' || method === 'DELETE')) return true;
   if (method === 'GET' && rest === 'materials') return true;      // تُفلتر لمواده داخل الدالة
   if (method === 'GET' && rest === 'collections') return true;    // لاختيار الأقسام في النموذج
   if (method === 'POST' && rest === 'materials') return true;     // إنشاء كمسودة حصرًا
@@ -162,6 +164,16 @@ export async function routeAdminApi(req, env) {
     await audit(env.DB, { userId: user.id, action: 'admin.logout', ip: clientIp(req) });
     return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookie() });
   }
+
+  // حساب الباحث: البيانات الشخصية والصورة (لا يغيّر اسم المستخدم هنا)
+  if (rest === 'profile' && method === 'GET') {
+    const { csrfToken, ...safeProfile } = user;
+    return json({ profile: safeProfile });
+  }
+  if (rest === 'profile' && method === 'PATCH')
+    return withJsonBody(req, (body) => admProfileUpdate(env, user, req, body));
+  if (rest === 'profile/avatar' && method === 'POST') return admProfileAvatarUpload(env, user, req);
+  if (rest === 'profile/avatar' && method === 'DELETE') return admProfileAvatarDelete(env, user, req);
 
   // المواد
   if (rest === 'materials' && method === 'GET') return admMaterialsList(env, url, user);
@@ -253,6 +265,13 @@ export async function routeAdminApi(req, env) {
 
   m = rest.match(/^translations\/(\d+)$/);
   if (m && method === 'DELETE') return admTranslationDelete(env, user, req, parseInt(m[1], 10));
+
+  // إدارة ترجمات المستندات الكاملة (وظائف الخلفية)
+  if (rest === 'translation-jobs' && method === 'GET') return admTranslationJobsList(env, url);
+  if (rest === 'translation-jobs/cleanup' && method === 'POST')
+    return withJsonBody(req, (body) => admTranslationJobsCleanup(env, user, req, body));
+  m = rest.match(/^translation-jobs\/([^/]+)$/);
+  if (m && method === 'DELETE') return admTranslationJobDelete(env, user, req, decodeURIComponent(m[1]));
 
   // OCR اليدوي (لا يعمل تلقائيًا عند الرفع — تكلفة)
   m = rest.match(/^materials\/([^/]+)\/ocr$/);
@@ -623,6 +642,77 @@ async function admMaterialReview(env, user, req, id, body) {
     return json({ ok: true, status: 'draft' });
   }
   return err('قرار غير صالح (approve/reject)', 400);
+}
+
+// ---------- حساب الباحث ----------
+
+function profileText(value, max) {
+  return String(value ?? '').trim().slice(0, max);
+}
+
+async function admProfileUpdate(env, user, req, body) {
+  const db = env.DB;
+  const displayName = profileText(body.display_name, 80);
+  const email = profileText(body.email, 160).toLowerCase();
+  const phone = profileText(body.phone, 40);
+  const affiliation = profileText(body.affiliation, 160);
+  const jobTitle = profileText(body.job_title, 160);
+  const bio = profileText(body.bio, 1000);
+  const specialty = profileText(body.specialty, 160);
+  const website = profileText(body.website, 300);
+
+  if (!displayName) return err('الاسم الظاهر مطلوب', 400);
+  if (!email) return err('البريد الإلكتروني مطلوب', 400);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return err('أدخل بريدًا إلكترونيًا صحيحًا', 400);
+  if (!phone || phone.replace(/[\s()+\-]/g, '').length < 6) return err('رقم الهاتف مطلوب وصالح', 400);
+  if (!jobTitle) return err('الصفة أو المسمى الوظيفي مطلوب', 400);
+  if (!bio) return err('النبذة التعريفية مطلوبة', 400);
+  if (website && !/^https?:\/\/\S+$/i.test(website)) return err('رابط فيسبوك يجب أن يبدأ بـ https:// أو http://', 400);
+
+  const emailExists = await db
+    .prepare('SELECT id FROM admin_users WHERE lower(email) = ? AND id <> ?')
+    .bind(email, user.id)
+    .first();
+  if (emailExists) return err('البريد الإلكتروني مستخدم مسبقًا', 400);
+
+  await db.prepare(
+    `UPDATE admin_users SET display_name = ?, email = ?, phone = ?, affiliation = ?,
+      job_title = ?, bio = ?, specialty = ?, website = ?, updated_at = datetime('now') WHERE id = ?`
+  ).bind(displayName, email, phone, affiliation || null, jobTitle, bio, specialty || null, website || null, user.id).run();
+  await audit(db, { userId: user.id, action: 'researcher.profile_update', target: user.username, detail: 'تحديث بيانات الحساب', ip: clientIp(req) });
+  return json({ ok: true });
+}
+
+function avatarExtension(file) {
+  const mime = String(file?.type || '').toLowerCase();
+  const byMime = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+  return byMime[mime] || '';
+}
+
+async function admProfileAvatarUpload(env, user, req) {
+  const form = await req.formData().catch(() => null);
+  const file = form?.get('avatar');
+  if (!file || typeof file.arrayBuffer !== 'function') return err('اختر صورة صالحة', 400);
+  if ((file.size || 0) > 5 * 1024 * 1024) return err('حجم الصورة يتجاوز 5 ميغابايت', 400);
+  const ext = avatarExtension(file);
+  if (!ext) return err('الصورة يجب أن تكون JPG أو PNG أو WEBP أو GIF', 400);
+  const key = `avatars/users/${user.id}/${crypto.randomUUID()}.${ext}`;
+  const oldKey = user.avatar_r2_key || '';
+  await env.FILES.put(key, file, { httpMetadata: { contentType: file.type } });
+  await env.DB.prepare(
+    "UPDATE admin_users SET avatar_r2_key = ?, avatar_url = '/researcher/avatar', updated_at = datetime('now') WHERE id = ?"
+  ).bind(key, user.id).run();
+  if (oldKey && oldKey !== key) await env.FILES.delete(oldKey).catch(() => {});
+  await audit(env.DB, { userId: user.id, action: 'researcher.avatar_update', target: user.username, detail: 'رفع صورة الملف الشخصي', ip: clientIp(req) });
+  return json({ ok: true, url: '/researcher/avatar' });
+}
+
+async function admProfileAvatarDelete(env, user, req) {
+  const key = user.avatar_r2_key || '';
+  if (key) await env.FILES.delete(key).catch(() => {});
+  await env.DB.prepare("UPDATE admin_users SET avatar_r2_key = NULL, avatar_url = NULL, updated_at = datetime('now') WHERE id = ?").bind(user.id).run();
+  await audit(env.DB, { userId: user.id, action: 'researcher.avatar_delete', target: user.username, detail: 'حذف صورة الملف الشخصي', ip: clientIp(req) });
+  return json({ ok: true });
 }
 
 // ---------- المستخدمون (إدارة فقط) ----------
@@ -1209,6 +1299,94 @@ async function admTranslationDelete(env, user, req, translationId) {
   return json({ ok: true });
 }
 
+// ---------- إدارة وظائف ترجمة الملفات الكاملة ----------
+
+async function admTranslationJobsList(env, url) {
+  const db = env.DB;
+  const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
+  const source = String(url.searchParams.get('source') || '').trim().toLowerCase();
+  const target = String(url.searchParams.get('target') || '').trim().toLowerCase();
+  const q = String(url.searchParams.get('q') || '').trim();
+  const { page, perPage, offset } = pageParams(url);
+  const where = [];
+  const binds = [];
+  if (status) { where.push('j.status = ?'); binds.push(status); }
+  if (source) { where.push('j.source_language = ?'); binds.push(source); }
+  if (target) { where.push('j.target_language = ?'); binds.push(target); }
+  if (q) {
+    where.push('(m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ? OR j.id LIKE ?)');
+    const like = `%${q}%`;
+    binds.push(like, like, like, like);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const from = `FROM translation_jobs j
+    LEFT JOIN materials m ON m.id = j.material_id
+    LEFT JOIN files f ON f.id = j.file_id`;
+  const [rows, count] = await Promise.all([
+    db.prepare(`SELECT j.id, j.material_id, j.file_id, j.source_language, j.target_language,
+      j.output_mode, j.ocr_mode, j.status, j.progress, j.current_stage, j.page_count,
+      j.processed_pages, j.error_code, j.error_message, j.output_mime, j.output_size,
+      j.created_at, j.updated_at, j.completed_at, m.ark, m.title_ar, m.title_orig,
+      m.type, m.publish_status, f.filename
+      ${from} ${whereSql} ORDER BY j.created_at DESC LIMIT ? OFFSET ?`).bind(...binds, perPage, offset).all(),
+    db.prepare(`SELECT COUNT(*) AS c ${from} ${whereSql}`).bind(...binds).first(),
+  ]);
+  return json({ items: rows.results || [], total: Number(count?.c || 0), page, perPage });
+}
+
+async function deleteTranslationJobRecord(env, job) {
+  const db = env.DB;
+  if (job?.output_key) await env.FILES.delete(job.output_key).catch(() => {});
+  // العلاقات في المخطط تستخدم CASCADE، لكن الحذف الصريح يحافظ على التوافق مع قواعد قديمة.
+  await db.batch([
+    db.prepare('DELETE FROM translation_events WHERE job_id = ?').bind(job.id),
+    db.prepare('DELETE FROM translation_usage WHERE job_id = ?').bind(job.id),
+    db.prepare('DELETE FROM translation_jobs WHERE id = ?').bind(job.id),
+  ]);
+}
+
+async function admTranslationJobDelete(env, user, req, jobId) {
+  const db = env.DB;
+  const job = await db.prepare(`SELECT j.*, m.ark, m.title_ar
+    FROM translation_jobs j LEFT JOIN materials m ON m.id = j.material_id WHERE j.id = ?`).bind(jobId).first();
+  // الحذف idempotent: قد تبقى صفوف قديمة في تبويب الإدارة بعد تنظيفها من جلسة أخرى.
+  // في هذه الحالة نعيد نجاحًا حتى لا يظل الزر عالقًا بسبب 404 غير مؤثر.
+  if (!job) return json({ ok: true, id: jobId, missing: true });
+  await deleteTranslationJobRecord(env, job);
+  await audit(db, {
+    userId: user.id,
+    action: 'translation_job.delete',
+    target: String(job.ark || job.material_id || job.id),
+    detail: `حذف وظيفة ${job.id} (${job.status})`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true, id: job.id });
+}
+
+async function admTranslationJobsCleanup(env, user, req, body) {
+  const db = env.DB;
+  const days = Math.min(3650, Math.max(1, asInt(body?.beforeDays) || 30));
+  const includeFailed = body?.includeFailed !== false;
+  const cutoff = `-${days} days`;
+  const statuses = includeFailed ? ['COMPLETED', 'FAILED', 'CANCELLED'] : ['COMPLETED'];
+  const placeholders = statuses.map(() => '?').join(',');
+  const rows = await db.prepare(`SELECT * FROM translation_jobs
+    WHERE status IN (${placeholders}) AND updated_at < datetime('now', ?)
+    ORDER BY updated_at ASC LIMIT 500`).bind(...statuses, cutoff).all();
+  const jobs = rows.results || [];
+  for (const job of jobs) await deleteTranslationJobRecord(env, job);
+  // كاش النصوص لا يرتبط بوظيفة بعينها؛ نحذف القديم فقط ضمن نفس سياسة التنظيف.
+  const cache = await db.prepare("DELETE FROM translation_text_cache WHERE created_at < datetime('now', ?) ").bind(cutoff).run();
+  await audit(db, {
+    userId: user.id,
+    action: 'translation_job.cleanup',
+    target: 'translation_jobs',
+    detail: `حذف ${jobs.length} وظيفة قديمة و${Number(cache?.meta?.changes || 0)} من الكاش (أقدم من ${days} يومًا)`,
+    ip: clientIp(req),
+  });
+  return json({ ok: true, deletedJobs: jobs.length, deletedCache: Number(cache?.meta?.changes || 0), beforeDays: days });
+}
+
 // ---------- OCR اليدوي (لا يعمل تلقائيًا عند الرفع) ----------
 
 /**
@@ -1491,6 +1669,11 @@ const EXPORT_TABLES = [
   'transcriptions',
   'translations',
   'translation_segments',
+  'translation_jobs',
+  'translation_text_cache',
+  'translation_usage',
+  'translation_events',
+  'translation_settings',
   'processing_jobs',
   'glossary',
   'collections',

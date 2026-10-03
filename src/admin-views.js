@@ -53,6 +53,7 @@ const NAV = [
   ['collections', '/admin/collections', 'المجموعات'],
   ['announcements', '/admin/announcements', 'الإعلانات'],
   ['glossary', '/admin/glossary', 'قاموس الترجمة'],
+  ['translation', '/admin/translation', 'الترجمة'],
   ['users', '/admin/users', 'المستخدمون'],
   ['discussions', '/admin/discussions', 'النقاشات'],
   ['backup', '/admin/backup', 'النسخ الاحتياطي'],
@@ -103,11 +104,11 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css">
+<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261002-v3">
 ${head}
 </head>
 <body>
-<div class="admin-shell">
+  <div class="admin-shell">
   <div class="topbar">
     <button class="nav-toggle-admin" id="sideToggle" type="button" aria-expanded="false" aria-controls="adminNav" aria-label="القائمة">
       <span></span><span></span><span></span>
@@ -248,6 +249,55 @@ async function dashboardPage(env, user) {
     </section>
   </div>`;
   return layout({ title: 'لوحة التحكم', active: 'dashboard', user, body });
+}
+
+// ---------- الترجمة: مؤشرات الكاش والـJobs ----------
+async function translationPage(env, user) {
+  const db = env.DB;
+  const [today, hits, misses, active, failed, pages, settings, pdfMaterials, recentJobs] = await Promise.all([
+    db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE created_at >= date('now')").first(),
+    db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE event = 'cache_hit'").first(),
+    db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE event = 'cache_miss'").first(),
+    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status NOT IN ('COMPLETED','FAILED','CANCELLED')").first(),
+    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status = 'FAILED'").first(),
+    db.prepare('SELECT COALESCE(SUM(processed_pages),0) c FROM translation_jobs').first(),
+    db.prepare('SELECT * FROM translation_settings WHERE id = 1').first(),
+    db.prepare(`SELECT DISTINCT m.id, m.ark, m.title_ar, m.title_orig, m.type, m.publish_status
+      FROM materials m JOIN files f ON f.material_id = m.id
+      WHERE (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf') AND f.kind <> 'thumbnail'
+      ORDER BY m.updated_at DESC, m.id DESC LIMIT 300`).all(),
+    db.prepare(`SELECT j.id, j.material_id, j.source_language, j.target_language, j.output_mode,
+      j.ocr_mode, j.status, j.progress, j.current_stage, j.page_count, j.processed_pages,
+      j.error_message, j.created_at, j.updated_at, j.completed_at, j.output_size,
+      m.ark, m.title_ar, m.title_orig
+      FROM translation_jobs j LEFT JOIN materials m ON m.id = j.material_id
+      ORDER BY j.created_at DESC LIMIT 100`).all(),
+  ]);
+  let engine = null;
+  if (env.TRANSLATION_SERVICE_URL && env.TRANSLATION_SERVICE_TOKEN) {
+    try {
+      const response = await fetch(`${String(env.TRANSLATION_SERVICE_URL).replace(/\/$/, '')}/engine`, { headers: { 'X-Sidjil-Service-Token': env.TRANSLATION_SERVICE_TOKEN } });
+      if (response.ok) engine = await response.json();
+    } catch (_) {}
+  }
+  const total = Number(hits?.c || 0) + Number(misses?.c || 0);
+  const hitRate = total ? Math.round(Number(hits?.c || 0) / total * 100) : 0;
+  const cards = [['طلبات اليوم', today?.c || 0], ['Cache Hit Rate', `${hitRate}%`], ['Jobs الجارية', active?.c || 0], ['Jobs الفاشلة', failed?.c || 0], ['الصفحات المعالجة', pages?.c || 0]].map(([label, value]) => `<div class="stat-card"><div class="stat-num">${esc(value)}</div><div class="stat-label">${esc(label)}</div></div>`).join('');
+  const engineStatus = engine?.ollama?.available && engine?.ollama?.modelAvailable ? 'متصل' : 'غير متصل أو النموذج غير متاح';
+  const materialOptions = (pdfMaterials.results || []).map((m) => `<option value="${esc(m.id)}">${esc(m.title_ar || m.title_orig || m.ark)} · ${esc(m.ark)}</option>`).join('');
+  const langOptions = '<option value="auto">اكتشاف تلقائي</option><option value="ar">العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option>';
+  const targetOptions = '<option value="ar" selected>العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option>';
+  const jobRows = (recentJobs.results || []).map((j) => {
+    const title = j.title_ar || j.title_orig || j.ark || j.material_id || '—';
+    const state = { QUEUED: 'في الانتظار', ANALYZING: 'تحليل', EXTRACTING: 'استخراج', OCR_PROCESSING: 'OCR', TRANSLATING: 'ترجمة', REBUILDING: 'إعادة بناء', UPLOADING: 'رفع', COMPLETED: 'مكتملة', FAILED: 'فاشلة', CANCELLED: 'ملغاة' }[j.status] || j.status;
+    const percent = Math.max(0, Math.min(100, Number(j.progress || 0)));
+    return `<tr data-translation-job-row="${esc(j.id)}"><td class="check-cell"><input type="checkbox" data-translation-job-check value="${esc(j.id)}" aria-label="تحديد وظيفة ${esc(j.id)}"></td><td><strong>${esc(title)}</strong><br><span class="mono small">${esc(j.ark || '')}</span></td><td dir="ltr">${esc(j.source_language)} → ${esc(j.target_language)}</td><td>${esc(j.output_mode)}</td><td><span class="translation-job-status status-${esc(String(j.status).toLowerCase())}">${esc(state)}</span><div class="admin-translation-progress"><i style="width:${percent}%"></i></div><span class="muted tiny">${percent}% · ${esc(j.current_stage || '')}</span></td><td class="muted small">${fmtDate(j.updated_at || j.created_at)}</td><td><button class="btn btn-sm btn-danger" type="button" data-translation-job-delete="${esc(j.id)}">حذف</button></td></tr>`;
+  }).join('');
+  const body = `${pageHead('الترجمة', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div>
+  <section class="card"><h2>محرك الترجمة المحلي</h2><dl class="meta-grid"><div><dt>المحرك</dt><dd>Ollama</dd></div><div><dt>النموذج</dt><dd>${esc(engine?.model || 'qwen3:8b')}</dd></div><div><dt>حالة Ollama</dt><dd>${esc(engineStatus)}</dd></div><div><dt>الطابور</dt><dd>${esc(engine?.queueLength ?? '—')} · النشط ${esc(engine?.activeAiJobs ?? '—')} / الحد ${esc(engine?.maxAiJobs ?? 1)}</dd></div><div><dt>الترجمات المكتملة</dt><dd>${esc(engine?.completedJobs ?? '—')}</dd></div><div><dt>المتوسط</dt><dd>${engine?.averageTranslationTimeSeconds != null ? `${esc(engine.averageTranslationTimeSeconds)} ثانية` : '—'}</dd></div><div><dt>ترجمة النصوص</dt><dd>${settings?.text_enabled ? 'مفعّلة' : 'معطلة'}</dd></div><div><dt>ترجمة المستندات</dt><dd>${settings?.document_enabled && env.TRANSLATION_SERVICE_URL ? 'مفعّلة' : 'بانتظار خدمة PDF'}</dd></div><div><dt>OCR</dt><dd>${settings?.ocr_enabled && env.TRANSLATION_SERVICE_URL ? 'مفعّل' : 'بانتظار خدمة المعالجة'}</dd></div><div><dt>سياسة الكاش</dt><dd>${esc(settings?.cache_retention_policy || 'PERSISTENT')}</dd></div></dl><p class="muted">تُترجم الكتب في الخلفية كاملة مع حفظ التقدم، ويستطيع الباحث متابعة النسبة وتنزيل الملف عند اكتماله. لا يُعرض Ollama للعامة.</p></section>
+  <section class="card translation-management" data-translation-manage><div class="section-head"><div><h2>ترجمة ملفات جديدة</h2><p class="muted">اختر ملفًا أو عدة كتب، ولغة هدف واحدة أو عدة لغات، وابدأ وظائف مستقلة. يمكن اختيار لغة المصدر تلقائيًا أو تحديدها.</p></div></div><div class="translation-admin-grid"><label class="field"><span>الملفات (PDF)</span><select id="translationBatchMaterials" multiple size="7">${materialOptions || '<option disabled>لا توجد ملفات PDF</option>'}</select></label><div class="translation-admin-options"><label class="field"><span>لغة المصدر</span><select id="translationBatchSource">${langOptions}</select></label><label class="field"><span>لغات الهدف (متعدد)</span><select id="translationBatchTargets" multiple size="3">${targetOptions}</select></label><label class="field"><span>صيغة الإخراج</span><select id="translationBatchMode"><option value="translated">PDF مترجم</option><option value="bilingual">PDF ثنائي اللغة</option><option value="text">نص مترجم</option></select></label><label class="field"><span>OCR</span><select id="translationBatchOcr"><option value="auto">تلقائي</option><option value="advanced">متقدم</option><option value="off">معطل</option></select></label><button class="btn btn-primary" type="button" data-translation-batch-start>بدء الترجمة المحددة</button></div></div><p class="muted tiny">تُرسل الوظائف بالتتابع من الواجهة مع بقاء كل نتيجة قابلة للمراجعة والحذف من هذا القسم.</p></section>
+  <section class="card translation-management"><div class="section-head"><div><h2>وظائف الترجمة</h2><p class="muted">الحالة والتقدم والملفات المولدة في مكان واحد.</p></div><div class="translation-cleanup"><label>حذف المكتمل الأقدم من <input id="translationCleanupDays" type="number" min="1" max="3650" value="30"> يومًا</label><button class="btn btn-sm btn-danger" type="button" data-translation-cleanup>تنظيف الوظائف القديمة</button></div></div><div class="table-wrap"><table class="tbl translation-jobs-table"><thead><tr><th><input type="checkbox" data-translation-select-all aria-label="تحديد الكل"></th><th>المادة</th><th>المسار</th><th>الصيغة</th><th>الحالة والتقدم</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${jobRows || '<tr><td colspan="7" class="muted">لا توجد وظائف ترجمة بعد.</td></tr>'}</tbody></table></div></section>`;
+  return layout({ title: 'الترجمة', active: 'translation', user, body });
 }
 
 // ---------- 3) قائمة المواد ----------
@@ -1109,6 +1159,7 @@ export async function renderAdmin(pathname, req, env, user) {
 
   const clean = pathname.replace(/\/+$/, '') || '/admin';
   if (clean === '/admin') return htmlRes(await dashboardPage(env, user));
+  if (clean === '/admin/translation') return htmlRes(await translationPage(env, user));
   if (clean === '/admin/materials') return htmlRes(await materialsListPage(env, user, req));
   if (clean === '/admin/materials/new') return htmlRes(await materialFormPage(env, user, 'new'));
 
@@ -1143,12 +1194,39 @@ const RESEARCHER_NAV = [
 
 const RESEARCHER_STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', published: 'منشورة', hidden: 'مخفية' };
 
+function researcherAvatarMarkup(user, size = '') {
+  const displayName = user?.display_name || user?.username || 'باحث';
+  const initial = String(displayName).trim().slice(0, 1) || 'ب';
+  const classes = `researcher-avatar${size ? ` ${size}` : ''}`;
+  const src = user?.avatar_r2_key ? '/researcher/avatar' : String(user?.avatar_url || '').trim();
+  return src
+    ? `<img class="${classes} researcher-avatar-image" src="${esc(src)}" alt="${esc(displayName)}" loading="lazy">`
+    : `<span class="${classes}" aria-hidden="true">${esc(initial)}</span>`;
+}
+
+function researcherBioMarkup(value) {
+  const lines = String(value || '')
+    .split(/\r?\n+/)
+    .map(line => line.replace(/^\s*[*•-]+\s*/, '').replace(/\*+/g, '').trim())
+    .filter(Boolean);
+  return lines.map(line => `<p>${esc(line)}</p>`).join('');
+}
+
+function researcherSelfAvatarLink(user, size = '') {
+  const href = `/researcher/profile/${encodeURIComponent(user?.id || '')}`;
+  return `<a class="researcher-avatar-link" href="${href}" aria-label="صفحتي الشخصية">${researcherAvatarMarkup(user, size)}</a>`;
+}
+
 function researcherLayout({ title, active, user, body }) {
   const nav = RESEARCHER_NAV.map(([key, href, label]) =>
     `<a href="${href}" class="nav-item${active === key ? ' active' : ''}">${esc(label)}</a>`
   ).join('');
+  const accountNav = RESEARCHER_NAV.map(([key, href, label]) =>
+    `<a class="researcher-account-nav-link${active === key ? ' active' : ''}" href="${href}">${esc(label)}</a>`
+  ).join('');
   const csrfMeta = user && user.csrfToken
     ? `<meta name="csrf-token" content="${esc(user.csrfToken)}">` : '';
+  const displayName = user?.display_name || user?.username || 'باحث';
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -1157,41 +1235,126 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | مساحة الباحث</title>
-<link rel="stylesheet" href="/admin.css">
+<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261002-v25">
 </head>
-<body>
-<div class="admin-shell">
+<body class="researcher-body">
+<div class="admin-shell researcher-shell">
   <div class="topbar">
-    <button class="nav-toggle-admin" id="sideToggle" type="button" aria-expanded="false" aria-controls="adminNav" aria-label="القائمة">
-      <span></span><span></span><span></span>
-    </button>
-    <span class="topbar-brand">سِجِل — مساحة الباحث</span>
-  </div>
-  <aside class="sidebar" id="adminNav">
-    <div class="brand">
-      <div class="brand-name">سِجِل</div>
-      <div class="brand-sub">مساحة الباحث</div>
-    </div>
-    <nav class="nav">${nav}</nav>
-    <div class="side-foot">
-      <div class="who">الباحث: <strong>${esc(user?.username || '')}</strong></div>
-      <div class="foot-row">
-        <button class="btn btn-ghost btn-sm" id="btnLogout" type="button">تسجيل الخروج</button>
+    <a class="topbar-brand researcher-brand-logo" href="/researcher" aria-label="العودة إلى الصفحة الرئيسية لمساحة الباحث"><img class="researcher-logo" src="/sidjil-logo.png" alt="سِجِل"></a>
+    <div class="researcher-account-wrap">
+      <button class="researcher-profile-chip" id="researcherAccountToggle" type="button" aria-expanded="false" aria-controls="researcherAccountMenu">
+        ${researcherAvatarMarkup(user, 'small')}<span class="researcher-profile-name">${esc(displayName)}</span><span class="researcher-account-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="researcher-account-menu" id="researcherAccountMenu" hidden>
+        <div class="researcher-account-menu-title">مساحة الباحث</div>
+        ${accountNav}
+        <div class="researcher-account-menu-divider"></div>
+        <a class="researcher-account-nav-link${active === 'account' ? ' active' : ''}" href="/researcher/account">حسابي</a>
+        <a href="/researcher/discussions">نقاشاتي ومراجعاتي</a>
         ${THEME_TOGGLE_ADMIN}
+        <button type="button" data-account-logout>تسجيل الخروج</button>
       </div>
     </div>
-  </aside>
-  <main class="main">
+  </div>
+  <main class="main researcher-main">
     <div class="toast-zone" id="toastZone" aria-live="polite"></div>
-    ${body}
+    <div class="researcher-page-grid">
+      <div class="researcher-content">${body}</div>
+      <aside class="researcher-rail" aria-label="اختصارات الباحث">
+        <section class="social-card researcher-rail-profile">
+          <div class="researcher-rail-cover"></div>
+          <div class="researcher-rail-profile-body">${researcherSelfAvatarLink(user)}<strong><a class="researcher-own-profile-link" href="/researcher/profile/${encodeURIComponent(user.id)}">${esc(displayName)}</a></strong><span class="post-meta">باحث ومساهم في سِجِل</span><a class="btn btn-ghost btn-sm" href="/researcher/account">حسابي</a></div>
+        </section>
+        <section class="social-card researcher-rail-card"><h2>اختصارات</h2><a href="/researcher/new">＋ إضافة مادة جديدة</a><a href="/researcher/article">＋ مقال للمجلة</a><a href="/researcher/discussions">💬 النقاشات والمراجعات</a></section>
+        <section class="social-card researcher-rail-card"><h2>دليل المشاركة</h2><p>شارك مصادر موثقة، واربط كل مراجعة بالمادة التي تناقشها. تمر موادك على اعتماد الإدارة قبل ظهورها للزوار.</p></section>
+      </aside>
+    </div>
+    <footer class="researcher-footer"><span>سِجِل · مجتمع الباحثين والذاكرة الرقمية لتشاد</span><nav><a class="researcher-exit-link" href="/">الخروج إلى الموقع العام</a></nav></footer>
   </main>
 </div>
-<script src="/researcher.js" defer></script>
+<nav class="researcher-bottom-nav" aria-label="تنقل الهاتف"><a href="/researcher"><span>⌂</span>الرئيسية</a><a href="/researcher/new"><span>＋</span>إنشاء</a><a href="/researcher/discussions"><span>💬</span>المجتمع</a><a href="/researcher/account"><span>◉</span>حسابي</a></nav>
+<script src="/researcher-feed-v5.js" defer></script>
+<script>
+(() => {
+  const init = () => {
+    const toggle = document.getElementById('sideToggle');
+    const sidebar = document.getElementById('adminNav');
+    const shell = document.querySelector('.researcher-shell');
+    if (toggle && sidebar && shell && !toggle.dataset.sjBound) {
+      toggle.dataset.sjBound = '1';
+      const setOpen = (open) => {
+        sidebar.classList.toggle('open', open);
+        shell.classList.toggle('nav-open', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      toggle.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); setOpen(!sidebar.classList.contains('open')); });
+      sidebar.querySelectorAll('.nav-item').forEach((item) => item.addEventListener('click', () => setOpen(false)));
+      document.addEventListener('click', (event) => {
+        if (sidebar.classList.contains('open') && !sidebar.contains(event.target) && !toggle.contains(event.target)) setOpen(false);
+      });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
+    }
+    const account = document.getElementById('researcherAccountToggle');
+    const menu = document.getElementById('researcherAccountMenu');
+    if (account && menu && !account.dataset.sjBound) {
+      account.dataset.sjBound = '1';
+      const setAccountOpen = (open) => {
+        menu.hidden = !open;
+        menu.style.display = open ? 'grid' : 'none';
+        menu.setAttribute('aria-hidden', open ? 'false' : 'true');
+        account.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      setAccountOpen(false);
+      account.addEventListener('click', (event) => {
+        event.preventDefault(); event.stopPropagation();
+        setAccountOpen(menu.hidden);
+      });
+      document.addEventListener('click', (event) => {
+        if (!menu.contains(event.target) && !account.contains(event.target)) setAccountOpen(false);
+      });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setAccountOpen(false); });
+    }
+  };
+  init();
+})();
+</script>
 </body>
 </html>`;
 }
 
-async function researcherDashPage(env, user) {
+async function researcherDashPage(env, user, req) {
+  const url = new URL(req.url);
+  const feed = ['discover', 'latest', 'official'].includes(url.searchParams.get('feed'))
+    ? url.searchParams.get('feed')
+    : 'discover';
+  const feedLabels = { discover: 'اكتشف', latest: 'الأحدث', official: 'اعتمادات الإدارة' };
+  const sectionScope = feed === 'official' ? ' AND m.created_by = ?' : '';
+  const sectionRows = feed === 'official'
+    ? await env.DB.prepare(
+      `SELECT c.id, c.title_ar, c.sort_order, COUNT(DISTINCT m.id) AS material_count
+       FROM collections c
+       JOIN material_collections mc ON mc.collection_id = c.id
+       JOIN materials m ON m.id = mc.material_id AND m.publish_status = 'published'
+       WHERE c.kind = 'section'${sectionScope}
+       GROUP BY c.id, c.title_ar, c.sort_order
+       HAVING COUNT(DISTINCT m.id) > 0
+       ORDER BY c.sort_order, c.id`
+    ).bind(user.id).all()
+    : await env.DB.prepare(
+      `SELECT c.id, c.title_ar, c.sort_order, COUNT(DISTINCT m.id) AS material_count
+       FROM collections c
+       JOIN material_collections mc ON mc.collection_id = c.id
+       JOIN materials m ON m.id = mc.material_id AND m.publish_status = 'published'
+       WHERE c.kind = 'section'
+       GROUP BY c.id, c.title_ar, c.sort_order
+       HAVING COUNT(DISTINCT m.id) > 0
+       ORDER BY c.sort_order, c.id`
+    ).all();
+  const sections = sectionRows.results || [];
+  const requestedSection = url.searchParams.get('section');
+  const selectedSection = requestedSection && requestedSection !== 'all'
+    ? sections.find(s => String(s.id) === requestedSection)
+    : null;
   const rows = await env.DB.prepare(
     `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.publish_status, m.review_note, m.updated_at,
             (SELECT COUNT(*) FROM files f WHERE f.material_id = m.id) AS files_count
@@ -1207,43 +1370,306 @@ async function researcherDashPage(env, user) {
     ['المنشورة', counts.published, 'k-pub'],
   ].map(([t, n, k]) => `<div class="stat-card ${k}"><div class="stat-num">${n}</div><div class="stat-label">${t}</div></div>`).join('');
 
-  const bodyRows = items.map(m => {
+  // تبويب «اعتمادات الإدارة» هو صندوق تنبيهات للباحث: يعرض مواده ومقالاته
+  // التي سجلت الإدارة اعتمادها ونشرتها، بدل إعادة عرض مواد الأرشيف العامة.
+  const officialFilter = feed === 'official'
+    ? ` AND m.created_by = ? AND EXISTS (SELECT 1 FROM audit_log approval WHERE approval.action = 'material.review_approve' AND approval.target = m.ark)`
+    : '';
+  const feedOrder = feed === 'discover'
+    ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
+    : 'ORDER BY m.updated_at DESC, m.id DESC';
+  const sectionFilter = selectedSection
+    ? ` AND EXISTS (SELECT 1 FROM material_collections mc_filter WHERE mc_filter.material_id = m.id AND mc_filter.collection_id = ?)`
+    : '';
+  const publishedQuery =
+    `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
+            m.author, m.photographer, m.archive_ref, m.updated_at,
+            COALESCE((SELECT MAX(a.created_at) FROM audit_log a WHERE a.action = 'material.review_approve' AND a.target = m.ark), m.updated_at) AS approved_at,
+            s.name_ar AS source_name_ar, s.name AS source_name,
+            p.name_ar AS place_name,
+            (SELECT f.id FROM files f WHERE f.material_id = m.id
+             ORDER BY CASE WHEN f.kind = 'thumbnail' THEN 0 WHEN f.mime LIKE 'image/%' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id,
+            (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
+     FROM materials m
+     LEFT JOIN sources s ON s.id = m.source_id
+     LEFT JOIN places p ON p.id = m.place_id
+     WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}
+     ${feedOrder} LIMIT 18`;
+  const publishedParams = [];
+  if (feed === 'official') publishedParams.push(user.id);
+  if (selectedSection) publishedParams.push(selectedSection.id);
+  const publishedRows = publishedParams.length
+    ? await env.DB.prepare(publishedQuery).bind(...publishedParams).all()
+    : await env.DB.prepare(publishedQuery).all();
+  const verified = Number(user.is_verified) === 1;
+  const publishedFeed = (publishedRows.results || []).map(m => {
+    const title = m.title_ar || m.title_orig || m.ark;
+    const inlineId = `researcherInlineDiscussion${m.id}`;
+    const image = m.thumb_id
+      ? `<img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="" loading="lazy">`
+      : `<div class="researcher-feed-placeholder">${esc(TYPE_LABELS[m.type] || m.type)}</div>`;
+    const excerpt = m.summary || m.description || '';
+    const sourceDetails = [
+      `المعرف الأرشيفي: ${m.ark}`,
+      `نوع المادة: ${TYPE_LABELS[m.type] || m.type}`,
+      m.year ? `السنة: ${m.year}` : '',
+      m.source_name_ar || m.source_name ? `المصدر: ${m.source_name_ar || m.source_name}` : '',
+      m.author ? `المؤلف/الجهة: ${m.author}` : '',
+      m.photographer ? `المصور: ${m.photographer}` : '',
+      m.place_name ? `الموضع: ${m.place_name}` : '',
+      m.archive_ref ? `المرجع: ${m.archive_ref}` : '',
+      m.date_text ? `التاريخ: ${m.date_text}` : '',
+    ].filter(Boolean);
+    const sourceBlock = sourceDetails.length
+      ? `<div class="researcher-feed-source"><span class="researcher-feed-source-label">تفاصيل المصدر</span><div>${sourceDetails.map(item => `<span>${esc(item)}</span>`).join('')}</div></div>`
+      : '';
+    const officialNotice = feed === 'official'
+      ? `<div class="researcher-official-notice"><span class="researcher-official-icon" aria-hidden="true">✓</span><div><strong>اعتماد من الإدارة</strong><span>اعتمدت الإدارة هذه المادة ونشرتها في أرشيف سِجِل · ${fmtDate(m.approved_at || m.updated_at)}</span></div></div>`
+      : '';
+    const discussionAction = (kind, label) => `<button class="researcher-feed-action-trigger" type="button" data-discussion-open="${inlineId}" data-discussion-kind="${kind}" aria-controls="${inlineId}" aria-expanded="false">${label}</button>`;
+    const inlineComposer = verified
+      ? `<div id="${inlineId}" class="researcher-inline-discussion" data-discussion-composer hidden>
+          <form data-inline-discussion data-material="${esc(m.id)}">
+            <div class="researcher-inline-head"><div><strong>مساهمة حول المادة</strong><span class="post-meta">${esc(title)}</span></div><button class="researcher-inline-close" type="button" data-discussion-close aria-label="إغلاق النموذج">×</button></div>
+            <div class="post-form-row"><div class="field"><label>نوع المشاركة</label><select name="kind"><option value="comment">تعليق</option><option value="text">تلخيص / وصف</option><option value="review">مراجعة</option><option value="critique">نقد</option><option value="idea">فكرة</option></select></div><div class="field"><label>العنوان</label><input name="title" required maxlength="200" value="${esc(title)}"></div></div>
+            <div class="field"><label>النص</label><textarea name="body" rows="4" required maxlength="20000" placeholder="اكتب تعليقك أو تلخيصك أو مراجعتك..."></textarea></div>
+            <div class="composer-footer"><span class="muted small">سيُنشر داخل مساحة الباحث بعد الإرسال.</span><button class="btn btn-primary" type="submit">نشر المشاركة</button></div>
+          </form>
+        </div>`
+      : `<div id="${inlineId}" class="researcher-inline-discussion" data-discussion-composer hidden><div class="notice-card"><strong>المشاركة متاحة بعد توثيق الحساب.</strong><span class="muted small">يمكنك فتح الحساب من قائمة المستخدم ومتابعة حالة التوثيق.</span></div></div>`;
+    return `<article class="researcher-feed-post social-card">
+      ${officialNotice}
+      ${sourceBlock}
+      <div class="post-head"><div class="post-avatar feed-brand-avatar">س</div><div><strong>أرشيف سِجِل</strong><div class="post-meta">${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
+      <h3 class="researcher-feed-title">${esc(title)}</h3>
+      ${image}
+      ${excerpt ? `<p class="researcher-feed-excerpt">${esc(String(excerpt).slice(0, 420))}</p>` : ''}
+      <div class="researcher-feed-actions">
+        ${discussionAction('comment', '💬 علّق')}
+        ${discussionAction('text', '📝 لخّص')}
+        ${discussionAction('review', '✦ راجع')}
+        <span class="feed-discussion-count">${Number(m.discussions_count || 0)} نقاش</span>
+      </div>
+      ${inlineComposer}
+    </article>`;
+  }).join('');
+  const communityRows = await env.DB.prepare(
+    `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
+            u.id AS author_id, COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+            m.title_ar AS material_title, m.ark AS material_ark,
+            (SELECT COUNT(*) FROM discussion_replies r WHERE r.discussion_id = d.id AND r.status = 'published') AS replies_count
+     FROM discussions d JOIN admin_users u ON u.id = d.author_id
+     LEFT JOIN materials m ON m.id = d.material_id
+     WHERE d.status = 'published' ORDER BY d.created_at DESC, d.id DESC LIMIT 12`
+  ).all();
+  const communityFeed = (communityRows.results || []).map(d => `<article class="researcher-community-post social-card">
+    <div class="post-head"><a class="post-avatar post-profile-link" href="/researcher/profile/${encodeURIComponent(d.author_id)}" aria-label="صفحة ${esc(d.author_name)}">${esc(String(d.author_name || 'ب').slice(0, 1))}</a><div><strong><a class="post-author-link" href="/researcher/profile/${encodeURIComponent(d.author_id)}">${esc(d.author_name)}</a></strong><div class="post-meta">${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' }[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div></div>
+    <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3><p>${esc(String(d.body || '').slice(0, 360))}</p>
+    ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
+    <div class="researcher-feed-actions"><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">💬 فتح والرد</a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
+  </article>`).join('');
+
+  const researcherRows = await env.DB.prepare(
+    `SELECT id, username, display_name, avatar_url, avatar_r2_key, job_title
+     FROM admin_users
+     WHERE role = 'researcher' AND is_active = 1 AND is_verified = 1
+     ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 8`
+  ).all();
+  const storyItems = (researcherRows.results || []).map(researcher => {
+    const name = researcher.display_name || researcher.username || 'باحث';
+    const initial = String(name).trim().slice(0, 1) || 'ب';
+    const avatarSrc = researcher.avatar_r2_key
+      ? `/researcher/avatar/${encodeURIComponent(researcher.id)}`
+      : String(researcher.avatar_url || '').trim();
+    const avatar = avatarSrc
+      ? `<img class="researcher-story-avatar" src="${esc(avatarSrc)}" alt="${esc(name)}" loading="lazy">`
+      : `<span class="researcher-story-avatar" aria-hidden="true">${esc(initial)}</span>`;
+    return `<a class="researcher-story" href="/researcher/profile/${encodeURIComponent(researcher.id)}" aria-label="صفحة ${esc(name)}">${avatar}<span class="researcher-story-name">${esc(String(name).slice(0, 28))}</span>${researcher.job_title ? `<small>${esc(String(researcher.job_title).slice(0, 36))}</small>` : ''}</a>`;
+  }).join('');
+  const categoryTabs = [
+    `<a class="${selectedSection ? '' : 'active'}" href="/researcher?lang=ar&feed=${encodeURIComponent(feed)}#${feed}">الكل</a>`,
+    ...sections.map(section => `<a class="${selectedSection && Number(selectedSection.id) === Number(section.id) ? 'active' : ''}" href="/researcher?lang=ar&feed=${encodeURIComponent(feed)}&section=${encodeURIComponent(section.id)}#${feed}">${esc(section.title_ar)} <small>(${Number(section.material_count || 0)})</small></a>`),
+  ].join('');
+
+  const postCards = items.map(m => {
     const note = m.publish_status === 'draft' && m.review_note
       ? `<div class="review-note"><strong>ملاحظة المراجعة:</strong> ${esc(m.review_note)}</div>` : '';
     const actions = `
       <a class="btn btn-sm" href="/researcher/${m.id}">تعديل</a>
       ${m.publish_status === 'draft' ? `<button class="btn btn-sm btn-primary" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button>
       <button class="btn btn-sm btn-ghost" data-r-delete="${m.id}" type="button">حذف</button>` : ''}`;
-    return `
-    <tr>
-      <td class="mono">${esc(m.ark)}</td>
-      <td><a href="/researcher/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a>${note}</td>
-      <td>${esc(TYPE_LABELS[m.type] || m.type)}</td>
-      <td>${badge(RESEARCHER_STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</td>
-      <td class="mono">${m.files_count}</td>
-      <td class="muted">${fmtDate(m.updated_at)}</td>
-      <td class="row-actions">${actions}</td>
-    </tr>`;
+    return `<article class="researcher-material-card social-card">
+      <div class="post-head"><div class="post-avatar">س</div><div><strong>${esc(TYPE_LABELS[m.type] || m.type)}</strong><div class="post-meta">${fmtDate(m.updated_at)} · ${m.files_count} ملف</div></div><span class="post-status">${badge(RESEARCHER_STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</span></div>
+      <h3><a href="/researcher/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a></h3>
+      ${note}
+      <div class="post-actions"><a class="post-action" href="/researcher/${m.id}">فتح وتحرير</a>${m.publish_status === 'draft' ? `<button class="post-action post-action-button" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button><button class="post-action post-action-danger" data-r-delete="${m.id}" type="button">حذف</button>` : ''}</div>
+    </article>`;
   }).join('');
 
+  const dashboardComposer = verified ? `
+  <section class="researcher-composer social-card">
+    <div class="composer-profile">${researcherSelfAvatarLink(user, 'small')}<div><strong>أنشئ منشورًا بحثيًا</strong><span class="post-meta">شارك تعليقًا أو تلخيصًا أو وصفًا أو مراجعة</span></div></div>
+    <form id="discussionForm" class="researcher-post-form dashboard-post-form">
+      <div class="post-form-row"><div class="field"><label for="nd-kind">نوع المنشور</label><select id="nd-kind" name="kind"><option value="comment">تعليق</option><option value="review">مراجعة</option><option value="critique">نقد</option><option value="idea">فكرة</option><option value="text">تلخيص / وصف</option></select></div><input id="nd-material" name="material_id" type="hidden" value=""></div>
+      <div class="field"><label for="nd-title">عنوان المنشور</label><input id="nd-title" name="title" required maxlength="200" placeholder="اكتب عنوانًا واضحًا لمنشورك"></div>
+      <div class="field"><label for="nd-body">ماذا تريد أن تقول؟</label><textarea id="nd-body" name="body" rows="4" required maxlength="20000" placeholder="اكتب تعليقك أو تلخيصك أو مراجعتك..."></textarea></div>
+      <div class="composer-footer"><span class="muted small">سيظهر المنشور للباحثين بعد إرساله.</span><button class="btn btn-primary" type="submit">نشر المنشور</button></div>
+    </form>
+  </section>` : `<section class="researcher-composer social-card researcher-composer-locked"><div class="composer-profile">${researcherSelfAvatarLink(user, 'small')}<div><strong>المنشورات متاحة بعد توثيق الحساب</strong><span class="post-meta">يمكنك تصفح المواد الآن، وستتمكن من التعليق والمراجعة بعد اعتماد الإدارة لحسابك.</span></div></div></section>`;
   const body = `
-  ${pageHead('منشوراتي', `<a class="btn btn-primary" href="/researcher/new">+ مادة جديدة</a>`)}
-  <div class="stats">${cards}</div>
-  <div class="card">
-    <div class="table-wrap"><table class="tbl">
-      <thead><tr><th>الرقم</th><th>العنوان</th><th>النوع</th><th>الحالة</th><th>الملفات</th><th>آخر تعديل</th><th>إجراءات</th></tr></thead>
-      <tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا منشورات بعد — ابدأ بمادة جديدة.</td></tr>'}</tbody>
-    </table></div>
-  </div>
-  <p class="muted small">المسودة تُراجَع من الإدارة قبل النشر. لا يمكن تعديل أو حذف مادة بعد نشرها — تواصل مع الإدارة عند الحاجة.</p>`;
+  <section class="researcher-hero social-card">${researcherSelfAvatarLink(user, 'hero-avatar')}<div><span class="eyebrow">مساحة الباحث · مجتمع المعرفة</span><h1>مرحبًا ${esc(user.display_name || user.username || 'ب')}</h1><p>شارك المعرفة، ناقش المصادر، وساهم في بناء أرشيف سِجِل.</p></div><a class="btn btn-primary" href="/researcher/new">+ مادة جديدة</a></section>
+  <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?lang=ar&feed=discover#discover">اكتشف</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?lang=ar&feed=latest#latest">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?lang=ar&feed=official#official">اعتمادات الإدارة</a></section>
+  <section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين موثقة بعد.</p>'}</section>
+  ${dashboardComposer}
+  <div class="composer-shortcuts dashboard-shortcuts"><a href="/researcher/discussions?kind=comment">💬 كل نقاشاتي</a><a href="/researcher/discussions?kind=review">✦ مراجعاتي</a><a href="/researcher/discussions?kind=text">📝 تلخيصاتي</a><a href="/researcher/new">＋ إضافة مادة</a></div>
+  <div class="stats researcher-stats">${cards}</div>
+  <div class="researcher-category-tabs" aria-label="أقسام الموجز">${categoryTabs}</div>
+  <section class="social-section-head" id="${feed}"><div><h2>${feed === 'official' ? 'تنبيهات الإدارة · اعتمادات منشوراتك' : `${feedLabels[feed]}${selectedSection ? ` · ${esc(selectedSection.title_ar)}` : ''} · منشورات المجتمع`}</h2><p>${feed === 'official' ? 'تظهر هنا المواد والمقالات التي اعتمدتها الإدارة ونشرتها في الأرشيف العام.' : feed === 'latest' ? 'أحدث المواد المنشورة في سِجِل مرتبة زمنيًا.' : 'تصفح منشورات المجتمع بحسب أقسام الأرشيف، وناقش المصدر داخل مساحة الباحث.'}</p></div></section>
+  <div class="researcher-published-feed">${publishedFeed || `<div class="social-card empty-state">${feed === 'official' ? 'لا توجد اعتمادات جديدة من الإدارة لموادك أو مقالاتك.' : `لا توجد مواد في تصفية «${feedLabels[feed]}».`}</div>`}</div>
+  ${feed === 'official' ? '' : `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions">عرض كل النقاشات</a></section>
+  <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>`}
+  <section class="social-section-head researcher-own-head"><div><h2>منشوراتي وموادي</h2><p>مسوداتك وحالات الاعتماد والملاحظات الإدارية.</p></div><a class="btn btn-ghost" href="/researcher/new">إنشاء مادة</a></section>
+  <div class="researcher-material-feed">${postCards || '<div class="social-card empty-state">لا منشورات بعد — ابدأ بمادة جديدة.</div>'}</div>
+  <p class="muted small researcher-help">كل مادة يرسلها الباحث تمر على مراجعة الإدارة قبل النشر. يمكنك متابعة الملاحظات وإعادة التعديل من البطاقة.</p>`;
   return researcherLayout({ title: 'منشوراتي', active: 'mine', user, body });
+}
+
+async function researcherAccountPage(user) {
+  const avatarSrc = user?.avatar_r2_key ? '/researcher/avatar' : String(user?.avatar_url || '').trim();
+  const v = (key) => esc(user?.[key] || '');
+  const body = `
+  <section class="researcher-hero social-card researcher-account-hero" aria-label="حسابي">
+    ${researcherSelfAvatarLink(user, 'large')}
+    <p class="researcher-account-intro">عدّل بياناتك وصورتك الشخصية التي تظهر في مشاركاتك.</p>
+  </section>
+  <section class="researcher-account-grid">
+    <article class="social-card researcher-account-photo-card">
+      <div class="researcher-account-photo-head"><div>${researcherSelfAvatarLink(user, 'large')}</div><div><h2>الصورة الشخصية</h2><p class="post-meta">JPG أو PNG أو WEBP أو GIF، بحد أقصى 5 ميغابايت.</p></div></div>
+      <div class="researcher-account-photo-actions">
+        <label class="btn btn-primary" for="profileAvatarInput">${avatarSrc ? 'تغيير الصورة' : 'رفع صورة الملف الشخصي'}</label>
+        <input id="profileAvatarInput" data-profile-avatar type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        ${avatarSrc ? '<button class="btn btn-ghost" type="button" data-profile-avatar-remove>حذف الصورة</button>' : ''}
+      </div>
+      <p class="muted small" data-profile-avatar-status>يتم رفع الصورة فور اختيارها.</p>
+    </article>
+    <form id="researcherProfileForm" class="social-card researcher-account-form">
+      <div class="social-section-head"><div><h2>بيانات الحساب</h2><p>هذه البيانات تظهر للزوار والباحثين بحسب إعدادات النشر.</p></div><span class="badge ${Number(user?.is_verified) === 1 ? 'b-pub' : 'b-review'}">${Number(user?.is_verified) === 1 ? 'حساب موثّق' : 'بانتظار التوثيق'}</span></div>
+      <div class="researcher-account-fields">
+        <div class="field"><label for="profileDisplayName">الاسم الظاهر</label><input id="profileDisplayName" name="display_name" required maxlength="80" value="${v('display_name')}" autocomplete="name"></div>
+        <div class="field"><label for="profileUsername">اسم المستخدم</label><input id="profileUsername" value="${v('username')}" dir="ltr" readonly><small class="muted">لا يمكن تغييره من مساحة الباحث.</small></div>
+        <div class="field"><label for="profileEmail">البريد الإلكتروني</label><input id="profileEmail" name="email" type="email" required maxlength="160" value="${v('email')}" dir="ltr" autocomplete="email"></div>
+        <div class="field"><label for="profilePhone">رقم الهاتف</label><input id="profilePhone" name="phone" type="tel" required maxlength="40" value="${v('phone')}" dir="ltr" autocomplete="tel"></div>
+        <div class="field"><label for="profileJobTitle">الصفة أو المسمى الوظيفي</label><input id="profileJobTitle" name="job_title" required maxlength="160" value="${v('job_title')}"></div>
+        <div class="field"><label for="profileAffiliation">الجهة أو المؤسسة</label><input id="profileAffiliation" name="affiliation" maxlength="160" value="${v('affiliation')}"></div>
+        <div class="field"><label for="profileSpecialty">التخصص</label><input id="profileSpecialty" name="specialty" maxlength="160" value="${v('specialty')}"></div>
+        <div class="field"><label for="profileWebsite">رابط فيسبوك</label><input id="profileWebsite" name="website" type="url" maxlength="300" value="${v('website')}" dir="ltr" placeholder="https://facebook.com/..."></div>
+        <div class="field researcher-account-bio"><label for="profileBio">النبذة التعريفية</label><textarea id="profileBio" name="bio" required maxlength="1000" rows="5">${v('bio')}</textarea></div>
+      </div>
+      <div class="composer-footer"><span class="muted small" data-profile-status></span><button class="btn btn-primary" type="submit">حفظ بيانات الحساب</button></div>
+    </form>
+  </section>`;
+  return researcherLayout({ title: 'حسابي', active: 'account', user, body });
+}
+
+async function researcherProfilePage(env, viewer, researcherId) {
+  const target = await env.DB.prepare(
+    `SELECT id, username, display_name, avatar_url, avatar_r2_key, job_title,
+            affiliation, specialty, bio, website, created_at
+     FROM admin_users
+     WHERE id = ? AND role = 'researcher' AND is_active = 1 AND is_verified = 1`
+  ).bind(researcherId).first();
+  if (!target) {
+    return researcherLayout({
+      title: 'الباحث غير موجود', active: 'mine', user: viewer,
+      body: `<div class="card"><h2>الباحث غير موجود</h2><p><a href="/researcher">العودة إلى مساحة الباحث</a></p></div>`,
+    });
+  }
+
+  target.avatar_public_path = `/researcher/avatar/${encodeURIComponent(target.id)}`;
+  const [discussionRows, replyRows, materialRows] = await Promise.all([
+    env.DB.prepare(
+      `SELECT d.id, d.title, d.body, d.kind, d.created_at, d.material_id,
+              m.title_ar AS material_title, m.ark AS material_ark,
+              (SELECT COUNT(*) FROM discussion_replies r WHERE r.discussion_id = d.id AND r.status = 'published') AS replies_count
+       FROM discussions d LEFT JOIN materials m ON m.id = d.material_id
+       WHERE d.author_id = ? AND d.status = 'published'
+       ORDER BY d.created_at DESC, d.id DESC LIMIT 100`
+    ).bind(target.id).all(),
+    env.DB.prepare(
+      `SELECT r.id, r.body, r.created_at, r.discussion_id,
+              d.title AS discussion_title,
+              m.title_ar AS material_title
+       FROM discussion_replies r
+       JOIN discussions d ON d.id = r.discussion_id AND d.status = 'published'
+       LEFT JOIN materials m ON m.id = d.material_id
+       WHERE r.author_id = ? AND r.status = 'published'
+       ORDER BY r.created_at DESC, r.id DESC LIMIT 100`
+    ).bind(target.id).all(),
+    env.DB.prepare(
+      `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description,
+              m.year, m.updated_at,
+              (SELECT f.id FROM files f WHERE f.material_id = m.id
+               ORDER BY CASE WHEN f.kind = 'thumbnail' THEN 0 WHEN f.mime LIKE 'image/%' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id
+       FROM materials m
+       WHERE m.created_by = ? AND m.publish_status = 'published'
+       ORDER BY m.updated_at DESC, m.id DESC LIMIT 100`
+    ).bind(target.id).all(),
+  ]);
+
+  const kindLabels = { comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' };
+  const discussionCards = (discussionRows.results || []).map(d => `
+    <article class="researcher-profile-post social-card">
+      <div class="post-head"><div class="post-avatar">${esc(String(target.display_name || target.username || 'ب').slice(0, 1))}</div><div><strong>${esc(target.display_name || target.username || 'باحث')}</strong><div class="post-meta">${esc(kindLabels[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div></div>
+      <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3>
+      <p>${esc(String(d.body || '').slice(0, 520))}</p>
+      ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
+      <div class="researcher-feed-actions"><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">💬 فتح النقاش</a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
+    </article>`).join('');
+
+  const replyCards = (replyRows.results || []).map(r => `
+    <article class="researcher-profile-post social-card researcher-profile-reply">
+      <div class="post-head"><div class="post-avatar">${esc(String(target.display_name || target.username || 'ب').slice(0, 1))}</div><div><strong>${esc(target.display_name || target.username || 'باحث')}</strong><div class="post-meta">ردّ في نقاش · ${fmtDate(r.created_at)}</div></div></div>
+      <p>${esc(String(r.body || '').slice(0, 520))}</p>
+      <div class="post-linked">${r.material_title ? `حول: ${esc(r.material_title)}` : 'نقاش عام'} · <a href="/researcher/discussions?focus=${encodeURIComponent(r.discussion_id)}">${esc(r.discussion_title || 'فتح النقاش')}</a></div>
+    </article>`).join('');
+
+  const materialCards = (materialRows.results || []).map(m => {
+    const title = m.title_ar || m.title_orig || m.ark;
+    const image = m.thumb_id
+      ? `<img class="researcher-profile-material-image" src="/file/${m.thumb_id}" alt="" loading="lazy">`
+      : `<div class="researcher-profile-material-image researcher-feed-placeholder">${esc(TYPE_LABELS[m.type] || m.type)}</div>`;
+    return `<a class="researcher-profile-material social-card" href="/researcher/discussions?material_id=${encodeURIComponent(m.id)}">${image}<span class="researcher-profile-material-body"><strong>${esc(title)}</strong><small>${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''}</small></span></a>`;
+  }).join('');
+
+  const profileName = target.display_name || target.username || 'باحث';
+  const profileIsViewer = Number(viewer?.id) === Number(target.id);
+  const profileMeta = [target.job_title, target.affiliation, target.specialty].filter(Boolean).map(esc).join(' · ');
+  const bio = String(target.bio || '').trim();
+  const socialLink = String(target.website || '').trim();
+  const body = `
+  <section class="researcher-profile-cover social-card">
+    <div class="researcher-profile-cover-art"></div>
+    <div class="researcher-profile-card">
+      ${researcherAvatarMarkup(target, 'profile-avatar')}
+      <div class="researcher-profile-identity"><h1>${esc(profileName)}</h1><p class="post-meta">@${esc(target.username || '')}${profileMeta ? ` · ${profileMeta}` : ''}</p>${bio ? `<div class="researcher-profile-bio">${researcherBioMarkup(bio)}</div>` : ''}${socialLink ? `<a class="researcher-profile-social" href="${esc(socialLink)}" target="_blank" rel="noopener noreferrer">فيسبوك</a>` : ''}</div>
+      <a class="btn btn-ghost researcher-profile-back" href="/researcher">مساحة الباحث</a>
+    </div>
+  </section>
+  <section class="researcher-profile-stats social-card"><span><strong>${(discussionRows.results || []).length}</strong><small>منشورًا ونقاشًا</small></span><span><strong>${(replyRows.results || []).length}</strong><small>ردًا وتعليقًا</small></span><span><strong>${(materialRows.results || []).length}</strong><small>مادة منشورة</small></span></section>
+  ${materialCards ? `<section class="social-section-head researcher-profile-section-head"><div><h2>المواد المنشورة</h2><p>المواد التي أضافها الباحث إلى أرشيف سِجِل.</p></div></section><div class="researcher-profile-materials">${materialCards}</div>` : ''}
+  <section class="social-section-head researcher-profile-section-head"><div><h2>${profileIsViewer ? 'نقاشاتي ومراجعاتي' : `نقاشات ومراجعات ${esc(profileName)}`}</h2><p>المراجعات والتلخيصات والأفكار التي شاركها في المجتمع.</p></div>${profileIsViewer ? '<a class="btn btn-ghost" href="/researcher/discussions?view=received">ردود الباحثين علي</a>' : ''}</section>
+  <div class="researcher-profile-feed">${discussionCards || '<div class="social-card empty-state">لا توجد منشورات أو مناقشات منشورة بعد.</div>'}</div>
+  ${replyCards ? `<section class="social-section-head researcher-profile-section-head"><div><h2>التعليقات والردود</h2><p>مداخلاته في نقاشات الباحثين الآخرين.</p></div></section><div class="researcher-profile-feed">${replyCards}</div>` : ''}`;
+  return researcherLayout({ title: profileName, active: 'discussions', user: viewer, body });
 }
 
 async function researcherDiscussionsPage(env, user, req) {
   const verified = Number(user.is_verified) === 1;
   const notice = verified ? '' : `<div class="card notice-card"><strong>حسابك بانتظار التوثيق من الإدارة.</strong> يمكنك تصفح النقاشات، لكن النشر سيُتاح بعد التوثيق.</div>`;
   const url = new URL(req.url);
-  const preMaterial = url.searchParams.get('material_id') || '';
+  const rawFocus = url.searchParams.get('focus') || '';
+  const focusId = /^\d+$/.test(rawFocus) ? rawFocus : '';
+  const activityView = url.searchParams.get('view') === 'received' ? 'received' : 'my';
 
   const rows = await env.DB.prepare(
     `SELECT d.id, d.kind, d.title, d.status, d.created_at, d.material_id,
@@ -1253,58 +1679,104 @@ async function researcherDiscussionsPage(env, user, req) {
      WHERE d.author_id = ? ORDER BY d.id DESC LIMIT 200`
   ).bind(user.id).all();
 
-  const bodyRows = (rows.results || []).map(d => `
-    <tr>
-      <td class="mono">#${d.id}</td>
-      <td><a href="/discussion/${d.id}" target="_blank">${esc(d.title)}</a>
-        ${d.material_id ? `<br><span class="muted small">حول: ${esc(d.material_title || d.material_ark)}</span>` : ''}</td>
-      <td>${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'نقد فكرة', text: 'نقد نص' }[d.kind] || d.kind)}</td>
-      <td>${d.status === 'published' ? badge('منشور', 'b-pub') : badge('مخفي', 'b-hidden')}</td>
-      <td class="mono">${d.replies_count}</td>
-      <td class="muted">${fmtDate(d.created_at)}</td>
-      <td class="row-actions"><button class="btn btn-sm btn-ghost" data-del-discussion="${d.id}" type="button">حذف</button></td>
-    </tr>`).join('');
+  const materialRows = await env.DB.prepare(
+    `SELECT m.id, m.title_ar, m.title_orig, m.type, m.publish_status, m.review_note, m.updated_at,
+            (SELECT COUNT(*) FROM files f WHERE f.material_id = m.id) AS files_count
+     FROM materials m
+     WHERE m.created_by = ?
+     ORDER BY m.updated_at DESC, m.id DESC LIMIT 200`
+  ).bind(user.id).all();
+  const ownReplyRows = await env.DB.prepare(
+    `SELECT r.id, r.body, r.created_at, r.discussion_id,
+            d.title AS discussion_title, d.author_id AS discussion_author_id,
+            COALESCE(u.display_name, u.username, 'باحث') AS discussion_author,
+            m.title_ar AS material_title
+     FROM discussion_replies r
+     JOIN discussions d ON d.id = r.discussion_id AND d.status = 'published'
+     LEFT JOIN admin_users u ON u.id = d.author_id
+     LEFT JOIN materials m ON m.id = d.material_id
+     WHERE r.author_id = ? AND r.status = 'published'
+     ORDER BY r.created_at DESC, r.id DESC LIMIT 200`
+  ).bind(user.id).all();
+  const receivedReplyRows = await env.DB.prepare(
+    `SELECT r.id, r.body, r.created_at, r.discussion_id,
+            d.title AS discussion_title,
+            u.id AS author_id,
+            COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+            u.avatar_url, u.avatar_r2_key,
+            m.title_ar AS material_title
+     FROM discussion_replies r
+     JOIN discussions d ON d.id = r.discussion_id AND d.status = 'published'
+     JOIN admin_users u ON u.id = r.author_id
+     LEFT JOIN materials m ON m.id = d.material_id
+     WHERE d.author_id = ? AND r.author_id != ? AND r.status = 'published'
+     ORDER BY r.created_at DESC, r.id DESC LIMIT 200`
+  ).bind(user.id, user.id).all();
 
-  const composer = verified ? `
-  <section class="card">
-    <h2>+ نقاش جديد</h2>
-    <form id="discussionForm">
-      <div class="grid-2">
-        <div class="field"><label for="nd-kind">نوع النقاش</label>
-          <select id="nd-kind" name="kind">
-            <option value="comment">تعليق</option>
-            <option value="review">مراجعة</option>
-            <option value="critique">نقد</option>
-            <option value="idea">نقد فكرة</option>
-            <option value="text">نقد نص</option>
-          </select></div>
-        <div class="field"><label for="nd-material">رقم المادة (اختياري — اتركه فارغًا لنقاش عام)</label>
-          <input id="nd-material" name="material_id" dir="ltr" inputmode="numeric" placeholder="مثال: 12" value="${esc(preMaterial)}"></div>
-      </div>
-      <div class="field"><label for="nd-title">العنوان</label><input id="nd-title" name="title" required maxlength="200"></div>
-      <div class="field"><label for="nd-body">النص</label><textarea id="nd-body" name="body" rows="6" required maxlength="20000"></textarea></div>
-      <div class="grid-2">
-        <div class="field"><label for="nd-quote">النص المنتقد بعينه (اختياري)</label><textarea id="nd-quote" name="quote_text" rows="3" maxlength="2000"></textarea></div>
-        <div class="field"><label for="nd-page">رقم الصفحة (اختياري)</label><input id="nd-page" name="page_no" dir="ltr" maxlength="20"></div>
-      </div>
-      <button class="btn btn-primary" type="submit">نشر النقاش</button>
-    </form>
-  </section>` : '';
+  let focusedBlock = '';
+  if (focusId) {
+    const focused = await env.DB.prepare(
+      `SELECT d.id, d.title, d.body, d.kind, d.created_at, d.author_id,
+              COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+              m.title_ar AS material_title
+       FROM discussions d JOIN admin_users u ON u.id = d.author_id
+       LEFT JOIN materials m ON m.id = d.material_id
+       WHERE d.id = ? AND d.status = 'published'`
+    ).bind(focusId).first();
+    if (focused) {
+      const focusedReplies = await env.DB.prepare(
+        `SELECT r.id, r.body, r.created_at,
+                COALESCE(u.display_name, u.username, 'باحث') AS author_name
+         FROM discussion_replies r JOIN admin_users u ON u.id = r.author_id
+         WHERE r.discussion_id = ? AND r.status = 'published'
+         ORDER BY r.created_at ASC, r.id ASC LIMIT 200`
+      ).bind(focus.id).all();
+      const replyCards = (focusedReplies.results || []).map(r => `<div class="researcher-focus-reply"><strong>${esc(r.author_name)}</strong><span class="post-meta">${fmtDate(r.created_at)}</span><p>${esc(r.body)}</p></div>`).join('');
+      focusedBlock = `<section class="researcher-focus-discussion social-card"><div class="researcher-focus-head"><div class="post-avatar">${esc(String(focused.author_name || 'ب').slice(0, 1))}</div><div><strong>${esc(focused.author_name)}</strong><div class="post-meta">${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' }[focused.kind] || focused.kind)} · ${fmtDate(focused.created_at)}</div></div><a class="btn btn-ghost btn-sm" href="/researcher/discussions">إغلاق</a></div><h2>${esc(focused.title)}</h2><p class="researcher-focus-body">${esc(focused.body)}</p>${focused.material_title ? `<div class="post-linked">حول: ${esc(focused.material_title)}</div>` : ''}<div class="researcher-focus-replies"><h3>الردود (${(focusedReplies.results || []).length})</h3>${replyCards || '<p class="muted small">لا توجد ردود بعد.</p>'}</div>${verified ? `<form class="researcher-focus-reply-form" data-discussion-reply="${focused.id}"><textarea name="body" rows="3" required maxlength="10000" placeholder="اكتب ردك داخل مساحة الباحث..."></textarea><button class="btn btn-primary" type="submit">إرسال الرد</button></form>` : ''}</section>`;
+    }
+  }
+
+  const discussionCards = (rows.results || []).map(d => `
+    <article class="researcher-discussion-card social-card">
+      <div class="post-head"><div class="post-avatar">${esc(String(user.username || 'ب').slice(0, 1))}</div><div><strong>${esc(user.display_name || user.username || 'باحث')}</strong><div class="post-meta">${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'نقد فكرة', text: 'نقد نص' }[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div><span class="post-status">${d.status === 'published' ? badge('منشور', 'b-pub') : badge('مخفي', 'b-hidden')}</span></div>
+      <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3>
+      ${d.material_id ? `<p class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</p>` : ''}
+      <div class="post-actions"><a class="post-action" href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">فتح النقاش · 💬 ${d.replies_count}</a><button class="post-action post-action-danger" data-del-discussion="${d.id}" type="button">حذف</button></div>
+    </article>`).join('');
+
+  const ownReplyCards = (ownReplyRows.results || []).map(r => `
+    <article class="researcher-discussion-card social-card researcher-activity-reply">
+      <div class="post-head">${researcherSelfAvatarLink(user, 'small')}<div><strong>${esc(user.display_name || user.username || 'باحث')}</strong><div class="post-meta">ردّ في نقاش · ${fmtDate(r.created_at)}</div></div></div>
+      <p class="researcher-activity-body">${esc(r.body)}</p>
+      <div class="post-linked">${r.material_title ? `حول: ${esc(r.material_title)}` : 'نقاش عام'} · <a href="/researcher/discussions?focus=${encodeURIComponent(r.discussion_id)}">${esc(r.discussion_title || 'فتح النقاش')}</a></div>
+    </article>`).join('');
+
+  const receivedReplyCards = (receivedReplyRows.results || []).map(r => {
+    const name = r.author_name || 'باحث';
+    const initial = String(name).trim().slice(0, 1) || 'ب';
+    const avatarSrc = r.avatar_r2_key ? `/researcher/avatar/${encodeURIComponent(r.author_id)}` : String(r.avatar_url || '').trim();
+    const avatar = avatarSrc
+      ? `<img class="researcher-activity-avatar" src="${esc(avatarSrc)}" alt="${esc(name)}" loading="lazy">`
+      : `<span class="researcher-activity-avatar" aria-hidden="true">${esc(initial)}</span>`;
+    return `<article class="researcher-discussion-card social-card researcher-activity-reply"><div class="post-head"><a class="researcher-avatar-link" href="/researcher/profile/${encodeURIComponent(r.author_id)}" aria-label="صفحة ${esc(name)}">${avatar}</a><div><strong><a class="post-author-link" href="/researcher/profile/${encodeURIComponent(r.author_id)}">${esc(name)}</a></strong><div class="post-meta">ردّ على نقاشك · ${fmtDate(r.created_at)}</div></div></div><p class="researcher-activity-body">${esc(r.body)}</p><div class="post-linked">${r.material_title ? `حول: ${esc(r.material_title)}` : 'نقاش عام'} · <a href="/researcher/discussions?focus=${encodeURIComponent(r.discussion_id)}">${esc(r.discussion_title || 'فتح النقاش')}</a></div></article>`;
+  }).join('');
+
+  const materialCards = (materialRows.results || []).map(m => `<article class="researcher-activity-material social-card"><div class="post-head"><div class="post-avatar">${esc(String(TYPE_LABELS[m.type] || m.type || 'م').slice(0, 1))}</div><div><strong>${esc(TYPE_LABELS[m.type] || m.type || 'مادة')}</strong><div class="post-meta">${fmtDate(m.updated_at)} · ${m.files_count} ملف</div></div><span class="post-status">${badge(RESEARCHER_STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</span></div><h3><a href="/researcher/${m.id}">${esc(m.title_ar || m.title_orig || 'مادة بلا عنوان')}</a></h3>${m.review_note ? `<div class="review-note">${esc(m.review_note)}</div>` : ''}<div class="post-actions"><a class="post-action" href="/researcher/${m.id}">عرض المادة وتحريرها</a></div></article>`).join('');
+
+  const activityTabs = `<section class="researcher-activity-tabs social-card" aria-label="نشاط الباحث"><a class="researcher-activity-tab${activityView === 'my' ? ' active' : ''}" href="/researcher/discussions?view=my">مناقشاتي وردودي</a><a class="researcher-activity-tab${activityView === 'received' ? ' active' : ''}" href="/researcher/discussions?view=received">ردود الباحثين علي</a></section>`;
+  const activityContent = activityView === 'received'
+    ? `<section class="social-section-head researcher-own-head"><div><h2>ردود الباحثين علي</h2><p>كل الردود الجديدة على نقاشاتك ومراجعاتك.</p></div></section><div class="researcher-activity-feed">${receivedReplyCards || '<div class="social-card empty-state">لا توجد ردود من الباحثين على نقاشاتك بعد.</div>'}</div>`
+    : `<section class="social-section-head researcher-own-head"><div><h2>مناقشاتي ومراجعاتي</h2><p>تعليقاتك ومراجعاتك وتلخيصاتك وأفكارك المنشورة.</p></div></section><div class="researcher-activity-feed">${discussionCards || '<div class="social-card empty-state">لا توجد مناقشات أو مراجعات منشورة بعد.</div>'}</div><section class="social-section-head researcher-own-head"><div><h2>ردودي</h2><p>الردود التي كتبتها داخل نقاشات الباحثين.</p></div></section><div class="researcher-activity-feed">${ownReplyCards || '<div class="social-card empty-state">لا ردود لك بعد.</div>'}</div><section class="social-section-head researcher-own-head"><div><h2>كتاباتي وموادي ومقالاتي</h2><p>المواد والمقالات التي أنشأتها وحالات اعتمادها.</p></div><a class="btn btn-ghost" href="/researcher/new">إضافة مادة</a></section><div class="researcher-activity-feed">${materialCards || '<div class="social-card empty-state">لا توجد مواد أو مقالات بعد.</div>'}</div>`;
 
   const body = `
-  ${pageHead('نقاشاتي', '')}
+  <section class="researcher-hero social-card">${researcherSelfAvatarLink(user, 'hero-avatar')}<div><span class="eyebrow">المجتمع البحثي</span><h1>نقاشاتي ومراجعاتي</h1><p>اكتب، ناقش، وراجع المواد مع الباحثين الموثقين.</p></div><a class="btn btn-ghost" href="/researcher">العودة إلى مساحة الباحث</a></section>
+  ${activityTabs}
   ${notice}
-  <div class="grid-2">
-    ${composer}
-    <section class="card">
-      <h2>نقاشاتي المنشورة</h2>
-      <div class="table-wrap"><table class="tbl">
-        <thead><tr><th>#</th><th>العنوان</th><th>النوع</th><th>الحالة</th><th>الردود</th><th>أُنشئ</th><th></th></tr></thead>
-        <tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا نقاشات بعد.</td></tr>'}</tbody>
-      </table></div>
-    </section>
+  ${focusedBlock}
+  <div class="researcher-activity-layout">
+    <section class="researcher-feed-column">${activityContent}</section>
   </div>
-  <p class="muted small">النقاشات تظهر فورًا على المنصة للزوار والباحثين. <a href="/discussions" target="_blank">عرض صفحة النقاشات العامة</a></p>`;
+  <p class="muted small">المشاركة والردود متاحة للباحثين المسجلين، بينما تعتمد الإدارة الحسابات وتدير المخالفات.</p>`;
   return researcherLayout({ title: 'نقاشاتي', active: 'discussions', user, body });
 }
 
@@ -1404,7 +1876,10 @@ export async function renderResearcher(pathname, req, env, user) {
   if (user.role === 'admin') return redirect('/admin');
 
   const clean = pathname.replace(/\/+$/, '') || '/researcher';
-  if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user));
+  if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user, req));
+  if (clean === '/researcher/account') return htmlRes(await researcherAccountPage(user));
+  const mProfile = clean.match(/^\/researcher\/profile\/(\d+)$/);
+  if (mProfile) return htmlRes(await researcherProfilePage(env, user, parseInt(mProfile[1], 10)));
   if (clean === '/researcher/new') return htmlRes(await researcherFormPage(env, user, 'new', null));
   if (clean === '/researcher/article') return htmlRes(await researcherFormPage(env, user, 'article', null));
   if (clean === '/researcher/discussions') return htmlRes(await researcherDiscussionsPage(env, user, req));

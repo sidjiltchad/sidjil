@@ -758,6 +758,67 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) { toast(err.message, false); }
     });
   });
+
+  // ---------- إدارة ترجمة الكتب والوثائق ----------
+  const translationManage = document.querySelector('[data-translation-manage]');
+  if (translationManage) {
+    // صفحة الترجمة تتكون من بطاقتين منفصلتين: بدء الترجمة وجدول الوظائف.
+    // نستخدم نطاق الصفحة كلها حتى تعمل أزرار الجدول الموجودة في البطاقة الثانية.
+    const translationScope = translationManage.closest('main') || document;
+    const selectAll = translationScope.querySelector('[data-translation-select-all]');
+    const checks = () => Array.from(translationScope.querySelectorAll('[data-translation-job-check]'));
+    if (selectAll) selectAll.addEventListener('change', () => checks().forEach((c) => { c.checked = selectAll.checked; }));
+    translationManage.querySelector('[data-translation-batch-start]')?.addEventListener('click', async (e) => {
+      const ids = Array.from(document.getElementById('translationBatchMaterials')?.selectedOptions || []).map((o) => Number(o.value)).filter(Number.isFinite);
+      const source = document.getElementById('translationBatchSource')?.value || 'auto';
+      const targets = Array.from(document.getElementById('translationBatchTargets')?.selectedOptions || []).map((o) => o.value).filter(Boolean);
+      const mode = document.getElementById('translationBatchMode')?.value || 'translated';
+      const ocr = document.getElementById('translationBatchOcr')?.value || 'auto';
+      if (!ids.length) { toast('اختر ملفًا واحدًا على الأقل', false); return; }
+      if (!targets.length) { toast('اختر لغة هدف واحدة على الأقل', false); return; }
+      const validTargets = targets.filter((target) => source === 'auto' || source !== target);
+      if (!validTargets.length) { toast('لغة المصدر والهدف يجب أن تختلفا', false); return; }
+      const btn = e.currentTarget;
+      setLoading(btn, true);
+      let accepted = 0;
+      try {
+        for (const id of ids) {
+          for (const target of validTargets) {
+            try {
+              await api(`/api/v1/documents/${encodeURIComponent(id)}/translations`, 'POST', { source, target, mode, ocr });
+              accepted += 1;
+            } catch (error) {
+              toast(`تعذر بدء الملف #${id} → ${target}: ${error.message}`, false);
+            }
+          }
+        }
+        if (accepted) { toast(`بدأت ${accepted} وظيفة ترجمة في الخلفية`); setTimeout(() => location.reload(), 900); }
+      } finally { setLoading(btn, false); }
+    });
+    translationScope.querySelectorAll('[data-translation-job-delete]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`حذف وظيفة الترجمة ${btn.dataset.translationJobDelete} وملفها الناتج؟`)) return;
+        setLoading(btn, true);
+        try {
+          const result = await api(`/api/v1/admin/translation-jobs/${encodeURIComponent(btn.dataset.translationJobDelete)}`, 'DELETE');
+          btn.closest('tr')?.remove();
+          toast(result?.missing ? 'أزيلت الوظيفة القديمة من القائمة' : 'حُذفت وظيفة الترجمة وملفها');
+        } catch (error) { toast(error.message, false); setLoading(btn, false); }
+      });
+    });
+    translationScope.querySelector('[data-translation-cleanup]')?.addEventListener('click', async (e) => {
+      const days = Math.max(1, Math.min(3650, Number(document.getElementById('translationCleanupDays')?.value || 30)));
+      if (!confirm(`حذف وظائف الترجمة المكتملة أو الفاشلة الأقدم من ${days} يومًا؟`)) return;
+      const btn = e.currentTarget;
+      setLoading(btn, true);
+      try {
+        const result = await api('/api/v1/admin/translation-jobs/cleanup', 'POST', { beforeDays: days, includeFailed: true });
+        toast(`تم حذف ${result.deletedJobs || 0} وظيفة و${result.deletedCache || 0} من عناصر الكاش`);
+        setTimeout(() => location.reload(), 700);
+      } catch (error) { toast(error.message, false); }
+      finally { setLoading(btn, false); }
+    });
+  }
 });
 
 // ---------- قائمة الجوال: إظهار/إخفاء الشريط الجانبي ----------

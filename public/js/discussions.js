@@ -22,6 +22,41 @@
     return data;
   }
 
+  /* ---------- إظهار كلمة المرور في نموذج التسجيل ---------- */
+  document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var input = document.getElementById(button.dataset.passwordToggle);
+      if (!input) return;
+      var visible = input.type === 'text';
+      input.type = visible ? 'password' : 'text';
+      var label = visible ? button.dataset.showLabel : button.dataset.hideLabel;
+      button.setAttribute('aria-label', label || '');
+      button.setAttribute('title', label || '');
+    });
+  });
+
+  /* ---------- دخول الباحث من بوابة النقاشات ---------- */
+  var loginForm = document.getElementById('discussionLoginForm');
+  if (loginForm) {
+    loginForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var msg = document.getElementById('discussionLoginMsg');
+      var btn = loginForm.querySelector('[type="submit"]');
+      if (msg) { msg.textContent = ''; msg.className = 'form-msg'; }
+      btn.disabled = true;
+      postJSON('/api/v1/admin/login', {
+        username: String(loginForm.username.value || '').trim(),
+        password: loginForm.password.value,
+      }, false).then(function (data) {
+        if (data && data.csrfToken) sessionStorage.setItem('csrfToken', data.csrfToken);
+        location.href = loginForm.dataset.next || '/discussions';
+      }).catch(function (err) {
+        if (msg) { msg.textContent = err.message; msg.className = 'form-msg err'; }
+        btn.disabled = false;
+      });
+    });
+  }
+
   /* ---------- التفاعلات (زوار بلا حساب) ---------- */
   document.querySelectorAll('[data-react]').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -95,7 +130,10 @@
       var msg = document.getElementById('registerMsg');
       var data = {
         display_name: document.getElementById('rg-name').value.trim(),
+        email: document.getElementById('rg-email').value.trim(),
+        phone: document.getElementById('rg-phone').value.trim(),
         affiliation: document.getElementById('rg-aff').value.trim(),
+        job_title: document.getElementById('rg-title').value.trim(),
         bio: document.getElementById('rg-bio').value.trim(),
         username: document.getElementById('rg-user').value.trim(),
         password: document.getElementById('rg-pass').value,

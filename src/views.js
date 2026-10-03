@@ -212,7 +212,7 @@ function footer(ctx) {
 
 export function layout(ctx, { title, description, ogImage, canonical, active, content }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js" defer></script>\n</body>\n</html>`;
 }
 
 // شريط سفلي يظهر فقط في وضع التطبيق (standalone)
@@ -761,14 +761,14 @@ export function shareHTML(ctx, m, override) {
 }
 
 /* ---------- كتلة عارض PDF (تُستخدم في صفحة المادة وصفحة العدد) ---------- */
-function pdfViewerBlock(ctx, pdfFiles) {
+function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '') {
   const { lang } = ctx;
   if (!pdfFiles || !pdfFiles.length) return '';
   const pf = pdfFiles[0];
   return `
     <section class="doc-section" id="pdfViewer">
       <h2 class="doc-section-title">${esc(t(lang, 'pdf_viewer_label'))}</h2>
-      <div class="pdf-viewer" id="pdfViewerBox" data-pdf="/file/${pf.id}">
+      <div class="pdf-viewer" id="pdfViewerBox" data-pdf="/file/${pf.id}" data-translate-pdf="/file/${pf.id}" data-translate-title="${esc(documentTitle || pf.filename || '')}" data-translate-original-download="/file/${pf.id}?download=1">
         <div class="pdf-toolbar" role="toolbar" aria-label="${esc(t(lang, 'pdf_viewer_label'))}">
           <button type="button" class="btn btn-small" data-pdf-prev>${esc(t(lang, 'prev'))}</button>
           <span class="pdf-pageinfo"><span data-pdf-num>1</span> / <span data-pdf-count>…</span></span>
@@ -779,6 +779,7 @@ function pdfViewerBlock(ctx, pdfFiles) {
           <button type="button" class="btn btn-small" data-pdf-fit>${esc(t(lang, 'fit_width'))}</button>
           <button type="button" class="btn btn-small" data-pdf-full>${esc(t(lang, 'fullscreen'))}</button>
           <button type="button" class="btn btn-small btn-primary" data-pdf-read data-read-label="${esc(t(lang, 'read_full_book'))}" data-close-label="${esc(t(lang, 'close_full_book'))}">${esc(t(lang, 'read_full_book'))}</button>
+          <button type="button" class="btn btn-small btn-translate" data-translate-document="${esc(String(materialId))}" data-translate-pdf="/file/${pf.id}" data-translate-title="${esc(documentTitle || pf.filename || '')}" data-translate-original-download="/file/${pf.id}?download=1">${esc(t(lang, 'translate_action'))}</button>
           <a class="btn btn-small btn-ghost" href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a>
         </div>
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap"><canvas data-pdf-canvas></canvas></div>
@@ -863,7 +864,7 @@ async function documentPage(ctx, ark) {
 
   /* --- عارض PDF داخل الصفحة (PDF.js — مكتبة وظيفية فقط، الأصل في R2 كما هو) --- */
   const pdfFiles = files.filter((f) => (f.mime || '') === 'application/pdf' || /\.pdf$/i.test(f.filename || ''));
-  const pdfViewerHTML = pdfViewerBlock(ctx, pdfFiles);
+  const pdfViewerHTML = pdfViewerBlock(ctx, pdfFiles, m.id, title);
 
   /* --- معرض الصور: النسخ + مقارنة قبل/بعد --- */
   const versions = (m.image_versions || []).filter(v => versionFileId(v));
@@ -911,10 +912,11 @@ async function documentPage(ctx, ark) {
   const tManual = trans.find(x => x.layer === 'manual');
   let transcriptionHTML = '';
   if (tAuto || tManual) {
-    transcriptionHTML = `<section class="doc-section" id="transcription">
+      transcriptionHTML = `<section class="doc-section" id="transcription">
       <h2 class="doc-section-title">${esc(t(lang, 'transcription_label'))}</h2>
-      ${tManual ? `<h3 class="sub-title">${esc(t(lang, 'transcription_manual'))}</h3><div class="text-block" dir="auto">${esc(tManual.text)}</div>` : ''}
-      ${tAuto ? `<h3 class="sub-title">${esc(t(lang, 'transcription_auto'))}</h3><div class="text-block text-auto" dir="auto">${esc(tAuto.text)}</div>` : ''}
+      ${tManual ? `<h3 class="sub-title">${esc(t(lang, 'transcription_manual'))}</h3><div class="text-block" dir="auto" data-translation-source>${esc(tManual.text)}</div>` : ''}
+      ${tAuto ? `<h3 class="sub-title">${esc(t(lang, 'transcription_auto'))}</h3><div class="text-block text-auto" dir="auto" data-translation-source>${esc(tAuto.text)}</div>` : ''}
+      <div class="content-translate-actions"><button type="button" class="btn btn-small btn-translate" data-translate-text="${esc(String(m.id))}" data-translate-selector="[data-translation-source]">${esc(t(lang, 'translate_action'))}</button><span class="translate-inline-status" data-translate-status aria-live="polite"></span></div>
     </section>`;
   }
 
@@ -1017,7 +1019,7 @@ async function documentPage(ctx, ark) {
       <section class="doc-section">
         <h2 class="doc-section-title">${esc(t(lang, 'description_label'))}</h2>
         <dl class="meta-grid">${metaHTML}</dl>
-        ${m.description ? `<div class="doc-desc" dir="auto">${esc(m.description)}</div>` : `<p class="empty">${esc(t(lang, 'no_description'))}</p>`}
+        ${m.description ? `<div class="doc-desc" dir="auto" data-translation-description>${esc(m.description)}</div><div class="content-translate-actions"><button type="button" class="btn btn-small btn-translate" data-translate-text="${esc(String(m.id))}" data-translate-selector="[data-translation-description]">${esc(t(lang, 'translate_action'))}</button><span class="translate-inline-status" data-translate-status aria-live="polite"></span></div>` : `<p class="empty">${esc(t(lang, 'no_description'))}</p>`}
         ${(people || places || sections || collections) ? `<div class="chip-groups">
           ${people ? `<div class="chip-group"><span class="chip-group-label">${esc(t(lang, 'nav_people'))}:</span> ${people}</div>` : ''}
           ${places ? `<div class="chip-group"><span class="chip-group-label">${esc(t(lang, 'nav_places'))}:</span> ${places}</div>` : ''}
@@ -1451,7 +1453,7 @@ async function journalIssuePage(ctx, ark) {
 
       ${shareHTML(ctx, m)}
 
-      ${pdfViewerBlock(ctx, pdfFiles)}
+      ${pdfViewerBlock(ctx, pdfFiles, m.id, title)}
 
       ${m.description ? `<section class="doc-section"><h2 class="doc-section-title">${esc(t(lang, 'description_label'))}</h2><div class="doc-desc" dir="auto">${esc(m.description)}</div></section>` : ''}
 
