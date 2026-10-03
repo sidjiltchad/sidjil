@@ -437,11 +437,21 @@ def app_font(name: str, source: str) -> str:
 def rich_pdf_markup(value: str, language: str) -> str:
     """Turn simple archival structure into ReportLab markup without inventing content."""
     def shape_rtl(part: str) -> str:
-        shaped = get_display(arabic_reshaper.reshape(part))
-        # IBM Plex Sans Arabic intentionally has no Latin digit glyphs.  Keep every Latin
-        # letter, digit, date, and archival code in a bundled Latin font inside RTL text.
-        # Without this span ReportLab silently emits empty glyphs for values such as 1907.
-        return re.sub(r'[A-Za-z0-9][A-Za-z0-9._/+:\-]*', lambda m: f'<font name="Helvetica">{m.group(0)}</font>', shaped)
+        # Bidi reordering treats an unmarked number or Latin run as part of the
+        # surrounding Arabic paragraph.  That reverses ranges such as 1895-1899,
+        # moves ISBN fragments, and can attach a date to the neighbouring word.
+        # Mark each LTR run before shaping, then turn the marks into an explicit
+        # Latin font span after python-bidi has laid out the line.
+        ltr_token = re.compile(r'(?<![A-Za-z0-9À-ÿ])([A-Za-z0-9À-ÿ][A-Za-z0-9À-ÿ._/+:\-]*)(?![A-Za-z0-9À-ÿ])')
+        marked = ltr_token.sub(lambda m: '\u200e' + m.group(1) + '\u200e', part)
+        shaped = get_display(arabic_reshaper.reshape(marked), base_dir='R')
+
+        def latin_span(match: re.Match) -> str:
+            return f'<font name="Helvetica">{match.group(1)}</font>'
+
+        # The LRM delimiters are intentionally removed only after bidi has run;
+        # leaving them in ReportLab would make extraction contain invisible marks.
+        return re.sub('\u200e([^\u200e]+)\u200e', latin_span, shaped)
 
     safe_lines = []
     for raw in str(value or '').replace('\r\n', '\n').replace('\r', '\n').split('\n'):
