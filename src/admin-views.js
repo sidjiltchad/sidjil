@@ -1315,8 +1315,8 @@ ${csrfMeta}
     </div>
   </div>
 </div>
-<script src="/researcher-feed-v5.js" defer></script>
-<script src="/translate-inline.js" defer></script>
+<script src="/researcher-feed-v5.js?v=20261003-pdf-modal" defer></script>
+<script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
 (() => {
   const init = () => {
