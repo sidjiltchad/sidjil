@@ -5,7 +5,7 @@ import { routeAdminApi } from './admin-api.js';
 import { routeDiscussionPublic } from './discussions.js';
 import { renderPublic } from './views.js';
 import { renderAdmin, renderResearcher } from './admin-views.js';
-import { getSessionUser } from './lib/auth.js';
+import { getSessionUser, getSessionToken, setSessionCookie } from './lib/auth.js';
 import { rateLimitCheck, rateLimitResponse } from './lib/ratelimit.js';
 import { googleStart, googleCallback } from './lib/google-auth.js';
 import { routeTranslationApi } from './translation.js';
@@ -31,11 +31,19 @@ function isResearcherAppHost(url) {
   return url.hostname.toLowerCase() === RESEARCHER_APP_HOST;
 }
 
-function researcherAppRedirect(pathname, request) {
+function researcherAppRedirect(pathname, request, sessionToken = '') {
   const target = new URL(request.url);
   target.hostname = RESEARCHER_APP_HOST;
   target.pathname = pathname;
-  return Response.redirect(target.toString(), 302);
+  const headers = new Headers({ Location: target.toString() });
+  if (sessionToken) {
+    // Promote a valid legacy host-only session to the shared SIDJIL cookie,
+    // then remove the old host-only cookie on sidjil.org.
+    headers.append('Set-Cookie', setSessionCookie(sessionToken, request.url));
+    const secure = String(request.url).startsWith('https') ? '; Secure' : '';
+    headers.append('Set-Cookie', `archifouna_admin=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`);
+  }
+  return new Response(null, { status: 302, headers });
 }
 
 export default {
@@ -117,7 +125,8 @@ export default {
     // Keep existing links working while making app.sidjil.org the canonical
     // home for the private researcher surface.
     if (!researcherAppHost && (pathname === '/researcher' || pathname.startsWith('/researcher/'))) {
-      return researcherAppRedirect(pathname, request);
+      const legacyUser = await getSessionUser(request, env);
+      return researcherAppRedirect(pathname, request, legacyUser ? getSessionToken(request) : '');
     }
 
     // 1ب) مجلس سِجِل: النقاشات والتفاعلات والتسجيل (عامة)
