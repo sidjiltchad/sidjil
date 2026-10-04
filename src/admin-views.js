@@ -1500,7 +1500,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-mobile-pdf-reader-v1"></script>
-<script src="/researcher-feed-v5.js?v=20261004-material-edit-community" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-infinite-feed-v1" defer></script>
 <script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>
 <script>
 (() => {
@@ -1655,6 +1655,107 @@ function researcherDiscussionCard(d) {
   </article>`;
 }
 
+// ترتيب موجز الباحثين بالتناوب بين أنواع المواد حتى لا تملأ الصور الدفعة الأولى
+// وتختفي الكتب والوثائق خلفها. يبقى الترتيب الزمني محفوظًا داخل كل نوع.
+function diversifyResearcherMaterials(rows, count = 18) {
+  const groups = new Map();
+  for (const row of rows || []) {
+    const type = String(row?.type || 'other');
+    if (!groups.has(type)) groups.set(type, []);
+    groups.get(type).push(row);
+  }
+  const preferred = ['book', 'document', 'article', 'excerpt', 'manuscript', 'journal', 'press', 'correspondence', 'map', 'image'];
+  const types = [...groups.keys()].sort((a, b) => {
+    const ai = preferred.indexOf(a); const bi = preferred.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+  const selected = [];
+  while (selected.length < count && types.length) {
+    for (let i = 0; i < types.length && selected.length < count;) {
+      const group = groups.get(types[i]);
+      const row = group?.shift();
+      if (row) selected.push(row);
+      if (!group?.length) types.splice(i, 1);
+      else i += 1;
+    }
+  }
+  return selected;
+}
+
+async function loadResearcherPublishedFeed(env, user, { feed = 'discover', sectionId = null, offset = 0, limit = 18 } = {}) {
+  const safeFeed = ['discover', 'latest', 'official'].includes(feed) ? feed : 'discover';
+  const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
+  const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
+  const officialFilter = safeFeed === 'official'
+    ? ` AND m.created_by = ? AND EXISTS (SELECT 1 FROM audit_log approval WHERE approval.action = 'material.review_approve' AND approval.target = m.ark)`
+    : '';
+  const approvedAtSelect = safeFeed === 'official'
+    ? `COALESCE((SELECT MAX(a.created_at) FROM audit_log a WHERE a.action = 'material.review_approve' AND a.target = m.ark), m.updated_at) AS approved_at,`
+    : `m.updated_at AS approved_at,`;
+  const sectionFilter = Number.isInteger(Number(sectionId)) && Number(sectionId) > 0
+    ? ` AND EXISTS (SELECT 1 FROM material_collections mc_filter WHERE mc_filter.material_id = m.id AND mc_filter.collection_id = ?)`
+    : '';
+  const feedOrder = safeFeed === 'discover'
+    ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
+    : 'ORDER BY m.updated_at DESC, m.id DESC';
+  const query = `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
+            m.author, m.photographer, m.archive_ref, m.updated_at,
+            creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
+            ${approvedAtSelect}
+            s.name_ar AS source_name_ar, s.name AS source_name,
+            p.name_ar AS place_name,
+            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('thumbnail', 'cover') OR f.mime LIKE 'image/%')
+             ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 WHEN f.mime LIKE 'image/%' THEN 2 ELSE 3 END, f.id LIMIT 1) AS thumb_id,
+            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
+             ORDER BY f.id LIMIT 1) AS pdf_id,
+            (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
+     FROM materials m
+     LEFT JOIN sources s ON s.id = m.source_id
+     LEFT JOIN places p ON p.id = m.place_id
+     LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
+     WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}
+     ${feedOrder} LIMIT 500`;
+  const params = [];
+  if (safeFeed === 'official') params.push(user.id);
+  if (sectionFilter) params.push(Number(sectionId));
+  const result = params.length ? await env.DB.prepare(query).bind(...params).all() : await env.DB.prepare(query).all();
+  const ordered = diversifyResearcherMaterials(result.results || [], safeOffset + safeLimit);
+  const pageRows = ordered.slice(safeOffset, safeOffset + safeLimit);
+  const verified = Number(user.is_verified) === 1;
+  return {
+    html: pageRows.map(m => researcherMaterialCard(m, safeFeed, verified)).join(''),
+    offset: safeOffset,
+    nextOffset: safeOffset + pageRows.length,
+    hasMore: ordered.length > safeOffset + pageRows.length,
+    count: pageRows.length,
+  };
+}
+
+function researcherFeedJson(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
+
+async function researcherFeedPartial(env, user, req) {
+  const url = new URL(req.url);
+  const feed = url.searchParams.get('feed') || 'discover';
+  if (feed === 'following') return researcherFeedJson({ error: 'هذا الموجز لا يدعم التحميل التدريجي بعد.' }, 400);
+  const section = url.searchParams.get('section');
+  const sectionId = section && /^\d+$/.test(section) ? Number(section) : null;
+  const result = await loadResearcherPublishedFeed(env, user, {
+    feed,
+    sectionId,
+    offset: url.searchParams.get('offset'),
+    limit: url.searchParams.get('limit'),
+  });
+  return researcherFeedJson(result);
+}
+
 async function researcherDashPage(env, user, req) {
   const url = new URL(req.url);
   const feed = ['discover', 'latest', 'official', 'following'].includes(url.searchParams.get('feed'))
@@ -1695,46 +1796,18 @@ async function researcherDashPage(env, user, req) {
   ).bind(user.id).all();
   const items = rows.results || [];
 
-  // تبويب «اعتمادات الإدارة» هو صندوق تنبيهات للباحث: يعرض مواده ومقالاته
-  // التي سجلت الإدارة اعتمادها ونشرتها، بدل إعادة عرض مواد الأرشيف العامة.
-  const officialFilter = feed === 'official'
-    ? ` AND m.created_by = ? AND EXISTS (SELECT 1 FROM audit_log approval WHERE approval.action = 'material.review_approve' AND approval.target = m.ark)`
-    : '';
-  const approvedAtSelect = feed === 'official'
-    ? `COALESCE((SELECT MAX(a.created_at) FROM audit_log a WHERE a.action = 'material.review_approve' AND a.target = m.ark), m.updated_at) AS approved_at,`
-    : `m.updated_at AS approved_at,`;
-  const feedOrder = feed === 'discover'
-    ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
-    : 'ORDER BY m.updated_at DESC, m.id DESC';
-  const sectionFilter = selectedSection
-    ? ` AND EXISTS (SELECT 1 FROM material_collections mc_filter WHERE mc_filter.material_id = m.id AND mc_filter.collection_id = ?)`
-    : '';
-  const publishedQuery =
-    `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
-            m.author, m.photographer, m.archive_ref, m.updated_at,
-            creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
-            ${approvedAtSelect}
-            s.name_ar AS source_name_ar, s.name AS source_name,
-            p.name_ar AS place_name,
-            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('thumbnail', 'cover') OR f.mime LIKE 'image/%')
-             ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 WHEN f.mime LIKE 'image/%' THEN 2 ELSE 3 END, f.id LIMIT 1) AS thumb_id,
-            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
-             ORDER BY f.id LIMIT 1) AS pdf_id,
-            (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
-     FROM materials m
-     LEFT JOIN sources s ON s.id = m.source_id
-     LEFT JOIN places p ON p.id = m.place_id
-     LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
-     WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}
-     ${feedOrder} LIMIT 18`;
-  const publishedParams = [];
-  if (feed === 'official') publishedParams.push(user.id);
-  if (selectedSection) publishedParams.push(selectedSection.id);
-  const publishedRows = publishedParams.length
-    ? await env.DB.prepare(publishedQuery).bind(...publishedParams).all()
-    : await env.DB.prepare(publishedQuery).all();
+  // الدفعة الأولى محدودة، وتُستكمل من /researcher/feed عند الاقتراب من أسفل الصفحة.
+  // الترتيب بالتناوب يضمن ظهور الكتب والوثائق إلى جانب الصور.
+  const publishedPage = feed === 'following'
+    ? { html: '', nextOffset: 0, hasMore: false, count: 0 }
+    : await loadResearcherPublishedFeed(env, user, {
+      feed,
+      sectionId: selectedSection?.id || null,
+      offset: 0,
+      limit: 18,
+    });
+  const publishedFeed = publishedPage.html;
   const verified = Number(user.is_verified) === 1;
-  const publishedFeed = (publishedRows.results || []).map(m => researcherMaterialCard(m, feed, verified)).join('');
 
   /* تبويب «المتابَعون»: مواد ونقاشات الباحثين الذين يتابعهم المستخدم — تُبنى خادوميًا */
   let followingFeed = '';
@@ -1862,7 +1935,8 @@ async function researcherDashPage(env, user, req) {
   ${dashboardComposer}
   ${feed === 'following' ? '' : `<nav class="researcher-category-filter" aria-label="تصفية المواد بحسب القسم"><span>القسم</span><div class="researcher-category-tabs">${categoryTabs}</div></nav>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
-  <div class="researcher-published-feed">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
+  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-offset="${feed === 'following' ? 0 : publishedPage.nextOffset}" data-limit="18" data-has-more="${feed !== 'following' && publishedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
+  ${feed !== 'following' && publishedPage.hasMore ? '<div class="researcher-feed-loader" data-researcher-feed-loader role="status" aria-live="polite"><span class="researcher-feed-loader-spinner" aria-hidden="true"></span><span>جارٍ تحميل المزيد عند الاقتراب من نهاية الصفحة…</span></div>' : ''}
   ${feed === 'discover' ? `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
   <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>` : ''}
   <section class="social-section-head researcher-own-head"><div><h2>منشوراتي وموادي</h2><p>مسوداتك وحالات الاعتماد والملاحظات الإدارية.</p></div><a class="btn btn-ghost" href="/researcher/new">إنشاء مادة</a></section>
@@ -2418,6 +2492,7 @@ export async function renderResearcher(pathname, req, env, user) {
   if (user.role === 'admin') return redirect('/admin');
 
   const clean = pathname.replace(/\/+$/, '') || '/researcher';
+  if (clean === '/researcher/feed' && req.method === 'GET') return researcherFeedPartial(env, user, req);
   if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user, req));
   if (clean === '/researcher/materials') return htmlRes(await researcherMaterialsPage(env, user));
   if (clean === '/researcher/account') return htmlRes(await researcherAccountPage(user));

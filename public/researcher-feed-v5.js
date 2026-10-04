@@ -321,8 +321,64 @@ function closeImageLightbox() {
   document.body.style.overflow = '';
 }
 
+function initResearcherInfiniteFeed() {
+  const feed = document.getElementById('researcherPublishedFeed');
+  if (!feed || feed.dataset.feed === 'following' || feed.dataset.hasMore !== 'true' || feed.dataset.infiniteBound) return;
+  feed.dataset.infiniteBound = '1';
+  let loading = false;
+  const loader = document.querySelector('[data-researcher-feed-loader]') || (() => {
+    const el = document.createElement('div');
+    el.className = 'researcher-feed-loader';
+    el.dataset.researcherFeedLoader = '1';
+    el.innerHTML = '<span class="researcher-feed-loader-spinner" aria-hidden="true"></span><span>جارٍ تحميل المزيد…</span>';
+    feed.after(el);
+    return el;
+  })();
+  const stop = () => {
+    feed.dataset.hasMore = 'false';
+    loader.hidden = true;
+    observer?.disconnect();
+  };
+  const loadMore = async () => {
+    if (loading || feed.dataset.hasMore !== 'true') return;
+    loading = true;
+    loader.hidden = false;
+    loader.classList.add('is-loading');
+    try {
+      const params = new URLSearchParams({
+        feed: feed.dataset.feed || 'discover',
+        offset: feed.dataset.offset || '0',
+        limit: feed.dataset.limit || '18',
+      });
+      if (feed.dataset.section) params.set('section', feed.dataset.section);
+      const response = await fetch(`/researcher/feed?${params.toString()}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (data.html) feed.insertAdjacentHTML('beforeend', data.html);
+      feed.dataset.offset = String(data.nextOffset ?? Number(feed.dataset.offset || 0));
+      feed.dataset.hasMore = data.hasMore ? 'true' : 'false';
+      if (!data.hasMore) stop();
+    } catch (error) {
+      loader.innerHTML = '<span>تعذر تحميل المزيد. اضغط للمحاولة مجددًا.</span>';
+      loader.classList.add('is-error');
+      loader.onclick = () => { loader.classList.remove('is-error'); loadMore(); };
+    } finally {
+      loading = false;
+      loader.classList.remove('is-loading');
+    }
+  };
+  const observer = 'IntersectionObserver' in window
+    ? new IntersectionObserver((entries) => { if (entries.some(entry => entry.isIntersecting)) loadMore(); }, { rootMargin: '700px 0px' })
+    : null;
+  if (observer) observer.observe(loader);
+  else window.addEventListener('scroll', () => {
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 900) loadMore();
+  }, { passive: true });
+}
+
 function initResearcherPage() {
   initSocial();
+  initResearcherInfiniteFeed();
 
   // ---------- عارض الصور وتفاصيل المواد داخل مساحة الباحث ----------
   document.addEventListener('click', (event) => {
