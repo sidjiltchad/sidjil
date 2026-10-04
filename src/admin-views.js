@@ -1672,7 +1672,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v6"></script>
 <script src="/researcher-feed-v5.js?v=20261004-fulltext-v2" defer></script>
-<script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>
+<script src="/translate-inline.js?v=20261004-text-reader-v2" defer></script>
 <script>
 (() => {
   const init = () => {

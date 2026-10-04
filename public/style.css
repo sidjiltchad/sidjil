@@ -3580,7 +3580,11 @@ body.translation-workspace-open { overflow: hidden; }
 .translation-page-label strong { color:var(--ink-secondary); font-size:.78rem; }
 .translation-page-label span { color:var(--gold-deep); }
 .translation-pdf-canvas { display:block; max-width:100%; height:auto; margin:0 auto; background:#fff; direction:ltr !important; unicode-bidi:isolate; }
-.translation-page-text { min-height:180px; padding:1.15rem 1.25rem 1.35rem; white-space:pre-wrap; line-height:1.95; font-family:var(--font-body); font-size:1rem; text-align:justify; color:var(--ink); }
+.translation-page-text { min-height:180px; padding:1.15rem 1.25rem 1.35rem; overflow-wrap:anywhere; user-select:text; line-height:1.95; font-family:var(--font-body); font-size:1rem; text-align:justify; color:var(--ink); direction:ltr; unicode-bidi:plaintext; }
+.translation-page-text.translation-text-rtl { direction:rtl; text-align:justify; }
+.translation-page-text p { margin:0 0 .85rem; text-align:justify; }
+.translation-page-text h4 { margin:1rem 0 .65rem; font-size:1.08em; font-weight:800; line-height:1.65; text-align:inherit; }
+.translation-text-break { height:.35rem; }
 .translation-page-text.is-loading { opacity:.56; }
 .translation-workspace-status { min-height:2.15rem; display:flex; align-items:center; padding:.45rem .9rem; border-top:1px solid var(--line); color:var(--muted); font-size:.8rem; }
 .translation-workspace-status a { color:var(--gold-deep); font-weight:700; }
@@ -3632,7 +3636,7 @@ body.translation-workspace-open { overflow: hidden; }
   .translation-page-card { width:100%; margin-bottom:.6rem; border-radius:10px; }
   .translation-page-label { gap:.35rem; padding:.35rem .5rem; font-size:.68rem; }
   .translation-page-label strong { font-size:.7rem; }
-  .translation-page-text { min-height:100px; padding:.7rem .75rem .85rem; font-size:.9rem; line-height:1.8; text-align:start; }
+  .translation-page-text { min-height:100px; padding:.7rem .75rem .85rem; font-size:.9rem; line-height:1.8; text-align:justify; }
   .translation-workspace-status { flex:0 0 auto; min-height:2rem; padding:.35rem .65rem max(.35rem, env(safe-area-inset-bottom, 0px)); font-size:.7rem; line-height:1.45; }
 }
 

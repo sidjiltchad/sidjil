@@ -39,8 +39,8 @@
           <span class="translation-arrow" aria-hidden="true">→</span>
           <label class="translation-language"><span>${labels.to}</span><select data-ta-target><option value="ar">العربية</option><option value="fr">Français</option><option value="en">English</option></select></label>
           <a class="btn btn-small btn-ghost" data-ta-download-original href="${esc(originalDownload)}">${labels.download} ${lang === 'fr' ? 'original' : 'الأصل'}</a>
-          <button class="btn btn-small" type="button" data-ta-download-translation disabled>${lang === 'fr' ? 'Télécharger le livre traduit' : 'تنزيل الكتاب المترجم'}</button>
-          <button class="btn btn-small btn-primary" type="button" data-ta-create-pdf>${labels.translate}</button>
+          <button class="btn btn-small" type="button" data-ta-download-translation disabled>${lang === 'fr' ? 'Télécharger le texte' : 'تنزيل النص المترجم'}</button>
+          <button class="btn btn-small btn-primary" type="button" data-ta-create-pdf>${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}</button>
           <button class="translation-action-close" type="button" data-translation-close aria-label="${labels.close}">×</button>
         </div>
       </header>
@@ -67,9 +67,9 @@
       el.querySelector('.translation-pane-result')?.classList.toggle('is-mobile-active', selected === 'translated');
     }));
     try {
-      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-pdf-rtl-canvas');
+      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-text-reader-v2');
       const workspace = mod.mountTranslationWorkspace(el.querySelector('[data-translation-workspace]'), { pdf, material, language: lang, labels, title, originalDownload, target: el.querySelector('[data-ta-target]')?.value || 'ar' });
-      el.querySelector('[data-ta-create-pdf]')?.addEventListener('click', () => workspace.createPdf());
+      el.querySelector('[data-ta-create-pdf]')?.addEventListener('click', () => workspace.exportPdf());
       el.querySelector('[data-ta-download-translation]')?.addEventListener('click', () => workspace.downloadTranslation());
     } catch (e) {
       const status = el.querySelector('[data-ta-status]');

@@ -43,6 +43,10 @@ AI_ACTIVE = 0
 AI_COMPLETED = 0
 AI_FAILED = 0
 AI_TOTAL_SECONDS = 0.0
+# Keep a strong reference to background jobs until they finish.  asyncio tasks
+# are otherwise weakly referenced by the event loop and can be collected while
+# an OCR or translation job is still running, leaving D1 at an intermediate stage.
+BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
 class Job(BaseModel):
@@ -325,7 +329,9 @@ async def engine(x_sidjil_service_token: str | None = Header(default=None)):
 @app.post('/jobs', status_code=202)
 async def create_job(job: Job, x_sidjil_service_token: str | None = Header(default=None)):
     auth(x_sidjil_service_token)
-    asyncio.create_task(process(job))
+    task = asyncio.create_task(process(job))
+    BACKGROUND_TASKS.add(task)
+    task.add_done_callback(BACKGROUND_TASKS.discard)
     return {'accepted': True, 'jobId': job.jobId}
 
 
@@ -519,6 +525,18 @@ def write_pdf(pages: list[tuple[str, str, str]], destination: Path, target: str,
     title = ParagraphStyle('title', parent=style, fontName=heading_font or font_name, fontSize=15, leading=23, alignment=TA_RIGHT if target_rtl else TA_LEFT, spaceAfter=12)
     ltr_title = ParagraphStyle('ltr-title', parent=styles['BodyText'], fontName='Helvetica', fontSize=9, leading=13, alignment=TA_LEFT, textColor='#536273', spaceAfter=3)
     doc = SimpleDocTemplate(str(destination), pagesize=A4, rightMargin=22 * mm, leftMargin=22 * mm, topMargin=18 * mm, bottomMargin=18 * mm, title='SIDJIL Translation')
+
+    def watermark(canvas, _doc):
+        canvas.saveState()
+        try:
+            canvas.setFillAlpha(0.10)
+        except AttributeError:
+            pass
+        canvas.setFillColorRGB(0.08, 0.18, 0.38)
+        canvas.setFont('Helvetica-Bold', 64)
+        canvas.drawCentredString(A4[0] / 2, A4[1] / 2, 'SIDJIL')
+        canvas.restoreState()
+
     story = []
     for n, (original, translated, page_source) in enumerate(pages, 1):
         story.append(Paragraph(f'SIDJIL · {target.upper()}', ltr_title))
@@ -539,7 +557,7 @@ def write_pdf(pages: list[tuple[str, str, str]], destination: Path, target: str,
         story.append(Paragraph(rich_pdf_markup(translation_label, target), title))
         story.append(Paragraph(rich_pdf_markup(translated or '—', target), style))
         if n < len(pages): story.append(PageBreak())
-    doc.build(story)
+    doc.build(story, onFirstPage=watermark, onLaterPages=watermark)
 
 
 def format_pdf_text(value: str, target: str) -> str:
@@ -578,7 +596,10 @@ async def process(job: Job):
                 await callback(job, status='TRANSLATING', progress=20 + int(n / max(1, len(texts)) * 60), currentStage='TRANSLATING', processedPages=n, pageCount=len(texts), detail=f'page {n}/{len(texts)}')
             if job.mode == 'text':
                 output = Path(td) / 'translated.txt'
-                output.write_text('\n\n'.join(translated), encoding='utf-8')
+                # Keep a real page boundary in the text export.  The reader uses
+                # the form-feed to render each translated page as selectable text;
+                # it is still a normal UTF-8 text file when downloaded.
+                output.write_text('\n\n\f\n\n'.join(translated), encoding='utf-8')
                 mime = 'text/plain; charset=utf-8'
             else:
                 output = Path(td) / 'translated.pdf'

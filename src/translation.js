@@ -193,7 +193,9 @@ async function requestDocumentTranslation(req, env, value) {
   const m = await materialById(env.DB, value, user?.role === 'admin'); if (!m) return fail('المادة غير موجودة', 404);
   const file = await publishedFile(env.DB, m.id); if (!file) return fail('لا يوجد ملف PDF قابل للترجمة لهذه المادة', 400, 'PDF_NOT_FOUND');
   const hash = file.sha256 || await sha256(`${m.id}|${file.r2_key}|${file.size || 0}`);
-  const baseFingerprint = await sha256(`${hash}|${source}|${target}|ollama|qwen3:8b|sidjil-qwen-v1|layout-preserving|v3|${mode}|${ocr}`);
+  // v4 invalidates cached document exports created before the selectable-text
+  // reader and SIDJIL watermark were introduced.
+  const baseFingerprint = await sha256(`${hash}|${source}|${target}|ollama|qwen3:8b|sidjil-qwen-v1|layout-preserving|v4|${mode}|${ocr}`);
   let fingerprint = baseFingerprint;
   const existing = await env.DB.prepare('SELECT * FROM translation_jobs WHERE fingerprint = ?').bind(baseFingerprint).first();
   if (existing && (existing.status === 'COMPLETED' || existing.status === 'QUEUED' || existing.status === 'ANALYZING' || existing.status === 'OCR_PROCESSING' || existing.status === 'EXTRACTING' || existing.status === 'TRANSLATING' || existing.status === 'REBUILDING' || existing.status === 'UPLOADING')) {
@@ -206,7 +208,7 @@ async function requestDocumentTranslation(req, env, value) {
   const jobId = id();
   const inputKey = file.r2_key;
   try {
-    await env.DB.prepare(`INSERT INTO translation_jobs (id, material_id, file_id, user_id, content_hash, fingerprint, source_language, target_language, engine, engine_version, pdf_engine, pdf_engine_version, output_mode, ocr_mode, input_key, status, current_stage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ollama', 'qwen3:8b', 'sidjil-pdf', 'v3', ?, ?, ?, 'QUEUED', 'QUEUED')`).bind(jobId, m.id, file.id, user?.id || null, hash, fingerprint, source, target, mode, ocr, inputKey).run();
+    await env.DB.prepare(`INSERT INTO translation_jobs (id, material_id, file_id, user_id, content_hash, fingerprint, source_language, target_language, engine, engine_version, pdf_engine, pdf_engine_version, output_mode, ocr_mode, input_key, status, current_stage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ollama', 'qwen3:8b', 'sidjil-pdf', 'v4', ?, ?, ?, 'QUEUED', 'QUEUED')`).bind(jobId, m.id, file.id, user?.id || null, hash, fingerprint, source, target, mode, ocr, inputKey).run();
   } catch (e) {
     // UNIQUE fingerprint هو قفل deduplication؛ سباق الطلبات يعيد الـJob الفائز.
     const winner = await env.DB.prepare('SELECT * FROM translation_jobs WHERE fingerprint = ?').bind(fingerprint).first();
