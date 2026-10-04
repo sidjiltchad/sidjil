@@ -343,13 +343,15 @@ async function admContentRepairList(env, url) {
   const countBinds = [];
   if (status !== 'all') { countWhere.push('q.status = ?'); countBinds.push(status); }
   if (issueType) { countWhere.push('q.issue_type = ?'); countBinds.push(issueType); }
+  const repairLimitSql = `LIMIT ${perPage + 1}`;
+  const repairOffsetSql = cursor ? '' : ` OFFSET ${(page - 1) * perPage}`;
   const [itemsRes, countRow] = await Promise.all([
     env.DB.prepare(`SELECT q.id, q.material_id, q.issue_type, q.status, q.source_file_id, q.note,
       q.requested_by, q.resolved_by, q.resolved_at, q.created_at, q.updated_at,
       m.ark, m.title_ar, m.title_orig, m.type, m.publish_status
       FROM content_repair_queue q JOIN materials m ON m.id = q.material_id
-      ${whereSql} ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`)
-      .bind(...binds, perPage + 1, cursor ? 0 : (page - 1) * perPage).all(),
+      ${whereSql} ORDER BY q.updated_at DESC, q.id DESC ${repairLimitSql}${repairOffsetSql}`)
+      .bind(...binds).all(),
     env.DB.prepare(`SELECT COUNT(*) AS c FROM content_repair_queue q${countWhere.length ? ` WHERE ${countWhere.join(' AND ')}` : ''}`).bind(...countBinds).first(),
   ]);
   const raw = itemsRes.results || [];

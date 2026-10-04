@@ -187,9 +187,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const id = btn.dataset.repairSave;
       const select = document.querySelector(`[data-repair-status="${CSS.escape(id)}"]`);
       if (!select) return;
+      const sourceInput = document.querySelector(`[data-repair-source="${CSS.escape(id)}"]`);
+      const noteInput = document.querySelector(`[data-repair-note="${CSS.escape(id)}"]`);
       setLoading(btn, true);
       try {
-        await api(`/api/v1/admin/content-repair/${encodeURIComponent(id)}`, 'PATCH', { status: select.value });
+        await api(`/api/v1/admin/content-repair/${encodeURIComponent(id)}`, 'PATCH', {
+          status: select.value,
+          source_file_id: sourceInput?.value ? Number(sourceInput.value) : null,
+          note: noteInput?.value || null,
+        });
         toast('تم تحديث عنصر الإصلاح');
         setTimeout(() => location.reload(), 500);
       } catch (err) { toast(err.message, false); }

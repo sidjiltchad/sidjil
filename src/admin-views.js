@@ -135,7 +135,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v3">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v4">
 ${head}
 </head>
 <body>
@@ -170,7 +170,7 @@ ${head}
     ${body}
   </main>
 </div>
-<script src="/admin.js?v=20261004-material-edit-requests-v2" defer></script>
+<script src="/admin.js?v=20261004-material-edit-requests-v3" defer></script>
 </body>
 </html>`;
 }
@@ -195,7 +195,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v3">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v4">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -215,7 +215,7 @@ ${THEME_INIT}
   </form>
   <p class="muted small">الجلسة صالحة لمدة 12 ساعة، وكل عملية إدارية تُسجَّل مع عنوان IP.</p>
 </div>
-<script src="/admin.js?v=20261004-material-edit-requests-v2" defer></script>
+<script src="/admin.js?v=20261004-material-edit-requests-v3" defer></script>
 </body>
 </html>`;
 }
@@ -357,8 +357,8 @@ async function contentRepairPage(env, user, req) {
       ORDER BY CASE q.status WHEN 'pending' THEN 0 WHEN 'processing' THEN 1 WHEN 'blocked' THEN 2 ELSE 3 END, q.updated_at DESC, q.id DESC LIMIT 300`).bind(...binds).all();
   const issueLabels = { cover: 'غلاف/صورة', pdf: 'ملف PDF', text: 'تفريغ نصي', asset: 'ملف مفقود', ocr: 'OCR', metadata: 'بيانات وصفية' };
   const statusLabels = { pending: 'معلّق', processing: 'قيد المعالجة', resolved: 'مكتمل', blocked: 'متوقف' };
-  const bodyRows = (rows.results || []).map(r => `<tr data-repair-row="${esc(r.id)}"><td class="mono">#${esc(r.id)}</td><td><a href="/admin/materials/${esc(r.material_id)}">${esc(r.title_ar || r.ark)}</a><br><span class="muted small">${esc(r.ark)} · ${esc(TYPE_LABELS[r.type] || r.type)}</span></td><td>${esc(issueLabels[r.issue_type] || r.issue_type)}</td><td><select data-repair-status="${esc(r.id)}" aria-label="حالة عنصر الإصلاح">${Object.entries(statusLabels).map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('')}</select></td><td class="muted small">${esc(r.note || '—')}</td><td class="muted">${fmtDate(r.updated_at || r.created_at)}</td><td><button class="btn btn-sm btn-primary" type="button" data-repair-save="${esc(r.id)}">حفظ</button></td></tr>`).join('');
-  const body = `${pageHead('طابور إصلاح المحتوى', '<a class="btn btn-ghost" href="/admin/content-health">← صحة المحتوى</a>')}<section class="card"><div class="section-head"><div><h2>نواقص تحتاج قرارًا أو مصدرًا</h2><p class="muted">يُنشئ النظام العناصر من النقص المرصود فقط. لا تُملأ الأغلفة أو الملفات أو النصوص تلقائيًا من دون مصدر موثوق.</p></div></div><form class="filters" method="get" action="/admin/content-repair"><label class="field"><span>الحالة</span><select name="status"><option value="pending"${status === 'pending' ? ' selected' : ''}>معلّق</option><option value="processing"${status === 'processing' ? ' selected' : ''}>قيد المعالجة</option><option value="blocked"${status === 'blocked' ? ' selected' : ''}>متوقف</option><option value="resolved"${status === 'resolved' ? ' selected' : ''}>مكتمل</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>نوع النقص</span><select name="issue_type"><option value="">الكل</option>${Object.entries(issueLabels).map(([v, l]) => `<option value="${v}"${issueType === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label><button class="btn btn-primary" type="submit">تصفية</button></form><div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>المادة</th><th>النقص</th><th>الحالة</th><th>ملاحظة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا توجد عناصر في هذا العرض.</td></tr>'}</tbody></table></div></section>`;
+  const bodyRows = (rows.results || []).map(r => `<tr data-repair-row="${esc(r.id)}"><td class="mono">#${esc(r.id)}</td><td><a href="/admin/materials/${esc(r.material_id)}">${esc(r.title_ar || r.ark)}</a><br><span class="muted small">${esc(r.ark)} · ${esc(TYPE_LABELS[r.type] || r.type)}</span></td><td>${esc(issueLabels[r.issue_type] || r.issue_type)}</td><td><select data-repair-status="${esc(r.id)}" aria-label="حالة عنصر الإصلاح">${Object.entries(statusLabels).map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('')}</select></td><td><input class="repair-source-file" type="number" min="1" data-repair-source="${esc(r.id)}" value="${esc(r.source_file_id || '')}" placeholder="معرف الملف" aria-label="معرف ملف المصدر"><textarea class="repair-note" rows="2" data-repair-note="${esc(r.id)}" placeholder="ملاحظة المصدر أو الإجراء">${esc(r.note || '')}</textarea></td><td class="muted">${fmtDate(r.updated_at || r.created_at)}</td><td><button class="btn btn-sm btn-primary" type="button" data-repair-save="${esc(r.id)}">حفظ</button></td></tr>`).join('');
+  const body = `${pageHead('طابور إصلاح المحتوى', '<a class="btn btn-ghost" href="/admin/content-health">← صحة المحتوى</a>')}<section class="card"><div class="section-head"><div><h2>نواقص تحتاج قرارًا أو مصدرًا</h2><p class="muted">يُنشئ النظام العناصر من النقص المرصود فقط. اربط معرف ملف موثوقًا واكتب ملاحظة قبل اعتماد الإصلاح.</p></div></div><form class="filters" method="get" action="/admin/content-repair"><label class="field"><span>الحالة</span><select name="status"><option value="pending"${status === 'pending' ? ' selected' : ''}>معلّق</option><option value="processing"${status === 'processing' ? ' selected' : ''}>قيد المعالجة</option><option value="blocked"${status === 'blocked' ? ' selected' : ''}>متوقف</option><option value="resolved"${status === 'resolved' ? ' selected' : ''}>مكتمل</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>نوع النقص</span><select name="issue_type"><option value="">الكل</option>${Object.entries(issueLabels).map(([v, l]) => `<option value="${v}"${issueType === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label><button class="btn btn-primary" type="submit">تصفية</button></form><div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>المادة</th><th>النقص</th><th>الحالة</th><th>المصدر / الملاحظة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا توجد عناصر في هذا العرض.</td></tr>'}</tbody></table></div></section>`;
   return layout({ title: 'طابور إصلاح المحتوى', active: 'repair', user, body });
 }
 
@@ -1575,7 +1575,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v3">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v4">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">

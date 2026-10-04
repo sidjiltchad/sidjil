@@ -1594,6 +1594,8 @@ body.translation-workspace-open { overflow: hidden; }
 .rpdf-translation-body p { margin: 0 0 1rem; white-space: pre-wrap; }
 .rpdf-translation-body h3 { margin: .2rem 0 1rem; color: #102a43; font-size: 1.12rem; line-height: 1.65; font-weight: 800; }
 .rpdf-translation-body blockquote { margin: .35rem 0 1rem; padding: .55rem .85rem; border-inline-start: 3px solid var(--teal); background: #f5f8fa; color: #263b4d; border-radius: .35rem; white-space: pre-wrap; }
+.repair-source-file { width: 8rem; margin-block-end: .35rem; }
+.repair-note { display: block; width: min(18rem, 100%); min-height: 2.8rem; resize: vertical; }
 .rpdf-translation-body[dir="ltr"] { direction: ltr; text-align: justify; }
 .rpdf-translation-body.is-loading { opacity: .6; }
 .rpdf-translation-placeholder { display: block; padding: 2.5rem 1rem; color: #7b8492; text-align: center; line-height: 1.8; }
