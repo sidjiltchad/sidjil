@@ -8,7 +8,7 @@ import { TYPE_DIRS } from './db.js';
 /** الحد الأقصى لحجم الرفع: 100MB */
 export const MAX_UPLOAD = 100 * 1024 * 1024;
 
-const ALLOWED_EXTS = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'tiff', 'tif']);
+const ALLOWED_EXTS = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'tiff', 'tif', 'gif', 'heic']);
 
 const MIME_BY_EXT = {
   pdf: 'application/pdf',
@@ -20,6 +20,8 @@ const MIME_BY_EXT = {
   webp: 'image/webp',
   tiff: 'image/tiff',
   tif: 'image/tiff',
+  gif: 'image/gif',
+  heic: 'image/heic',
 };
 
 /**
@@ -49,6 +51,9 @@ export function r2KeyFor({ ark, type, kind, versionType, filename, sha8 }) {
   const safe = safeName(filename || 'file');
   if (kind === 'derived') {
     return `derived/images/${ark}/${versionType}-${sha8}.jpg`;
+  }
+  if (kind === 'cover') {
+    return `covers/${dir}/${ark}/${sha8}-${safe}`;
   }
   if (kind === 'thumbnail') {
     return `thumbnails/${ark}/thumb-480.jpg`;

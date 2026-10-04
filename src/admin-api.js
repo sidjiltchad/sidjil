@@ -21,7 +21,7 @@ import {
   verifyCsrf,
 } from './lib/auth.js';
 import { getOCRProvider } from './lib/ocr.js';
-import { putUpload } from './lib/r2files.js';
+import { putUpload, safeName } from './lib/r2files.js';
 import {
   requireVerifiedResearcher,
   apiDiscussionCreate,
@@ -100,6 +100,7 @@ function researcherAllowed(rest, method) {
   // مجلس سِجِل: الباحث (الموثّق — يُتحقق داخل الدالة) ينشر النقاشات والردود
   if (rest === 'discussions' && method === 'POST') return true;
   if (/^discussions\/\d+$/.test(rest) && (method === 'PUT' || method === 'DELETE')) return true;
+  if (/^discussions\/\d+\/files$/.test(rest) && method === 'POST') return true;
   if (/^discussions\/\d+\/replies$/.test(rest) && method === 'POST') return true;
   if (/^discussions\/\d+\/replies\/\d+$/.test(rest) && method === 'DELETE') return true;
   return false;
@@ -253,6 +254,12 @@ export async function routeAdminApi(req, env) {
     const v = await requireVerifiedResearcher(env, req);
     if (v.error) return v.error;
     return apiDiscussionCreate(env, req, v.user);
+  }
+  m = rest.match(/^discussions\/(\d+)\/files$/);
+  if (m && method === 'POST') {
+    const v = await requireVerifiedResearcher(env, req);
+    if (v.error) return v.error;
+    return admDiscussionImageUpload(env, req, v.user, parseInt(m[1], 10));
   }
   m = rest.match(/^discussions\/(\d+)$/);
   if (m && (method === 'PUT' || method === 'DELETE')) {
@@ -655,6 +662,18 @@ async function admMaterialSubmit(env, user, req, id) {
     if (Number(m.created_by) !== Number(user.id)) return err('هذه المادة ليست من منشوراتك', 403);
   }
   if (m.publish_status !== 'draft') return err('يمكن إرسال المسودات فقط للمراجعة', 400);
+  {
+    const files = await db.prepare('SELECT kind, mime, filename FROM files WHERE material_id = ?').bind(m.id).all();
+    const rows = files.results || [];
+    const hasCover = rows.some(f => f.kind === 'cover' && /^image\//i.test(f.mime || ''));
+    if (!hasCover) return err('أضف صورة الغلاف قبل الإرسال للمراجعة', 400);
+    if (m.type !== 'article') {
+      const hasContent = rows.some(f => f.kind === 'attachment' && (
+        /^image\//i.test(f.mime || '') || f.mime === 'application/pdf' || /\.pdf$/i.test(f.filename || '')
+      ));
+      if (!hasContent) return err('أضف صور المحتوى أو ملف PDF قبل الإرسال للمراجعة', 400);
+    }
+  }
   await db
     .prepare("UPDATE materials SET publish_status = 'in_review', review_note = NULL, updated_at = datetime('now') WHERE id = ?")
     .bind(m.id)
@@ -882,8 +901,37 @@ async function admMaterialUpload(env, user, req, idOrArk) {
     return err('نموذج الرفع غير صالح', 400);
   }
   const file = form.get('file');
-  const kind = String(form.get('kind') || 'original');
-  if (!['original', 'attachment'].includes(kind)) return err('نوع الملف (kind) غير صالح', 400);
+  const requestedKind = String(form.get('kind') || 'original');
+  let kind = requestedKind;
+  if (user.role !== 'admin') {
+    const isImage = /^image\/(jpeg|png|webp|tiff|gif|heic)$/i.test(file?.type || '');
+    const isPdf = file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '');
+    const isArticleFile = m.type === 'article' && /\.(pdf|docx?)$/i.test(file?.name || '');
+    if (requestedKind === 'cover') {
+      if (!isImage) return err('الغلاف يجب أن يكون صورة', 400);
+      const existing = await db.prepare("SELECT id FROM files WHERE material_id = ? AND kind = 'cover' LIMIT 1").bind(m.id).first();
+      if (existing) return err('للمادة صورة غلاف واحدة فقط؛ احذف الغلاف الحالي أولًا لاستبداله', 400);
+      kind = 'cover';
+    } else if (requestedKind === 'content-image') {
+      if (!isImage) return err('اختر صورة بصيغة مدعومة', 400);
+      const existing = await db.prepare('SELECT kind, mime, filename FROM files WHERE material_id = ? AND kind = \'attachment\'').bind(m.id).all();
+      const rows = existing.results || [];
+      if (m.type !== 'article' && rows.some(f => f.mime === 'application/pdf' || /\.pdf$/i.test(f.filename || ''))) return err('اختر صور المحتوى أو PDF، ولا يمكن الجمع بينهما', 400);
+      if (rows.filter(f => /^image\//i.test(f.mime || '')).length >= 20) return err('الحد الأقصى 20 صورة للمادة', 400);
+      kind = 'attachment';
+    } else if (requestedKind === 'content-file') {
+      if (!(isPdf || isArticleFile)) return err(m.type === 'article' ? 'ملف المقال يجب أن يكون PDF أو Word' : 'ملف المحتوى يجب أن يكون PDF', 400);
+      const existing = await db.prepare('SELECT mime, filename FROM files WHERE material_id = ? AND kind = \'attachment\'').bind(m.id).all();
+      const rows = existing.results || [];
+      if (rows.some(f => f.mime === 'application/pdf' || /\.pdf$/i.test(f.filename || '') || /\.(docx?)$/i.test(f.filename || ''))) return err('يمكن إضافة ملف محتوى واحد فقط؛ احذف الملف الحالي أولًا', 400);
+      if (m.type !== 'article' && rows.some(f => /^image\//i.test(f.mime || ''))) return err('اختر صور المحتوى أو PDF، ولا يمكن الجمع بينهما', 400);
+      kind = 'attachment';
+    } else {
+      return err('استخدم قسم الغلاف أو المحتوى لإضافة الملفات', 400);
+    }
+  } else if (!['original', 'attachment', 'cover'].includes(requestedKind)) {
+    return err('نوع الملف (kind) غير صالح', 400);
+  }
 
   let row;
   try {
@@ -911,6 +959,37 @@ async function admMaterialUpload(env, user, req, idOrArk) {
     ip: clientIp(req),
   });
   return json(row, 201);
+}
+
+async function admDiscussionImageUpload(env, req, user, discussionId) {
+  const discussion = await env.DB.prepare('SELECT author_id, status FROM discussions WHERE id = ?').bind(discussionId).first();
+  if (!discussion) return err('المنشور غير موجود', 404);
+  if (user.role !== 'admin' && Number(discussion.author_id) !== Number(user.id)) return err('ليس هذا منشورك', 403);
+  if (discussion.status !== 'published') return err('لا يمكن إرفاق الصور بمنشور مخفي', 400);
+  let form;
+  try { form = await req.formData(); } catch { return err('نموذج الرفع غير صالح', 400); }
+  const file = form.get('file');
+  if (!file || typeof file.arrayBuffer !== 'function') return err('اختر صورة أولًا', 400);
+  const ext = String(file.name || '').split('.').pop().toLowerCase();
+  const accepted = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', tif: 'image/tiff', tiff: 'image/tiff', heic: 'image/heic' };
+  if (!accepted[ext] || (file.type && file.type !== accepted[ext])) return err('الصيغ المدعومة: JPEG وPNG وWebP وGIF وTIFF وHEIC', 400);
+  if (file.size > 20 * 1024 * 1024) return err('حجم الصورة يتجاوز 20 ميغابايت', 400);
+  const count = await env.DB.prepare('SELECT COUNT(*) AS c FROM discussion_files WHERE discussion_id = ?').bind(discussionId).first();
+  if (Number(count?.c || 0) >= 10) return err('الحد الأقصى 10 صور للمنشور', 400);
+  const filename = safeName(file.name || 'image');
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+  const key = `discussions/${discussionId}/${hash}-${filename}`;
+  await env.FILES.put(key, file, { httpMetadata: { contentType: accepted[ext] } });
+  try {
+    const result = await env.DB.prepare(
+      'INSERT INTO discussion_files (discussion_id, filename, mime, size, r2_key) VALUES (?, ?, ?, ?, ?)'
+    ).bind(discussionId, filename, accepted[ext], file.size, key).run();
+    return json({ id: result.meta.last_row_id, filename }, 201);
+  } catch (error) {
+    await env.FILES.delete(key).catch(() => {});
+    throw error;
+  }
 }
 
 // ---------- نسخ الصور: تسجيل مشتق ----------

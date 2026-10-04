@@ -44,7 +44,7 @@ export async function routeApi(req, env) {
   const url = new URL(req.url);
   const path = normPath(url.pathname);
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    if (path.startsWith('/api/v1/') || path.startsWith('/file/')) {
+    if (path.startsWith('/api/v1/') || path.startsWith('/file/') || path.startsWith('/discussion-file/')) {
       return err('الطريقة غير مدعومة', 405);
     }
     return null;
@@ -59,6 +59,9 @@ export async function routeApi(req, env) {
       admin: !!user,
     });
   }
+
+  m = path.match(/^\/discussion-file\/(\d+)$/);
+  if (m) return serveDiscussionImage(env, parseInt(m[1], 10));
 
   if (path === '/sitemap.xml') return sitemap(req, env);
 
@@ -87,6 +90,24 @@ export async function routeApi(req, env) {
     return err('غير موجود', 404);
   }
   return null; // مسار غير معروف → يتركه للموجه الرئيسي
+}
+
+async function serveDiscussionImage(env, id) {
+  const file = await env.DB.prepare(
+    `SELECT f.r2_key, f.mime FROM discussion_files f
+     JOIN discussions d ON d.id = f.discussion_id
+     WHERE f.id = ? AND d.status = 'published'`
+  ).bind(id).first();
+  if (!file) return err('الصورة غير موجودة', 404);
+  const object = await env.FILES.get(file.r2_key);
+  if (!object) return err('الصورة غير موجودة', 404);
+  const headers = new Headers({
+    'Content-Type': file.mime || 'image/jpeg',
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  if (object.size != null) headers.set('Content-Length', String(object.size));
+  return new Response(object.body, { headers });
 }
 
 // ---------- البحث العام ----------
@@ -123,8 +144,8 @@ async function apiSearch(req, env, url) {
     const fres = await env.DB
       .prepare(
         `SELECT id, material_id, kind, mime FROM files
-         WHERE material_id IN (${ph}) AND (kind = 'thumbnail' OR mime LIKE 'image/%')
-         ORDER BY material_id, CASE kind WHEN 'thumbnail' THEN 0 ELSE 1 END, id`
+         WHERE material_id IN (${ph}) AND (kind IN ('thumbnail', 'cover') OR mime LIKE 'image/%')
+         ORDER BY material_id, CASE kind WHEN 'cover' THEN 0 WHEN 'thumbnail' THEN 1 ELSE 2 END, id`
       )
       .bind(...ids)
       .all();

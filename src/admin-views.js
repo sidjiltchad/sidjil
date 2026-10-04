@@ -1291,7 +1291,29 @@ const SJ_ICONS = {
   logout: SJ_SVG('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>'),
   send: SJ_SVG('<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/>'),
   share: SJ_SVG('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>'),
+  image: SJ_SVG('<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'),
+  file: SJ_SVG('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>'),
 };
+
+function researcherUploadFields(prefix, { article = false, coverExists = false, imageCount = 0, fileExists = false } = {}) {
+  const contentAccept = article
+    ? '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    : '.pdf,application/pdf';
+  return `<div class="researcher-upload-fields" data-upload-fields data-article="${article ? 'true' : 'false'}" data-existing-images="${imageCount}">
+    <div class="researcher-upload-field"><strong>1. صورة الغلاف</strong><p>اختر صورة واحدة من الاستوديو لتظهر غلافًا للمادة.</p>
+      <input id="${prefix}-cover" name="cover" type="file" accept="image/*" hidden${coverExists ? ' disabled' : ''}>
+      <label class="researcher-upload-picker${coverExists ? ' is-disabled' : ''}" for="${prefix}-cover"><span class="rup-icon">${SJ_ICONS.image}</span><span>${coverExists ? 'تم رفع الغلاف' : 'اختيار صورة الغلاف'}</span></label><span class="researcher-upload-selection" data-picker-label="${prefix}-cover" data-empty-label="لم تُختر صورة">${coverExists ? 'الغلاف الحالي محفوظ' : 'لم تُختر صورة'}</span>
+    </div>
+    <div class="researcher-upload-field"><strong>2. المضمون المصوّر</strong><p>${article ? 'أضف عدة صور للمقال، ويمكنك إضافة ملف واحد أيضًا.' : 'أضف عدة صور للمضمون، أو ملف PDF واحدًا.'}</p>
+      <input id="${prefix}-images" name="contentImages" type="file" accept="image/*" multiple hidden${(!article && fileExists) ? ' disabled' : ''}>
+      <label class="researcher-upload-picker${(!article && fileExists) ? ' is-disabled' : ''}" for="${prefix}-images"><span class="rup-icon">${SJ_ICONS.image}</span><span>إضافة صور${imageCount ? ` أخرى (${imageCount})` : ''}</span></label><span class="researcher-upload-selection" data-picker-label="${prefix}-images" data-empty-label="يمكن اختيار أكثر من صورة">${imageCount ? `${imageCount} صورة محفوظة` : 'يمكن اختيار أكثر من صورة'}</span>
+    </div>
+    <div class="researcher-upload-field"><strong>${article ? '3. ملف المقال' : '3. ملف المضمون'}</strong><p>${article ? 'ملف واحد بصيغة PDF أو Word.' : 'ملف PDF واحد بدلًا من صور المضمون.'}</p>
+      <input id="${prefix}-content-file" name="contentFile" type="file" accept="${contentAccept}" hidden${(fileExists || (!article && imageCount > 0)) ? ' disabled' : ''}>
+      <label class="researcher-upload-picker${(fileExists || (!article && imageCount > 0)) ? ' is-disabled' : ''}" for="${prefix}-content-file"><span class="rup-icon">${SJ_ICONS.file}</span><span>${fileExists ? 'تم رفع الملف' : (!article && imageCount > 0 ? 'المضمون يحتوي صورًا' : 'اختيار ملف')}</span></label><span class="researcher-upload-selection" data-picker-label="${prefix}-content-file" data-empty-label="ملف واحد فقط">${fileExists ? 'الملف الحالي محفوظ' : (!article && imageCount > 0 ? 'احذف الصور لاختيار PDF بدلًا منها' : 'ملف واحد فقط')}</span>
+    </div>
+  </div>`;
+}
 
 function researcherLayout({ title, active, user, body }) {
   const canCreateDiscussion = Number(user?.is_verified) === 1;
@@ -1321,7 +1343,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-researcher-bottom-nav-centered">
+<link rel="stylesheet" href="/admin.css?v=20261004-researcher-upload-ux">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1417,7 +1439,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261003-rpdf1"></script>
-<script src="/researcher-feed-v5.js?v=20261004-image-discussion-actions" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-researcher-upload-ux" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
 (() => {
@@ -1533,11 +1555,31 @@ function researcherMaterialCard(m, feed, verified) {
   </article>`;
 }
 
+async function attachDiscussionImages(db, rows) {
+  const ids = [...new Set((rows || []).map(row => Number(row.id)).filter(Number.isFinite))];
+  if (!ids.length) return rows;
+  const result = await db.prepare(`SELECT id, discussion_id, filename, mime FROM discussion_files WHERE discussion_id IN (${ids.map(() => '?').join(',')}) ORDER BY id`).bind(...ids).all();
+  const byDiscussion = new Map();
+  for (const file of result.results || []) {
+    if (!byDiscussion.has(Number(file.discussion_id))) byDiscussion.set(Number(file.discussion_id), []);
+    byDiscussion.get(Number(file.discussion_id)).push(file);
+  }
+  for (const row of rows) row.attachments = byDiscussion.get(Number(row.id)) || [];
+  return rows;
+}
+
+function researcherDiscussionImagesMarkup(discussion) {
+  const images = (discussion.attachments || []).filter(file => String(file.mime || '').startsWith('image/'));
+  if (!images.length) return '';
+  return `<div class="researcher-post-image-grid">${images.map((image, index) => `<a href="/discussion-file/${image.id}" target="_blank" rel="noopener" aria-label="عرض صورة ${index + 1} للمنشور"><img src="/discussion-file/${image.id}" alt="صورة مرفقة بالمنشور" loading="lazy"></a>`).join('')}</div>`;
+}
+
 /* بطاقة نقاش باحث في موجز المجتمع */
 function researcherDiscussionCard(d) {
   return `<article class="researcher-community-post social-card">
     <div class="post-head"><a class="post-avatar post-profile-link" href="/researcher/profile/${encodeURIComponent(d.author_id)}" aria-label="صفحة ${esc(d.author_name)}">${esc(String(d.author_name || 'ب').slice(0, 1))}</a><div><strong><a class="post-author-link" href="/researcher/profile/${encodeURIComponent(d.author_id)}">${esc(d.author_name)}</a></strong><div class="post-meta">${esc(DISCUSSION_KIND_LABELS[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div></div>
     <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3><p>${esc(String(d.body || '').slice(0, 360))}</p>
+    ${researcherDiscussionImagesMarkup(d)}
     ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
     <div class="researcher-feed-actions"><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">💬 فتح والرد</a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
   </article>`;
@@ -1603,8 +1645,8 @@ async function researcherDashPage(env, user, req) {
             ${approvedAtSelect}
             s.name_ar AS source_name_ar, s.name AS source_name,
             p.name_ar AS place_name,
-            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind = 'thumbnail' OR f.mime LIKE 'image/%')
-             ORDER BY CASE WHEN f.kind = 'thumbnail' THEN 0 WHEN f.mime LIKE 'image/%' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id,
+            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('thumbnail', 'cover') OR f.mime LIKE 'image/%')
+             ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 WHEN f.mime LIKE 'image/%' THEN 2 ELSE 3 END, f.id LIMIT 1) AS thumb_id,
             (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
              ORDER BY f.id LIMIT 1) AS pdf_id,
             (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
@@ -1630,7 +1672,7 @@ async function researcherDashPage(env, user, req) {
               m.author, m.photographer, m.archive_ref, m.updated_at,
               m.updated_at AS sort_date,
               COALESCE(u.display_name, u.username, 'باحث') AS author_name,
-              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.kind = 'thumbnail' OR f2.mime LIKE 'image/%') ORDER BY f2.id LIMIT 1) AS thumb_id,
+              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.kind IN ('thumbnail', 'cover') OR f2.mime LIKE 'image/%') ORDER BY CASE WHEN f2.kind = 'cover' THEN 0 WHEN f2.kind = 'thumbnail' THEN 1 ELSE 2 END, f2.id LIMIT 1) AS thumb_id,
               (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.mime = 'application/pdf' OR lower(f2.filename) LIKE '%.pdf') ORDER BY f2.id LIMIT 1) AS pdf_id,
               (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
        FROM materials m
@@ -1652,6 +1694,7 @@ async function researcherDashPage(env, user, req) {
        WHERE fl.follower_id = ? AND d.status = 'published'
        ORDER BY d.created_at DESC, d.id DESC LIMIT 30`
     ).bind(user.id).all();
+    await attachDiscussionImages(env.DB, fDiscs.results || []);
     const merged = [
       ...((fMats.results || []).map(m => ({ sort: String(m.sort_date || ''), html: researcherMaterialCard(m, 'following', verified) }))),
       ...((fDiscs.results || []).map(d => ({ sort: String(d.sort_date || ''), html: researcherDiscussionCard(d) }))),
@@ -1667,6 +1710,7 @@ async function researcherDashPage(env, user, req) {
      LEFT JOIN materials m ON m.id = d.material_id
      WHERE d.status = 'published' ORDER BY d.created_at DESC, d.id DESC LIMIT 12`
   ).all();
+  await attachDiscussionImages(env.DB, communityRows.results || []);
   const communityFeed = (communityRows.results || []).map(d => researcherDiscussionCard(d)).join('');
 
   const researcherRows = await env.DB.prepare(
@@ -1724,6 +1768,7 @@ async function researcherDashPage(env, user, req) {
       <input id="nd-material" name="material_id" type="hidden" value="">
       <div class="field"><input id="nd-title" name="title" required maxlength="200" placeholder="عنوان المنشور" aria-label="عنوان المنشور"></div>
       <div class="field"><textarea id="nd-body" name="body" rows="3" required maxlength="20000" placeholder="اكتب تعليقك أو تلخيصك أو مراجعتك..." aria-label="نص المنشور" data-autogrow></textarea></div>
+      <div class="researcher-post-attachments"><input id="nd-images" name="images" type="file" accept="image/*" multiple hidden><label class="researcher-upload-picker" for="nd-images"><span class="rup-icon">${SJ_ICONS.image}</span><span>إضافة صور</span></label><span class="researcher-upload-selection" data-picker-label="nd-images">يمكن اختيار عدة صور</span><div class="researcher-selected-images" id="ndImagesPreview" hidden></div></div>
       <div class="composer-footer"><button class="btn btn-ghost btn-sm" type="button" id="fbComposerCancel">إلغاء</button><button class="btn btn-primary" type="submit">نشر المنشور</button></div>
     </form>
   </section>` : `<section class="researcher-composer social-card researcher-composer-locked"><div class="composer-profile">${researcherSelfAvatarLink(user, 'small')}<div><strong>المنشورات متاحة بعد توثيق الحساب</strong><span class="post-meta">يمكنك تصفح المواد الآن، وستتمكن من التعليق والمراجعة بعد اعتماد الإدارة لحسابك.</span></div></div></section>`;
@@ -1837,8 +1882,8 @@ async function researcherProfilePage(env, viewer, researcherId) {
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description,
               m.year, m.updated_at,
-              (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind = 'thumbnail' OR f.mime LIKE 'image/%')
-               ORDER BY CASE WHEN f.kind = 'thumbnail' THEN 0 WHEN f.mime LIKE 'image/%' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id,
+              (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('thumbnail', 'cover') OR f.mime LIKE 'image/%')
+               ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 WHEN f.mime LIKE 'image/%' THEN 2 ELSE 3 END, f.id LIMIT 1) AS thumb_id,
               (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
                ORDER BY f.id LIMIT 1) AS pdf_id
        FROM materials m
@@ -1850,6 +1895,7 @@ async function researcherProfilePage(env, viewer, researcherId) {
               (SELECT COUNT(*) FROM researcher_follows WHERE follower_id = ?) AS following`
     ).bind(target.id, target.id).first(),
   ]);
+  await attachDiscussionImages(env.DB, discussionRows.results || []);
 
   const kindLabels = { comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' };
   const discussionCards = (discussionRows.results || []).map(d => `
@@ -1857,6 +1903,7 @@ async function researcherProfilePage(env, viewer, researcherId) {
       <div class="post-head"><div class="post-avatar">${esc(String(target.display_name || target.username || 'ب').slice(0, 1))}</div><div><strong>${esc(target.display_name || target.username || 'باحث')}${verificationBadge(target.verification_type)}</strong><div class="post-meta">${esc(kindLabels[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div></div>
       <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3>
       <p>${esc(String(d.body || '').slice(0, 520))}</p>
+      ${researcherDiscussionImagesMarkup(d)}
       ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
       <div class="researcher-feed-actions"><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">💬 فتح النقاش</a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
     </article>`).join('');
@@ -1957,6 +2004,7 @@ async function researcherDiscussionsPage(env, user, req) {
      FROM discussions d LEFT JOIN materials m ON m.id = d.material_id
      WHERE d.author_id = ? ORDER BY d.id DESC LIMIT 200`
   ).bind(user.id).all();
+  await attachDiscussionImages(env.DB, rows.results || []);
 
   const materialRows = await env.DB.prepare(
     `SELECT m.id, m.title_ar, m.title_orig, m.type, m.publish_status, m.review_note, m.updated_at,
@@ -2003,6 +2051,7 @@ async function researcherDiscussionsPage(env, user, req) {
        WHERE d.id = ? AND d.status = 'published'`
     ).bind(focusId).first();
     if (focused) {
+      await attachDiscussionImages(env.DB, [focused]);
       const focusedReplies = await env.DB.prepare(
         `SELECT r.id, r.body, r.created_at,
                 COALESCE(u.display_name, u.username, 'باحث') AS author_name
@@ -2011,7 +2060,7 @@ async function researcherDiscussionsPage(env, user, req) {
          ORDER BY r.created_at ASC, r.id ASC LIMIT 200`
       ).bind(focus.id).all();
       const replyCards = (focusedReplies.results || []).map(r => `<div class="researcher-focus-reply"><strong>${esc(r.author_name)}</strong><span class="post-meta">${fmtDate(r.created_at)}</span><p>${esc(r.body)}</p></div>`).join('');
-      focusedBlock = `<section class="researcher-focus-discussion social-card"><div class="researcher-focus-head"><div class="post-avatar">${esc(String(focused.author_name || 'ب').slice(0, 1))}</div><div><strong>${esc(focused.author_name)}</strong><div class="post-meta">${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' }[focused.kind] || focused.kind)} · ${fmtDate(focused.created_at)}</div></div><a class="btn btn-ghost btn-sm" href="/researcher/discussions?view=${activityView}">إغلاق</a></div><h2>${esc(focused.title)}</h2><p class="researcher-focus-body">${esc(focused.body)}</p>${focused.material_title ? `<div class="post-linked">حول: ${esc(focused.material_title)}</div>` : ''}<div class="researcher-focus-replies"><h3>الردود (${(focusedReplies.results || []).length})</h3>${replyCards || '<p class="muted small">لا توجد ردود بعد.</p>'}</div>${verified ? `<form class="researcher-focus-reply-form" data-discussion-reply="${focused.id}"><textarea name="body" rows="3" required maxlength="10000" placeholder="اكتب ردك داخل مساحة الباحث..."></textarea><button class="btn btn-primary" type="submit">إرسال الرد</button></form>` : ''}</section>`;
+      focusedBlock = `<section class="researcher-focus-discussion social-card"><div class="researcher-focus-head"><div class="post-avatar">${esc(String(focused.author_name || 'ب').slice(0, 1))}</div><div><strong>${esc(focused.author_name)}</strong><div class="post-meta">${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' }[focused.kind] || focused.kind)} · ${fmtDate(focused.created_at)}</div></div><a class="btn btn-ghost btn-sm" href="/researcher/discussions?view=${activityView}">إغلاق</a></div><h2>${esc(focused.title)}</h2><p class="researcher-focus-body">${esc(focused.body)}</p>${researcherDiscussionImagesMarkup(focused)}${focused.material_title ? `<div class="post-linked">حول: ${esc(focused.material_title)}</div>` : ''}<div class="researcher-focus-replies"><h3>الردود (${(focusedReplies.results || []).length})</h3>${replyCards || '<p class="muted small">لا توجد ردود بعد.</p>'}</div>${verified ? `<form class="researcher-focus-reply-form" data-discussion-reply="${focused.id}"><textarea name="body" rows="3" required maxlength="10000" placeholder="اكتب ردك داخل مساحة الباحث..."></textarea><button class="btn btn-primary" type="submit">إرسال الرد</button></form>` : ''}</section>`;
     }
   }
 
@@ -2019,6 +2068,7 @@ async function researcherDiscussionsPage(env, user, req) {
     <article class="researcher-discussion-card social-card">
       <div class="post-head"><div class="post-avatar">${esc(String(user.username || 'ب').slice(0, 1))}</div><div><strong>${esc(user.display_name || user.username || 'باحث')}</strong><div class="post-meta">${esc({ comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'نقد فكرة', text: 'نقد نص' }[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div><span class="post-status">${d.status === 'published' ? badge('منشور', 'b-pub') : badge('مخفي', 'b-hidden')}</span></div>
       <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3>
+      ${researcherDiscussionImagesMarkup(d)}
       ${d.material_id ? `<p class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</p>` : ''}
       <div class="post-actions"><a class="post-action" href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">فتح النقاش · 💬 ${d.replies_count}</a><button class="post-action post-action-danger" data-del-discussion="${d.id}" type="button">حذف</button></div>
     </article>`).join('');
@@ -2054,6 +2104,7 @@ async function researcherDiscussionsPage(env, user, req) {
      WHERE d.status = 'published' AND d.author_id != ?
      ORDER BY d.created_at DESC, d.id DESC LIMIT 60`
   ).bind(user.id).all();
+  await attachDiscussionImages(env.DB, communityDiscussionRows.results || []);
   const communityCards = (communityDiscussionRows.results || []).map(d => {
     const name = d.author_name || 'باحث';
     const initial = String(name).trim().slice(0, 1) || 'ب';
@@ -2068,6 +2119,7 @@ async function researcherDiscussionsPage(env, user, req) {
       <div class="post-head"><a class="researcher-avatar-link" href="/researcher/profile/${encodeURIComponent(d.author_id)}" aria-label="صفحة ${esc(name)}">${avatar}</a><div><strong><a class="post-author-link" href="/researcher/profile/${encodeURIComponent(d.author_id)}">${esc(name)}</a></strong><div class="post-meta">${esc(DISCUSSION_KIND_LABELS[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div></div>
       <h3><a href="/researcher/discussions?view=community&focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3>
       <p class="researcher-activity-body">${esc(String(d.body || '').slice(0, 500))}</p>
+      ${researcherDiscussionImagesMarkup(d)}
       ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title)}</div>` : ''}
       <div class="post-actions"><a class="post-action" href="/researcher/discussions?view=community&focus=${encodeURIComponent(d.id)}">💬 ${Number(d.replies_count || 0)} رد · فتح النقاش</a><button class="post-action post-action-button" type="button" data-share-discussion="${d.id}"><span class="post-action-icon" aria-hidden="true">${SJ_ICONS.share}</span> مشاركة</button></div>
       ${replyForm}
@@ -2124,7 +2176,11 @@ async function researcherFormPage(env, user, mode, id) {
 
   let filesBlock = '';
   if (isEdit) {
-    const fr = await db.prepare('SELECT id, kind, filename, size FROM files WHERE material_id = ? ORDER BY id').bind(m.id).all();
+    const fr = await db.prepare('SELECT id, kind, filename, size, mime FROM files WHERE material_id = ? ORDER BY id').bind(m.id).all();
+    const currentFiles = fr.results || [];
+    const coverExists = currentFiles.some(f => f.kind === 'cover');
+    const imageCount = currentFiles.filter(f => f.kind === 'attachment' && /^image\//i.test(f.mime || '')).length;
+    const fileExists = currentFiles.some(f => f.kind === 'attachment' && !/^image\//i.test(f.mime || ''));
     const frows = (fr.results || []).map(f => `
       <tr><td>${esc(f.filename || '—')}</td><td>${esc(f.kind || '')}</td>
       <td class="mono">${f.size ? (f.size / 1024).toFixed(0) + ' ك.ب' : '—'}</td>
@@ -2136,12 +2192,10 @@ async function researcherFormPage(env, user, mode, id) {
         <thead><tr><th>الاسم</th><th>النوع</th><th>الحجم</th><th></th></tr></thead>
         <tbody>${frows || '<tr><td colspan="4" class="muted">لا ملفات مرفوعة بعد.</td></tr>'}</tbody>
       </table></div>
-      <form id="rUploadForm" data-material="${m.id}">
-        <div class="field"><label for="rFile">رفع ملف (PDF/صورة/صوت…)</label><input id="rFile" type="file" name="file" required></div>
-        <div class="field"><label for="rKind">نوع الملف</label>
-          <select id="rKind" name="kind"><option value="original">أصلي</option><option value="attachment">مرفق</option></select></div>
-        <button class="btn" type="submit">رفع</button>
-      </form>
+      ${m.publish_status === 'draft' ? `<form id="rUploadForm" data-material="${m.id}" data-article="${m.type === 'article' ? 'true' : 'false'}">
+        ${researcherUploadFields('rUpload', { article: m.type === 'article', coverExists, imageCount, fileExists })}
+        <button class="btn btn-primary" type="submit">رفع الملفات المحددة</button>
+      </form>` : '<p class="muted small">الرفع متاح ما دامت المادة مسودة.</p>'}
     </section>`;
   }
 
@@ -2176,6 +2230,7 @@ async function researcherFormPage(env, user, mode, id) {
         <div class="field"><label for="rf-year">السنة</label><input id="rf-year" name="year" type="number" min="1500" max="2100" value="${esc(m?.year ?? '')}" ${ro}></div>
       </div>
       <div class="field"><span class="field-label">الأقسام</span><div class="checks">${secBoxes || '<span class="muted">لا أقسام معرّفة بعد.</span>'}</div></div>
+      ${!isEdit ? `<section class="researcher-upload-card"><h3>صور وملفات المادة</h3><p class="muted small">حدد صورة الغلاف والمضمون الآن؛ سيرفعهما التطبيق بعد إنشاء المسودة.</p>${researcherUploadFields('rNewUpload')}</section>` : ''}
       ${!isEdit ? '<button class="btn btn-primary" type="submit">إنشاء المسودة</button>' : (m.publish_status === 'draft' ? '<button class="btn btn-primary" type="submit">حفظ التعديلات</button>' : '')}
     </section>
   </form>
@@ -2192,7 +2247,7 @@ async function researcherJournalPage(env, user) {
   const issues = await env.DB.prepare(
     `SELECT m.id, m.ark, m.title_ar, m.title_orig, m.description, m.year,
             (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf') ORDER BY f.id LIMIT 1) AS pdf_id,
-            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind = 'thumbnail' OR f.mime LIKE 'image/%') ORDER BY f.id LIMIT 1) AS thumb_id
+            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('thumbnail', 'cover') OR f.mime LIKE 'image/%') ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id
      FROM materials m WHERE m.type = 'journal' AND m.publish_status = 'published'
      ORDER BY m.year DESC, m.id DESC`
   ).all();
@@ -2223,9 +2278,7 @@ async function researcherJournalPage(env, user) {
     <form id="journalArticleForm">
       <div class="field"><label for="ja-title">عنوان المقال *</label><input id="ja-title" name="title" required maxlength="200" placeholder="عنوان المقال"></div>
       <div class="field"><label for="ja-body">نص المقال *</label><textarea id="ja-body" name="body" rows="8" required maxlength="50000" placeholder="اكتب مقالك هنا..." data-autogrow></textarea></div>
-      <div class="field"><span class="field-label">مرفق (صورة أو Word أو PDF)</span>
-        <div class="journal-attach-row"><input id="ja-file" name="attachment" type="file" accept="image/*,.doc,.docx,.pdf" hidden><label class="btn btn-ghost btn-sm journal-attach-btn" for="ja-file">📎 إضافة مرفق</label><span class="muted small" id="jaFileName">لم يُختر ملف</span></div>
-      </div>
+      ${researcherUploadFields('jaUpload', { article: true })}
       <div class="composer-footer"><span class="muted small" id="jaStatus"></span><button class="btn btn-primary" type="submit" id="jaSubmit">إرسال المقال</button></div>
     </form>
   </section>` : `

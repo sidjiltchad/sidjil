@@ -359,6 +359,8 @@ export async function apiDiscussionDelete(env, req, user, id) {
   const d = await db.prepare('SELECT author_id FROM discussions WHERE id = ?').bind(id).first();
   if (!d) return err('النقاش غير موجود', 404);
   if (user.role !== 'admin' && Number(d.author_id) !== Number(user.id)) return err('ليس من نقاشاتك', 403);
+  const attachments = await db.prepare('SELECT r2_key FROM discussion_files WHERE discussion_id = ?').bind(id).all();
+  await Promise.all((attachments.results || []).map(file => env.FILES.delete(file.r2_key).catch(() => {})));
   await db.prepare('DELETE FROM discussions WHERE id = ?').bind(id).run();
   await audit(db, { userId: user.id, action: 'discussion.delete', target: String(id), ip: clientIp(req) });
   return json({ ok: true });

@@ -53,6 +53,86 @@ async function api(path, method = 'GET', body) {
   return data;
 }
 
+async function uploadMaterialFile(materialId, file, kind) {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('kind', kind);
+  const headers = {};
+  const token = csrfToken();
+  if (token) headers['X-CSRF-Token'] = token;
+  const res = await fetch(`/api/v1/admin/materials/${materialId}/files`, { method: 'POST', credentials: 'same-origin', headers, body: form });
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error(data?.error || `فشل رفع ${file.name}`);
+  return data;
+}
+
+function selectedMaterialUploads(group) {
+  return {
+    cover: group.querySelector('input[name="cover"]')?.files?.[0],
+    images: [...(group.querySelector('input[name="contentImages"]')?.files || [])],
+    contentFile: group.querySelector('input[name="contentFile"]')?.files?.[0],
+  };
+}
+
+async function uploadSelectedMaterialFiles(materialId, group, { article = false, requireCover = false, requireContent = false } = {}) {
+  const { cover, images, contentFile } = selectedMaterialUploads(group);
+  const existingImages = Number(group.dataset.existingImages || 0);
+  if (requireCover && !cover) throw new Error('اختر صورة الغلاف أولًا');
+  if (requireContent && !images.length && !contentFile) throw new Error('اختر صور المضمون أو ملف PDF');
+  if (!article && images.length && contentFile) throw new Error('اختر صور المضمون أو ملف PDF، ولا تجمع بينهما');
+  if (existingImages + images.length > 20) throw new Error('الحد الأقصى 20 صورة للمادة');
+  if (cover) await uploadMaterialFile(materialId, cover, 'cover');
+  for (const image of images) await uploadMaterialFile(materialId, image, 'content-image');
+  if (contentFile) await uploadMaterialFile(materialId, contentFile, 'content-file');
+}
+
+function initResearcherPickers() {
+  document.querySelectorAll('[data-picker-label]').forEach((label) => {
+    const input = document.getElementById(label.dataset.pickerLabel);
+    if (!input || input.dataset.sjPickerBound) return;
+    input.dataset.sjPickerBound = '1';
+    input.addEventListener('change', () => {
+      const files = [...(input.files || [])];
+      label.textContent = files.length
+        ? files.length === 1 ? files[0].name : `${files.length} صور مختارة`
+        : label.dataset.emptyLabel || 'لم يُختر ملف';
+      const group = input.closest('[data-upload-fields]');
+      if (group && group.dataset.article !== 'true') {
+        const images = group.querySelector('input[name="contentImages"]');
+        const contentFile = group.querySelector('input[name="contentFile"]');
+        if (input === images && files.length && contentFile?.files?.length) {
+          contentFile.value = '';
+          const contentLabel = group.querySelector(`[data-picker-label="${contentFile.id}"]`);
+          if (contentLabel) contentLabel.textContent = 'ملف واحد فقط';
+        }
+        if (input === contentFile && files.length && images?.files?.length) {
+          images.value = '';
+          const imagesLabel = group.querySelector(`[data-picker-label="${images.id}"]`);
+          if (imagesLabel) imagesLabel.textContent = 'يمكن اختيار أكثر من صورة';
+        }
+      }
+    });
+  });
+  const postImages = document.getElementById('nd-images');
+  const preview = document.getElementById('ndImagesPreview');
+  if (postImages && preview && !postImages.dataset.sjPickerBound) {
+    postImages.dataset.sjPickerBound = '1';
+    postImages.addEventListener('change', () => {
+      preview.replaceChildren();
+      const files = [...postImages.files || []].slice(0, 10);
+      if (postImages.files.length > 10) toast('يمكنك اختيار 10 صور كحد أقصى', false);
+      preview.hidden = !files.length;
+      for (const file of files) {
+        const image = document.createElement('img');
+        image.alt = file.name;
+        image.src = URL.createObjectURL(file);
+        preview.appendChild(image);
+      }
+    });
+  }
+}
+
 let activePdfReader = null;
 function openResearcherMaterialModal(trigger) {
   const modal = document.getElementById('researcherMaterialModal');
@@ -524,8 +604,20 @@ function initResearcherPage() {
           await api(`/api/v1/admin/materials/${id}`, 'PUT', payload);
           toast('حُفظت التعديلات');
         } else {
+          const group = form.querySelector('[data-upload-fields]');
+          const chosen = selectedMaterialUploads(group);
+          if (!chosen.cover) throw new Error('اختر صورة الغلاف أولًا');
+          if (!chosen.images.length && !chosen.contentFile) throw new Error('اختر صور المضمون أو ملف PDF');
+          if (chosen.images.length && chosen.contentFile) throw new Error('اختر صور المضمون أو ملف PDF، ولا تجمع بينهما');
           const data = await api('/api/v1/admin/materials', 'POST', payload);
-          toast('أُنشئت المسودة — يمكنك الآن رفع الملفات');
+          try {
+            await uploadSelectedMaterialFiles(data.id, group, { requireCover: true, requireContent: true });
+          } catch (uploadError) {
+            toast(`أُنشئت المسودة، لكن لم يكتمل الرفع: ${uploadError.message}`, false);
+            setTimeout(() => { location.href = `/researcher/${data.id}`; }, 1200);
+            return;
+          }
+          toast('أُنشئت المسودة ورُفعت ملفاتها');
           location.href = `/researcher/${data.id}`;
           return;
         }
@@ -543,22 +635,14 @@ function initResearcherPage() {
     upForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const materialId = upForm.dataset.material;
-      const fileInput = upForm.querySelector('input[type="file"]');
-      if (!fileInput || !fileInput.files.length) { toast('اختر ملفًا أولًا', false); return; }
+      const group = upForm.querySelector('[data-upload-fields]');
+      const selected = group && [...group.querySelectorAll('input[type="file"]')].some(input => input.files?.length);
+      if (!selected) { toast('اختر الغلاف أو صور المحتوى أو الملف أولًا', false); return; }
       const btn = upForm.querySelector('button[type="submit"]');
       if (btn) btn.disabled = true;
       try {
-        const fd = new FormData();
-        fd.append('file', fileInput.files[0]);
-        fd.append('kind', upForm.querySelector('select[name="kind"]').value || 'original');
-        const opts = { method: 'POST', credentials: 'same-origin', headers: {}, body: fd };
-        const token = csrfToken();
-        if (token) opts.headers['X-CSRF-Token'] = token;
-        const res = await fetch(`/api/v1/admin/materials/${materialId}/files`, opts);
-        let data = null;
-        try { data = await res.json(); } catch (_) { /* ليس JSON */ }
-        if (!res.ok) throw new Error((data && data.error) || `خطأ في الرفع (${res.status})`);
-        toast('رُفع الملف بنجاح');
+        await uploadSelectedMaterialFiles(materialId, group, { article: upForm.dataset.article === 'true' });
+        toast('رُفعت الملفات بنجاح');
         location.reload();
       } catch (err) {
         toast(err.message, false);
@@ -683,12 +767,25 @@ function initResearcherPage() {
         page_no: (document.getElementById('nd-page') || { value: '' }).value.trim(),
       };
       const matId = document.getElementById('nd-material').value.trim();
+      const imageFiles = [...(document.getElementById('nd-images')?.files || [])];
       if (matId) payload.material_id = matId;
+      if (imageFiles.length > 10) { toast('يمكن إرفاق 10 صور كحد أقصى', false); return; }
       if (!payload.title || !payload.body) { toast('العنوان والنص مطلوبان', false); return; }
       btn.disabled = true;
       try {
-        await api('/api/v1/admin/discussions', 'POST', payload);
-        toast('نُشر النقاش بنجاح');
+        const discussion = await api('/api/v1/admin/discussions', 'POST', payload);
+        for (const file of imageFiles) {
+          const fd = new FormData();
+          fd.append('file', file);
+          const headers = {};
+          const token = csrfToken();
+          if (token) headers['X-CSRF-Token'] = token;
+          const response = await fetch(`/api/v1/admin/discussions/${discussion.id}/files`, { method: 'POST', credentials: 'same-origin', headers, body: fd });
+          let result = null;
+          try { result = await response.json(); } catch (_) {}
+          if (!response.ok) throw new Error(result?.error || `فشل رفع ${file.name}`);
+        }
+        toast('نُشر المنشور بنجاح');
         setTimeout(() => location.reload(), 700);
       } catch (err) { toast(err.message, false); btn.disabled = false; }
     });
@@ -868,39 +965,30 @@ function initJournalArticleForm() {
   const form = document.getElementById('journalArticleForm');
   if (!form || form.dataset.sjBound) return;
   form.dataset.sjBound = '1';
-  const fileInput = document.getElementById('ja-file');
-  const fileName = document.getElementById('jaFileName');
+  const uploadFields = form.querySelector('[data-upload-fields]');
   const status = document.getElementById('jaStatus');
   const submitBtn = document.getElementById('jaSubmit');
-  if (fileInput && fileName) {
-    fileInput.addEventListener('change', () => {
-      fileName.textContent = fileInput.files && fileInput.files[0] ? fileInput.files[0].name : 'لم يُختر ملف';
-    });
-  }
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const title = form.querySelector('[name="title"]').value.trim();
     const body = form.querySelector('[name="body"]').value.trim();
     if (!title || !body) { toast('العنوان والنص مطلوبان', false); return; }
+    if (!uploadFields.querySelector('input[name="cover"]')?.files?.length) { toast('اختر صورة غلاف المقال أولًا', false); return; }
     if (submitBtn) submitBtn.disabled = true;
     if (status) status.textContent = 'جارٍ إرسال المقال...';
     try {
       const data = await api('/api/v1/admin/materials', 'POST', {
         type: 'article', title_ar: title, description: body, language: 'ar', collectionIds: [],
       });
-      const file = fileInput && fileInput.files && fileInput.files[0];
-      if (file && data && data.id) {
-        if (status) status.textContent = 'جارٍ رفع المرفق...';
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('kind', 'attachment');
-        const headers = {};
-        const token = csrfToken();
-        if (token) headers['X-CSRF-Token'] = token;
-        const res = await fetch(`/api/v1/admin/materials/${data.id}/files`, { method: 'POST', credentials: 'same-origin', headers, body: fd });
-        if (!res.ok) throw new Error('فشل رفع المرفق');
+      try {
+        if (status) status.textContent = 'جارٍ رفع الصور والملفات...';
+        await uploadSelectedMaterialFiles(data.id, uploadFields, { requireCover: true });
+      } catch (uploadError) {
+        toast(`أُنشئ المقال، لكن لم يكتمل رفع المرفقات: ${uploadError.message}`, false);
+        setTimeout(() => { location.href = `/researcher/${data.id}`; }, 1200);
+        return;
       }
-      toast('أُرسل المقال — تجده في مسوداتك بانتظار الإرسال للمراجعة');
+      toast('أُرسل المقال مع صوره وملفاته — تجده في مسوداتك');
       if (status) status.textContent = '';
       setTimeout(() => { location.href = `/researcher/${data.id}`; }, 900);
     } catch (err) {
@@ -918,6 +1006,7 @@ function initSocial() {
   initAutogrow();
   initShareButtons();
   initJournalArticleForm();
+  initResearcherPickers();
 }
 
 // يعمل السكربت أحيانًا بعد DOMContentLoaded بسبب التخزين المؤقت في المتصفح؛

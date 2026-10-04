@@ -194,6 +194,7 @@ export default {
     if (
       pathname.startsWith('/api/v1/') ||
       pathname.startsWith('/file/') ||
+      pathname.startsWith('/discussion-file/') ||
       pathname === '/sitemap.xml'
     ) {
       const res = await routeApi(request, env);

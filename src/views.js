@@ -255,8 +255,8 @@ export async function enrichMaterials(env, items) {
     const rows = await db.prepare(
       `SELECT material_id, id FROM files
         WHERE material_id IN (${ids.map(() => '?').join(',')})
-          AND (kind = 'thumbnail' OR mime LIKE 'image/%')
-        ORDER BY material_id, CASE kind WHEN 'thumbnail' THEN 0 ELSE 1 END, id`
+          AND (kind IN ('thumbnail', 'cover') OR mime LIKE 'image/%')
+        ORDER BY material_id, CASE kind WHEN 'cover' THEN 0 WHEN 'thumbnail' THEN 1 ELSE 2 END, id`
     ).bind(...ids).all();
     for (const r of rows.results || []) {
       if (!(r.material_id in thumbMap)) thumbMap[r.material_id] = r.id;
@@ -848,8 +848,8 @@ async function documentPage(ctx, ark) {
     .map(c => `<a class="chip" href="${langPath(ctx, '/collection/' + c.id)}">${esc(lang === 'fr' && c.title_fr ? c.title_fr : c.title_ar)}</a>`).join('');
 
   /* --- الملفات --- */
-  const files = (m.files || []).filter(f => f.kind !== 'thumbnail');
-  const isImageFile = (f) => /^image\//.test(f.mime || '') || /\.(jpe?g|png|webp|tiff?)$/i.test(f.filename || '');
+  const files = (m.files || []).filter(f => f.kind !== 'thumbnail' && f.kind !== 'cover');
+  const isImageFile = (f) => /^image\//.test(f.mime || '') || /\.(jpe?g|png|webp|tiff?|gif|heic)$/i.test(f.filename || '');
   const filesHTML = files.length ? `<ul class="file-list">` + files.map(f => {
     const url = `/file/${f.id}`;
     const size = f.size ? ` · ${formatSize(f.size)}` : '';
@@ -1400,7 +1400,7 @@ async function journalIssuePage(ctx, ark) {
   const origin = new URL(ctx.url).origin;
   const canonical = `${origin}/journal/${encodeURIComponent(m.ark)}?lang=${lang}`;
 
-  const files = (m.files || []).filter(f => f.kind !== 'thumbnail');
+  const files = (m.files || []).filter(f => f.kind !== 'thumbnail' && f.kind !== 'cover');
   const pdfFiles = files.filter((f) => (f.mime || '') === 'application/pdf' || /\.pdf$/i.test(f.filename || ''));
   const filesHTML = files.length ? `<ul class="file-list">` + files.map(f => {
     const size = f.size ? ` · ${formatSize(f.size)}` : '';
