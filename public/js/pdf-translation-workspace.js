@@ -105,7 +105,11 @@ export function mountTranslationWorkspace(root, config) {
       canvas.width = Math.floor(viewport.width * dpr); canvas.height = Math.floor(viewport.height * dpr);
       canvas.style.width = `${Math.floor(viewport.width)}px`; canvas.style.height = `${Math.floor(viewport.height)}px`;
       canvas.style.imageRendering = 'auto';
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined }).promise;
+      canvas.setAttribute('dir', 'ltr');
+      canvas.style.direction = 'ltr';
+      const ctx = canvas.getContext('2d');
+      ctx.direction = 'ltr';
+      await page.render({ canvasContext: ctx, viewport, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined }).promise;
       state.rendered = true;
     } catch (_) {
       const stateEl = state.original.querySelector('[data-page-state]');
@@ -129,7 +133,11 @@ export function mountTranslationWorkspace(root, config) {
       canvas.width = Math.floor(viewport.width * dpr); canvas.height = Math.floor(viewport.height * dpr);
       canvas.style.width = `${Math.floor(viewport.width)}px`; canvas.style.height = `${Math.floor(viewport.height)}px`;
       canvas.style.imageRendering = 'auto';
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined }).promise;
+      canvas.setAttribute('dir', 'ltr');
+      canvas.style.direction = 'ltr';
+      const ctx = canvas.getContext('2d');
+      ctx.direction = 'ltr';
+      await page.render({ canvasContext: ctx, viewport, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined }).promise;
       if (placeholder) placeholder.hidden = true;
       state.translatedRendered = true;
       const stateEl = state.translatedCard.querySelector('[data-page-state]');

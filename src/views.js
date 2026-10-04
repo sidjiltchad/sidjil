@@ -105,7 +105,7 @@ ${ogUrl}
 <meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=20261004-researcher-post-avatars">
+<link rel="stylesheet" href="/style.css?v=20261004-pdf-rtl-canvas">
 </head>`;
 }
 
@@ -212,7 +212,7 @@ function footer(ctx) {
 
 export function layout(ctx, { title, description, ogImage, canonical, active, content }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js?v=20261004-pdf-rtl-canvas" defer></script>\n</body>\n</html>`;
 }
 
 // شريط سفلي يظهر فقط في وضع التطبيق (standalone)
@@ -787,7 +787,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '') {
         <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
-    <script type="module" src="/js/pdf-viewer.js"></script>`;
+    <script type="module" src="/js/pdf-viewer.js?v=20261004-pdf-rtl-canvas"></script>`;
 }
 
 /* ---------- صفحة المادة ---------- */

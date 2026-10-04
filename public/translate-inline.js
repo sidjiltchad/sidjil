@@ -53,7 +53,7 @@
     document.body.classList.add('translation-workspace-open');
     el.querySelectorAll('[data-translation-close]').forEach((x) => x.addEventListener('click', close));
     try {
-      const mod = await import('/js/pdf-translation-workspace.js');
+      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-pdf-rtl-canvas');
       const workspace = mod.mountTranslationWorkspace(el.querySelector('[data-translation-workspace]'), { pdf, material, language: lang, labels, title, originalDownload, target: el.querySelector('[data-ta-target]')?.value || 'ar' });
       el.querySelector('[data-ta-create-pdf]')?.addEventListener('click', () => workspace.createPdf());
       el.querySelector('[data-ta-download-translation]')?.addEventListener('click', () => workspace.downloadTranslation());

@@ -2185,6 +2185,8 @@ blockquote {
   display: flex;
   justify-content: center;
   padding: 16px;
+  direction: ltr !important;
+  unicode-bidi: isolate;
 }
 
 .pdf-canvas-wrap canvas {
@@ -2192,6 +2194,14 @@ blockquote {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   max-width: 100%;
   height: auto;
+  direction: ltr !important;
+  unicode-bidi: isolate;
+}
+
+.pdf-reading-page,
+.pdf-reading-page canvas {
+  direction: ltr !important;
+  unicode-bidi: isolate;
 }
 
 /* ---------- 16. بطاقات القوائم والتصنيفات (Lists & Categories) ---------- */
@@ -3539,7 +3549,7 @@ body.translation-workspace-open { overflow: hidden; }
 .translation-page-label { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.45rem .7rem; border-bottom:1px solid var(--line); color:var(--muted); font-size:.76rem; background:color-mix(in srgb, var(--paper) 90%, var(--gold) 10%); }
 .translation-page-label strong { color:var(--ink-secondary); font-size:.78rem; }
 .translation-page-label span { color:var(--gold-deep); }
-.translation-pdf-canvas { display:block; max-width:100%; height:auto; margin:0 auto; background:#fff; }
+.translation-pdf-canvas { display:block; max-width:100%; height:auto; margin:0 auto; background:#fff; direction:ltr !important; unicode-bidi:isolate; }
 .translation-page-text { min-height:180px; padding:1.15rem 1.25rem 1.35rem; white-space:pre-wrap; line-height:1.95; font-family:var(--font-body); font-size:1rem; text-align:justify; color:var(--ink); }
 .translation-page-text.is-loading { opacity:.56; }
 .translation-workspace-status { min-height:2.15rem; display:flex; align-items:center; padding:.45rem .9rem; border-top:1px solid var(--line); color:var(--muted); font-size:.8rem; }

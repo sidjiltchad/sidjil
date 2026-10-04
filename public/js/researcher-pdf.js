@@ -93,7 +93,10 @@ export async function mount(container, { url, materialId, materialTitle }) {
       canvas.height = Math.floor(viewport.height * dpr);
       canvas.style.width = Math.floor(viewport.width) + 'px';
       canvas.style.height = Math.floor(viewport.height) + 'px';
+      canvas.setAttribute('dir', 'ltr');
+      canvas.style.direction = 'ltr';
       const ctx = canvas.getContext('2d');
+      ctx.direction = 'ltr';
       await page.render({
         canvasContext: ctx, viewport,
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,

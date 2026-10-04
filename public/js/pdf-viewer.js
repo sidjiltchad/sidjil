@@ -59,6 +59,9 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       canvas.style.width = Math.floor(viewport.width) + 'px';
       canvas.style.height = Math.floor(viewport.height) + 'px';
       canvas.style.imageRendering = 'auto';
+      canvas.setAttribute('dir', 'ltr');
+      canvas.style.direction = 'ltr';
+      ctx.direction = 'ltr';
       return page.render({
         canvasContext: ctx,
         viewport: viewport,
@@ -106,8 +109,12 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       pageCanvas.style.width = Math.floor(viewport.width) + 'px';
       pageCanvas.style.height = Math.floor(viewport.height) + 'px';
       pageCanvas.style.imageRendering = 'auto';
+      pageCanvas.setAttribute('dir', 'ltr');
+      pageCanvas.style.direction = 'ltr';
+      var pageContext = pageCanvas.getContext('2d');
+      pageContext.direction = 'ltr';
       return page.render({
-        canvasContext: pageCanvas.getContext('2d'),
+        canvasContext: pageContext,
         viewport: viewport,
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
       }).promise;
