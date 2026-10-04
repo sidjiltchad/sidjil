@@ -60,13 +60,14 @@ const NAV = [
   ['users', '/admin/users', 'المستخدمون'],
   ['discussions', '/admin/discussions', 'النقاشات'],
   ['social-reports', '/admin/social-reports', 'بلاغات المجتمع'],
+  ['metrics', '/admin/metrics', 'مؤشرات الأداء'],
   ['backup', '/admin/backup', 'النسخ الاحتياطي'],
   ['audit', '/admin/audit', 'سجل العمليات'],
 ];
 const NAV_MARKS = {
   dashboard: '⌂', materials: '▦', review: '✓', people: '♙', places: '⌖', sources: '◈',
   tags: '#', collections: '▤', journal: '▣', announcements: '!', glossary: 'Aa', translation: '文',
-  verification: '✓', quality: '◇', users: '♙', discussions: '◌', 'social-reports': '⚑', backup: '⇩', audit: '≡',
+  verification: '✓', quality: '◇', users: '♙', discussions: '◌', 'social-reports': '⚑', metrics: '▥', backup: '⇩', audit: '≡',
 };
 
 // ---------- أدوات ----------
@@ -334,6 +335,32 @@ async function contentHealthPage(env, user, req) {
   <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><button class="btn btn-primary" type="submit">تصفية</button></form>
   <div class="table-wrap"><table class="tbl"><thead><tr><th>الرمز</th><th>المادة</th><th>النوع</th><th>الحالة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="6" class="muted">لا توجد مواد مطابقة.</td></tr>'}</tbody></table></div></section>`;
   return layout({ title: 'صحة المحتوى', active: 'quality', user, body });
+}
+
+async function metricsPage(env, user, req) {
+  const db = env.DB;
+  const url = new URL(req.url);
+  const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days')) || 7));
+  const [metrics, translation, reports, assets, jobs] = await Promise.all([
+    db.prepare(`SELECT route, query_key, SUM(calls) AS calls, SUM(errors) AS errors, SUM(total_duration_ms) AS duration_ms, MAX(max_duration_ms) AS max_duration_ms, SUM(total_rows) AS rows_read
+      FROM query_metrics_daily WHERE day >= date('now', ?) GROUP BY route, query_key ORDER BY rows_read DESC, duration_ms DESC LIMIT 100`).bind(`-${days} day`).all().catch(() => ({ results: [] })),
+    db.prepare(`SELECT status, COUNT(*) AS c FROM translation_jobs GROUP BY status`).all(),
+    db.prepare(`SELECT status, COUNT(*) AS c FROM social_reports GROUP BY status`).all(),
+    db.prepare(`SELECT integrity_status, COUNT(*) AS c FROM material_assets_index GROUP BY integrity_status`).all(),
+    db.prepare(`SELECT status, COUNT(*) AS c FROM translation_pages GROUP BY status`).all(),
+  ]);
+  const metricRows = (metrics.results || []).map(row => `<tr><td>${esc(row.route)}</td><td class="mono small">${esc(row.query_key)}</td><td>${esc(row.calls || 0)}</td><td>${esc(row.rows_read || 0)}</td><td>${esc(row.duration_ms || 0)} ms</td><td>${esc(row.max_duration_ms || 0)} ms</td><td>${esc(row.errors || 0)}</td></tr>`).join('');
+  const chips = (rows, labels) => (Array.isArray(rows) ? rows : (rows.results || [])).map(row => `<span class="metric-chip"><strong>${esc(labels[row.status] || row.status || row.integrity_status)}</strong><b>${esc(row.c || 0)}</b></span>`).join('');
+  const cards = [
+    ['البلاغات المفتوحة', (reports.results || []).find(r => r.status === 'open')?.c || 0],
+    ['صفحات ترجمة فاشلة', (jobs.results || []).find(r => r.status === 'failed')?.c || 0],
+    ['وظائف ترجمة فاشلة', (translation.results || []).find(r => r.status === 'FAILED')?.c || 0],
+    ['ملفات بحالة مفقودة', (assets.results || []).find(r => r.integrity_status === 'missing')?.c || 0],
+  ].map(([label, value]) => `<div class="stat-card"><div class="stat-num">${esc(value)}</div><div class="stat-label">${esc(label)}</div></div>`).join('');
+  const body = `${pageHead('مؤشرات الأداء', `<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>`)}<div class="stats">${cards}</div>
+  <section class="card"><div class="section-head"><div><h2>حالة الأنظمة</h2><p class="muted">تُعرض المؤشرات المجمعة دون حفظ نصوص الاستعلامات أو بيانات المستخدمين.</p></div><form class="inline-form" method="get"><label>الفترة <select name="days"><option value="1"${days === 1 ? ' selected' : ''}>24 ساعة</option><option value="7"${days === 7 ? ' selected' : ''}>7 أيام</option><option value="30"${days === 30 ? ' selected' : ''}>30 يومًا</option><option value="90"${days === 90 ? ' selected' : ''}>90 يومًا</option></select></label><button class="btn btn-sm" type="submit">تحديث</button></form></div><div class="metric-chip-row">${chips(translation.results || [], { QUEUED: 'في الانتظار', COMPLETED: 'مكتملة', FAILED: 'فاشلة', CANCELLED: 'ملغاة' })}${chips(jobs.results || [], { pending: 'صفحات معلقة', completed: 'صفحات مكتملة', failed: 'صفحات فاشلة' })}${chips(reports.results || [], { open: 'بلاغات مفتوحة', reviewing: 'بلاغات قيد المعالجة', resolved: 'بلاغات مغلقة', dismissed: 'بلاغات مرفوضة' })}</div></section>
+  <section class="card"><h2>Rows Read والاستعلامات الأعلى كلفة</h2><p class="muted">لا تظهر صفوف هنا حتى تُجمع القياسات اليومية. عند تشغيل جامع القياس سيُرتّب الجدول حسب الصفوف المقروءة ثم الزمن.</p><div class="table-wrap"><table class="tbl"><thead><tr><th>المسار</th><th>مفتاح الاستعلام</th><th>الطلبات</th><th>Rows Read</th><th>الزمن الكلي</th><th>أقصى زمن</th><th>الأخطاء</th></tr></thead><tbody>${metricRows || '<tr><td colspan="7" class="muted">لا توجد قياسات مجمعة بعد.</td></tr>'}</tbody></table></div></section>`;
+  return layout({ title: 'مؤشرات الأداء', active: 'metrics', user, body });
 }
 
 // ---------- الترجمة: مؤشرات الكاش والـJobs ----------
@@ -1361,6 +1388,7 @@ export async function renderAdmin(pathname, req, env, user) {
   const clean = pathname.replace(/\/+$/, '') || '/admin';
   if (clean === '/admin') return htmlRes(await dashboardPage(env, user));
   if (clean === '/admin/content-health') return htmlRes(await contentHealthPage(env, user, req));
+  if (clean === '/admin/metrics') return htmlRes(await metricsPage(env, user, req));
   if (clean === '/admin/translation') return htmlRes(await translationPage(env, user, req));
   if (clean === '/admin/journal') return htmlRes(await journalAdminPage(env, user));
   if (clean === '/admin/materials') return htmlRes(await materialsListPage(env, user, req));
