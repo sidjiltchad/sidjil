@@ -164,22 +164,26 @@ export async function login(env, username, password, ip) {
 export async function getSessionUser(req, env) {
   try {
     const cookie = req.headers.get('Cookie') || '';
-    const m = cookie.match(/(?:^|;\s*)archifouna_admin=([^;]+)/);
-    if (!m) return null;
-    const token = m[1].trim();
-    if (!token) return null;
+    const tokens = [...cookie.matchAll(/(?:^|;\s*)archifouna_admin=([^;]+)/g)]
+      .map((match) => match[1].trim())
+      .filter(Boolean);
+    if (!tokens.length) return null;
+    const placeholders = tokens.map(() => '?').join(', ');
     const user = await env.DB
       .prepare(
-        `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.display_name, u.avatar_url, u.avatar_r2_key,
+        `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.display_name, u.avatar_url, u.avatar_r2_key,
                 u.email, u.phone, u.affiliation, u.job_title, u.bio, u.specialty, u.website, u.is_public_profile,
-                s.csrf_token AS csrfToken, s.expires_at AS sessionExpiresAt FROM admin_users u
+                s.csrf_token AS csrfToken, s.expires_at AS sessionExpiresAt,
+                s.token AS sessionToken FROM admin_users u
          JOIN sessions s ON s.user_id = u.id
-         WHERE s.token = ? AND s.expires_at > datetime('now')`
+         WHERE s.token IN (${placeholders}) AND s.expires_at > datetime('now')
+         ORDER BY s.created_at DESC LIMIT 1`
       )
-      .bind(token)
+      .bind(...tokens)
       .first();
     if (!user || Number(user.is_active) === 0) return null;
-    const { sessionExpiresAt, ...sessionUser } = user;
+    const { sessionExpiresAt, sessionToken, ...sessionUser } = user;
+    sessionUser.sessionToken = sessionToken;
     // تجديد انزلاقي: إذا انقضى أكثر من نصف العمر، مدّد الجلسة (كتابة واحدة خفيفة)
     try {
       if (sessionExpiresAt) {
@@ -188,7 +192,7 @@ export async function getSessionUser(req, env) {
           const newExp = new Date(Date.now() + SESSION_TTL_SEC * 1000)
             .toISOString().slice(0, 19).replace('T', ' ');
           await env.DB.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?')
-            .bind(newExp, token).run();
+            .bind(newExp, sessionToken).run();
         }
       }
     } catch { /* التجديد تحسين اختياري — لا يفشل الطلب */ }

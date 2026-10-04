@@ -54,6 +54,7 @@ const NAV = [
   ['announcements', '/admin/announcements', 'الإعلانات'],
   ['glossary', '/admin/glossary', 'قاموس الترجمة'],
   ['translation', '/admin/translation', 'الترجمة'],
+  ['verification', '/admin/verification', 'التوثيق'],
   ['users', '/admin/users', 'المستخدمون'],
   ['discussions', '/admin/discussions', 'النقاشات'],
   ['backup', '/admin/backup', 'النسخ الاحتياطي'],
@@ -66,6 +67,12 @@ function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const VERIFICATION_LABELS = { research: 'توثيق بحثي', administrative: 'توثيق إداري', participation: 'توثيق مشاركة' };
+function verificationBadge(type) {
+  const label = VERIFICATION_LABELS[type];
+  if (!label) return '';
+  return `<span class="verification-mark verification-mark--${esc(type)}" role="img" aria-label="${label}" title="${label}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="3" r="4.4"/><circle cx="18.4" cy="5.6" r="4.4"/><circle cx="21" cy="12" r="4.4"/><circle cx="18.4" cy="18.4" r="4.4"/><circle cx="12" cy="21" r="4.4"/><circle cx="5.6" cy="18.4" r="4.4"/><circle cx="3" cy="12" r="4.4"/><circle cx="5.6" cy="5.6" r="4.4"/><circle cx="12" cy="12" r="7.2"/><path d="m7.4 12.1 3.1 3.1 6.4-7"/></svg></span>`;
 }
 function fmtDate(s) {
   if (!s) return '—';
@@ -1059,23 +1066,20 @@ async function reviewPage(env, user) {
 // ---------- 9) المستخدمون ----------
 async function usersPage(env, user) {
   const rows = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.display_name, u.affiliation, u.created_at,
+    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.display_name, u.affiliation, u.created_at,
             (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
      FROM admin_users u ORDER BY u.id ASC`).all();
   const bodyRows = (rows.results || []).map(u => {
     const self = Number(u.id) === Number(user.id);
     const isResearcher = u.role === 'researcher';
     const verifiedBadge = isResearcher
-      ? (Number(u.is_verified) ? badge('موثّق ✓', 'b-pub') : badge('بانتظار التوثيق', 'b-draft'))
+      ? (Number(u.is_verified) ? verificationBadge(u.verification_type) : badge('بانتظار التوثيق', 'b-draft'))
       : '<span class="muted">—</span>';
-    const verifyBtn = (!self && isResearcher)
-      ? `<button class="btn btn-sm ${Number(u.is_verified) ? 'btn-ghost' : 'btn-primary'}" data-verify-researcher="${u.id}" data-verified="${Number(u.is_verified) ? 0 : 1}" type="button">${Number(u.is_verified) ? 'إلغاء التوثيق' : 'توثيق'}</button>`
-      : '';
     const actions = self ? '<span class="muted small">—</span>' : `
         <button class="btn btn-sm" data-user-role="${u.id}" data-role="${u.role === 'admin' ? 'researcher' : 'admin'}" type="button">${u.role === 'admin' ? 'جعله باحثًا' : 'جعله مديرًا'}</button>
         <button class="btn btn-sm ${Number(u.is_active) ? 'btn-ghost' : 'btn-primary'}" data-user-toggle="${u.id}" data-active="${Number(u.is_active) ? 0 : 1}" type="button">${Number(u.is_active) ? 'إيقاف' : 'تفعيل'}</button>
         <button class="btn btn-sm btn-ghost" data-user-pass="${u.id}" data-username="${esc(u.username)}" type="button">كلمة مرور جديدة</button>
-        ${verifyBtn}`;
+        `;
     const nameCell = `<strong>${esc(u.username)}</strong>${u.display_name ? `<br><span class="muted small">${esc(u.display_name)}${u.affiliation ? ' — ' + esc(u.affiliation) : ''}</span>` : ''}${self ? ' <span class="badge b-draft">أنت</span>' : ''}`;
     return `
     <tr>
@@ -1114,6 +1118,25 @@ async function usersPage(env, user) {
     </section>
   </div>`;
   return layout({ title: 'المستخدمون', active: 'users', user, body });
+}
+
+async function verificationPage(env, user) {
+  const rows = await env.DB.prepare(
+    `SELECT id, username, display_name, affiliation, is_active, is_verified, verification_type
+     FROM admin_users WHERE role = 'researcher' ORDER BY id ASC`
+  ).all();
+  const bodyRows = (rows.results || []).map((r) => {
+    const name = r.display_name || r.username;
+    const current = Number(r.is_verified) ? verificationBadge(r.verification_type) : badge('بانتظار التوثيق', 'b-draft');
+    const disabled = Number(r.is_active) ? '' : ' disabled';
+    const actions = `<button class="btn btn-sm" data-verification-type="research" data-verify-researcher="${r.id}" type="button"${disabled}>${verificationBadge('research')} بحثية</button>
+         <button class="btn btn-sm" data-verification-type="administrative" data-verify-researcher="${r.id}" type="button"${disabled}>${verificationBadge('administrative')} إدارية</button>
+         <button class="btn btn-sm" data-verification-type="participation" data-verify-researcher="${r.id}" type="button"${disabled}>${verificationBadge('participation')} مشاركة</button>
+         ${Number(r.is_verified) ? `<button class="btn btn-sm btn-ghost" data-verification-type="none" data-verify-researcher="${r.id}" type="button">إلغاء التوثيق</button>` : ''}`;
+    return `<tr><td class="mono">#${r.id}</td><td><strong>${esc(name)}</strong><br><span class="muted small">@${esc(r.username)}${r.affiliation ? ` · ${esc(r.affiliation)}` : ''}</span></td><td>${Number(r.is_active) ? badge('نشط', 'b-pub') : badge('موقوف', 'b-hidden')}</td><td>${current}</td><td class="row-actions verification-actions">${actions}</td></tr>`;
+  }).join('');
+  const body = `${pageHead('توثيق الباحثين', '')}<section class="card"><p class="muted">الأصفر للباحثين، والرمادي للتوثيق الإداري، والأخضر للمشاركة.</p><div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>الباحث</th><th>الحساب</th><th>الحالة الحالية</th><th>تعيين التوثيق</th></tr></thead><tbody>${bodyRows || '<tr><td colspan="5" class="muted">لا توجد حسابات باحثين.</td></tr>'}</tbody></table></div></section>`;
+  return layout({ title: 'التوثيق', active: 'verification', user, body });
 }
 
 // ---------- الإشراف على النقاشات ----------
@@ -1184,6 +1207,7 @@ export async function renderAdmin(pathname, req, env, user) {
   if (clean === '/admin/audit') return htmlRes(await auditPage(env, user, req));
   if (clean === '/admin/review') return htmlRes(await reviewPage(env, user));
   if (clean === '/admin/users') return htmlRes(await usersPage(env, user));
+  if (clean === '/admin/verification') return htmlRes(await verificationPage(env, user));
   if (clean === '/admin/discussions') return htmlRes(await adminDiscussionsPage(env, user));
 
   return htmlRes(layout({
@@ -1210,7 +1234,8 @@ function researcherAvatarMarkup(user, size = '') {
   const displayName = user?.display_name || user?.username || 'باحث';
   const initial = String(displayName).trim().slice(0, 1) || 'ب';
   const classes = `researcher-avatar${size ? ` ${size}` : ''}`;
-  const src = user?.avatar_r2_key ? '/researcher/avatar' : String(user?.avatar_url || '').trim();
+  const src = String(user?.avatar_public_path || '').trim()
+    || (user?.avatar_r2_key ? '/researcher/avatar' : String(user?.avatar_url || '').trim());
   return src
     ? `<img class="${classes} researcher-avatar-image" src="${esc(src)}" alt="${esc(displayName)}" loading="lazy">`
     : `<span class="${classes}" aria-hidden="true">${esc(initial)}</span>`;
@@ -1279,8 +1304,7 @@ function researcherLayout({ title, active, user, body }) {
   const csrfMeta = user && user.csrfToken
     ? `<meta name="csrf-token" content="${esc(user.csrfToken)}">` : '';
   const displayName = user?.display_name || user?.username || 'باحث';
-  const verifiedBadge = Number(user?.is_verified) === 1
-    ? '<span class="researcher-verified-chip" title="حساب موثق">✓ موثق</span>' : '';
+  const verifiedBadge = Number(user?.is_verified) === 1 ? verificationBadge(user?.verification_type) : '';
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -1296,7 +1320,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261003-v30">
+<link rel="stylesheet" href="/admin.css?v=researcher-feed-20261004-v31">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1304,12 +1328,12 @@ ${csrfMeta}
     <a class="topbar-brand researcher-brand-logo" href="/researcher" aria-label="العودة إلى الصفحة الرئيسية لمساحة الباحث"><img class="researcher-logo" src="/sidjil-logo.png" alt="سِجِل"><span class="researcher-wordmark">سجل</span></a>
     <div class="researcher-account-wrap">
       <button class="researcher-profile-chip" id="researcherAccountToggle" type="button" aria-expanded="false" aria-controls="researcherAccountMenu">
-        ${researcherAvatarMarkup(user, 'small')}<span class="researcher-profile-name">${esc(displayName)}</span><span class="researcher-account-chevron" aria-hidden="true"></span>
+        ${researcherAvatarMarkup(user, 'small')}<span class="researcher-profile-name">${esc(displayName)}${verifiedBadge}</span><span class="researcher-account-chevron" aria-hidden="true"></span>
       </button>
       <div class="researcher-account-menu" id="researcherAccountMenu" hidden>
         <div class="researcher-account-menu-head">
           ${researcherAvatarMarkup(user, 'small')}
-          <div class="researcher-account-menu-id"><strong>${esc(displayName)}</strong><span class="post-meta">مساحة الباحث ${verifiedBadge}</span></div>
+          <div class="researcher-account-menu-id"><strong>${esc(displayName)}${verifiedBadge}</strong><span class="post-meta">مساحة الباحث</span></div>
         </div>
         <div class="researcher-account-menu-group">
           <div class="researcher-account-menu-title">التنقل</div>
@@ -1757,7 +1781,7 @@ async function researcherAccountPage(user) {
 
 async function researcherProfilePage(env, viewer, researcherId) {
   const target = await env.DB.prepare(
-    `SELECT id, username, display_name, avatar_url, avatar_r2_key, job_title,
+    `SELECT id, username, display_name, avatar_url, avatar_r2_key, verification_type, job_title,
             affiliation, specialty, bio, website, created_at
      FROM admin_users
      WHERE id = ? AND role = 'researcher' AND is_active = 1 AND is_verified = 1`
@@ -1809,7 +1833,7 @@ async function researcherProfilePage(env, viewer, researcherId) {
   const kindLabels = { comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' };
   const discussionCards = (discussionRows.results || []).map(d => `
     <article class="researcher-profile-post social-card">
-      <div class="post-head"><div class="post-avatar">${esc(String(target.display_name || target.username || 'ب').slice(0, 1))}</div><div><strong>${esc(target.display_name || target.username || 'باحث')}</strong><div class="post-meta">${esc(kindLabels[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div></div>
+      <div class="post-head"><div class="post-avatar">${esc(String(target.display_name || target.username || 'ب').slice(0, 1))}</div><div><strong>${esc(target.display_name || target.username || 'باحث')}${verificationBadge(target.verification_type)}</strong><div class="post-meta">${esc(kindLabels[d.kind] || d.kind)} · ${fmtDate(d.created_at)}</div></div></div>
       <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3>
       <p>${esc(String(d.body || '').slice(0, 520))}</p>
       ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
@@ -1818,7 +1842,7 @@ async function researcherProfilePage(env, viewer, researcherId) {
 
   const replyCards = (replyRows.results || []).map(r => `
     <article class="researcher-profile-post social-card researcher-profile-reply">
-      <div class="post-head"><div class="post-avatar">${esc(String(target.display_name || target.username || 'ب').slice(0, 1))}</div><div><strong>${esc(target.display_name || target.username || 'باحث')}</strong><div class="post-meta">ردّ في نقاش · ${fmtDate(r.created_at)}</div></div></div>
+      <div class="post-head"><div class="post-avatar">${esc(String(target.display_name || target.username || 'ب').slice(0, 1))}</div><div><strong>${esc(target.display_name || target.username || 'باحث')}${verificationBadge(target.verification_type)}</strong><div class="post-meta">ردّ في نقاش · ${fmtDate(r.created_at)}</div></div></div>
       <p>${esc(String(r.body || '').slice(0, 520))}</p>
       <div class="post-linked">${r.material_title ? `حول: ${esc(r.material_title)}` : 'نقاش عام'} · <a href="/researcher/discussions?focus=${encodeURIComponent(r.discussion_id)}">${esc(r.discussion_title || 'فتح النقاش')}</a></div>
     </article>`).join('');
@@ -1845,10 +1869,9 @@ async function researcherProfilePage(env, viewer, researcherId) {
     <div class="researcher-profile-card">
       <div class="researcher-profile-avatar-wrap">
         ${researcherAvatarMarkup(target, 'profile-avatar')}
-        <span class="researcher-verified-badge" title="باحث موثّق" aria-label="باحث موثّق">✓</span>
       </div>
       <div class="researcher-profile-identity">
-        <h1 class="researcher-profile-name">${esc(profileName)}</h1>
+        <h1 class="researcher-profile-name">${esc(profileName)}${verificationBadge(target.verification_type)}</h1>
         <p class="researcher-profile-username">@${esc(target.username || '')}</p>
         ${jobTitle ? `<p class="researcher-profile-role">${esc(jobTitle)}</p>` : ''}
         ${affiliation ? `<p class="researcher-profile-org">${esc(affiliation)}</p>` : ''}

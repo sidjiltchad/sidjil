@@ -35,8 +35,11 @@ export function kindBadge(lang, kind) {
   return `<span class="badge kind-badge ${KIND_CLASS[kind] || ''}">${esc(t(lang, 'kind_' + kind))}</span>`;
 }
 
-export function verifiedBadge(lang) {
-  return `<span class="verified-badge" title="${esc(t(lang, 'verified_badge'))}">✓ ${esc(t(lang, 'verified_badge'))}</span>`;
+export function verifiedBadge(lang, type = 'research') {
+  const labels = { research: 'توثيق بحثي', administrative: 'توثيق إداري', participation: 'توثيق مشاركة' };
+  const safeType = labels[type] ? type : 'research';
+  const label = labels[safeType] || t(lang, 'verified_badge');
+  return `<span class="verification-mark verification-mark--${safeType}" role="img" aria-label="${label}" title="${label}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="3" r="4.4"/><circle cx="18.4" cy="5.6" r="4.4"/><circle cx="21" cy="12" r="4.4"/><circle cx="18.4" cy="18.4" r="4.4"/><circle cx="12" cy="21" r="4.4"/><circle cx="5.6" cy="18.4" r="4.4"/><circle cx="3" cy="12" r="4.4"/><circle cx="5.6" cy="5.6" r="4.4"/><circle cx="12" cy="12" r="7.2"/><path d="m7.4 12.1 3.1 3.1 6.4-7"/></svg></span>`;
 }
 
 const REACT_ICON = { like: '👍', support: '✊', useful: '💡', oppose: '👎' };
@@ -57,8 +60,8 @@ export function reactionButtons(lang, discussionId, replyId, counts, mine) {
   return `<div class="react-row" role="group" aria-label="${esc(t(lang, 'discussion_share'))}">${btns}</div>`;
 }
 
-function authorLine(lang, name, verified) {
-  return `<span class="d-author">${esc(name || 'باحث')}</span>${verified ? ' ' + verifiedBadge(lang) : ''}`;
+function authorLine(lang, name, verified, type) {
+  return `<span class="d-author">${esc(name || 'باحث')}${verified ? ' ' + verifiedBadge(lang, type) : ''}</span>`;
 }
 
 function discussionCard(ctx, d) {
@@ -67,7 +70,7 @@ function discussionCard(ctx, d) {
   const matUrl = d.material_id ? langPath(ctx, `/document/${encodeURIComponent(d.material_ark)}`) : null;
   return `<article class="d-card">
     <div class="d-card-top">${kindBadge(lang, d.kind)}
-      <span class="d-meta">${authorLine(lang, d.author_name, Number(d.author_verified) === 1)} · ${fmtDT(d.created_at)}</span>
+      <span class="d-meta">${authorLine(lang, d.author_name, Number(d.author_verified) === 1, d.author_verification_type)} · ${fmtDT(d.created_at)}</span>
     </div>
     <h3 class="d-card-title"><a href="${url}">${esc(d.title)}</a></h3>
     <p class="d-card-excerpt">${esc(truncate(d.body, 160))}</p>
@@ -243,7 +246,7 @@ export async function discussionPage(ctx, id) {
     const rc = (counts.replies && counts.replies[r.id]) || {};
     const kids = (children.get(r.id) || []).map((k) => replyHTML(k, true)).join('');
     return `<div class="d-reply${nested ? ' nested' : ''}" id="reply-${r.id}">
-      <div class="d-reply-head">${authorLine(lang, r.author_name, Number(r.author_verified) === 1)}
+      <div class="d-reply-head">${authorLine(lang, r.author_name, Number(r.author_verified) === 1, r.author_verification_type)}
         <span class="d-meta">${fmtDT(r.created_at)}</span></div>
       <div class="d-reply-body" dir="auto">${esc(r.body)}</div>
       ${reactionButtons(lang, d.id, r.id, rc, mine[r.id])}
@@ -275,7 +278,7 @@ export async function discussionPage(ctx, id) {
       <a href="${langPath(ctx, '/discussions')}">${esc(t(lang, 'discussions_title'))}</a> / ${esc(truncate(d.title, 40))}</nav>
     <article class="d-full">
       <div class="d-card-top">${kindBadge(lang, d.kind)}
-        <span class="d-meta">${authorLine(lang, d.author_name, Number(d.author_verified) === 1)} · ${fmtDT(d.created_at)}</span></div>
+        <span class="d-meta">${authorLine(lang, d.author_name, Number(d.author_verified) === 1, d.author_verification_type)} · ${fmtDT(d.created_at)}</span></div>
       <h1 class="d-title">${esc(d.title)}</h1>
       ${matUrl ? `<p class="d-card-mat">${esc(t(lang, 'discussion_about_material'))} <a href="${matUrl}">${esc(d.material_title || d.material_ark)}</a></p>` : `<p class="d-card-mat">${esc(t(lang, 'discussion_general'))}</p>`}
       ${quoteBlock}

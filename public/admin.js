@@ -738,11 +738,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.querySelectorAll('[data-verify-researcher]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const verified = btn.dataset.verified === '1';
-      if (!confirm(verified ? 'توثيق هذا الباحث؟ سيتمكن من خوض النقاشات.' : 'إلغاء توثيق هذا الباحث؟ لن يتمكن من النشر.')) return;
+      const type = btn.dataset.verificationType;
+      const labels = { research: 'البحثي الأصفر', administrative: 'الإداري الرمادي', participation: 'المشاركة الأخضر', none: 'إلغاء التوثيق' };
+      if (!confirm(type === 'none' ? 'إلغاء توثيق هذا الباحث؟ لن يتمكن من النشر.' : `تعيين شارة ${labels[type]} لهذا الباحث؟ سيتمكن من المشاركة.`)) return;
       try {
-        await api(`/api/v1/admin/researchers/${btn.dataset.verifyResearcher}/verify`, 'POST', { verified });
-        toast(verified ? 'وُثّق الباحث ✓' : 'أُلغي التوثيق');
+        await api(`/api/v1/admin/researchers/${btn.dataset.verifyResearcher}/verify`, 'POST', { verification_type: type });
+        toast(type === 'none' ? 'أُلغي التوثيق' : `تم تعيين شارة ${labels[type]}`);
         setTimeout(() => location.reload(), 700);
       } catch (err) { toast(err.message, false); }
     });

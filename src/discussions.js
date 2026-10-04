@@ -71,6 +71,7 @@ const DISCUSSION_SELECT = `
   d.status, d.created_at, d.updated_at,
   COALESCE(u.display_name, u.username) AS author_name,
   u.is_verified AS author_verified,
+  u.verification_type AS author_verification_type,
   m.ark AS material_ark, m.title_ar AS material_title`;
 
 async function reactionCounts(db, discussionId) {
@@ -148,7 +149,8 @@ export async function getDiscussionFull(db, id) {
     .prepare(
       `SELECT r.id, r.discussion_id, r.parent_id, r.author_id, r.body, r.created_at,
               COALESCE(u.display_name, u.username) AS author_name,
-              u.is_verified AS author_verified
+              u.is_verified AS author_verified,
+              u.verification_type AS author_verification_type
        FROM discussion_replies r
        LEFT JOIN admin_users u ON u.id = r.author_id
        WHERE r.discussion_id = ? AND r.status = 'published' ORDER BY r.id ASC`
@@ -408,10 +410,14 @@ export async function apiResearcherVerify(env, req, user, id, body) {
   const db = env.DB;
   const target = await db.prepare("SELECT id, username, role FROM admin_users WHERE id = ? AND role = 'researcher'").bind(id).first();
   if (!target) return err('الباحث غير موجود', 404);
-  const verified = body && body.verified === false ? 0 : 1;
-  await db.prepare('UPDATE admin_users SET is_verified = ? WHERE id = ?').bind(verified, id).run();
-  await audit(db, { userId: user.id, action: verified ? 'researcher.verify' : 'researcher.unverify', target: target.username, ip: clientIp(req) });
-  return json({ ok: true, verified: !!verified });
+  const type = body?.verification_type === undefined
+    ? (body?.verified === false ? 'none' : 'research')
+    : String(body.verification_type);
+  if (!['none', 'research', 'administrative', 'participation'].includes(type)) return err('نوع التوثيق غير صالح', 400);
+  const verified = type === 'none' ? 0 : 1;
+  await db.prepare('UPDATE admin_users SET is_verified = ?, verification_type = ? WHERE id = ?').bind(verified, type, id).run();
+  await audit(db, { userId: user.id, action: verified ? `researcher.verify.${type}` : 'researcher.unverify', target: target.username, ip: clientIp(req) });
+  return json({ ok: true, verified: !!verified, verification_type: type });
 }
 
 // ---------- الموجّه العام (GETs + تفاعلات + تسجيل) ----------

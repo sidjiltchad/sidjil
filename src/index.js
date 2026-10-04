@@ -6,7 +6,7 @@ import { routeDiscussionPublic } from './discussions.js';
 import { routeSocialApi } from './social.js';
 import { renderPublic } from './views.js';
 import { renderAdmin, renderResearcher } from './admin-views.js';
-import { getSessionUser, getSessionToken, setSessionCookie } from './lib/auth.js';
+import { getSessionUser, setSessionCookie } from './lib/auth.js';
 import { rateLimitCheck, rateLimitResponse } from './lib/ratelimit.js';
 import { googleStart, googleCallback } from './lib/google-auth.js';
 import { routeTranslationApi } from './translation.js';
@@ -139,7 +139,7 @@ export default {
     // home for the private researcher surface.
     if (!researcherAppHost && (pathname === '/researcher' || pathname.startsWith('/researcher/'))) {
       const legacyUser = await getSessionUser(request, env);
-      return researcherAppRedirect(pathname, request, legacyUser ? getSessionToken(request) : '');
+      return researcherAppRedirect(pathname, request, legacyUser ? legacyUser.sessionToken : '');
     }
 
     // Cache the public home page at each edge location so repeated visits do

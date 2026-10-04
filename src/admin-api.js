@@ -16,7 +16,6 @@ import {
   hashPassword,
   verifyPassword,
   getSessionUser,
-  getSessionToken,
   setSessionCookie,
   clearSessionCookie,
   verifyCsrf,
@@ -197,7 +196,7 @@ export async function routeAdminApi(req, env) {
   }
 
   if (rest === 'logout' && method === 'POST') {
-    await logout(env, getSessionToken(req));
+    await logout(env, user.sessionToken);
     await audit(env.DB, { userId: user.id, action: 'admin.logout', ip: clientIp(req) });
     // امسح نسختي الكوكي: نطاق النطاق (.sidjil.org) والنسخة host-only — أيهما وُجد
     const headers = new Headers({ 'Content-Type': 'application/json; charset=utf-8' });
@@ -208,7 +207,7 @@ export async function routeAdminApi(req, env) {
 
   // حساب الباحث: البيانات الشخصية والصورة (لا يغيّر اسم المستخدم هنا)
   if (rest === 'profile' && method === 'GET') {
-    const { csrfToken, ...safeProfile } = user;
+    const { csrfToken, sessionToken, ...safeProfile } = user;
     return json({ profile: safeProfile });
   }
   if (rest === 'profile' && method === 'PATCH')
@@ -755,7 +754,7 @@ async function admProfilePasswordUpdate(env, user, req, body) {
   ).bind(passwordHash, user.id).run();
 
   // Keep the current session usable while invalidating every other device.
-  const currentToken = getSessionToken(req);
+  const currentToken = user.sessionToken;
   if (currentToken) {
     await env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').bind(user.id, currentToken).run();
   } else {
@@ -801,7 +800,7 @@ async function admProfileAvatarDelete(env, user, req) {
 
 async function admUsersList(env) {
   const res = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.display_name, u.affiliation,
+    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.display_name, u.affiliation,
             u.created_at,
             (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
      FROM admin_users u ORDER BY u.id ASC`

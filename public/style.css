@@ -3391,8 +3391,14 @@ blockquote {
 [data-theme="dark"] .k-idea { background: #2e1d3d; color: #c9a2e8; }
 [data-theme="dark"] .k-text { background: #3d1d1d; color: #e89a9a; }
 
-.verified-badge { display: inline-flex; align-items: center; gap: .2rem; font-size: .72rem; font-weight: 700; color: #1d6b3c; background: #e6f4ec; border-radius: var(--radius-pill); padding: 1px 8px; }
-[data-theme="dark"] .verified-badge { background: #163024; color: #8fd0a8; }
+.verification-mark { display: inline-flex; flex: none; width: 1.1em; height: 1.1em; vertical-align: -.18em; margin-inline-start: .2em; }
+.verification-mark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.verification-mark svg circle { fill: currentColor; }
+.verification-mark svg path { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.verification-mark--research { color: #efc51b; }
+.verification-mark--administrative { color: #9a9a9a; }
+.verification-mark--participation { color: #31a866; }
+.d-author { display: inline-flex; align-items: center; gap: .18rem; }
 
 /* صفحة النقاش الكاملة */
 .page-discussion .d-full { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.4rem; margin-bottom: 1.4rem; }
