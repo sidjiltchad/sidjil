@@ -99,8 +99,7 @@ function discussionAuthGate(ctx) {
   const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : currentNext;
   return `<div class="wrap social-auth-page">
     <div class="social-auth-card">
-      <div class="social-auth-mark" aria-hidden="true">سِ</div>
-      <span class="eyebrow">${esc(t(lang, 'site_name'))}</span>
+      <div class="social-auth-brand"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></div>
       <h1>${esc(t(lang, 'discussion_login_title'))}</h1>
       <p class="social-auth-intro">${esc(t(lang, 'discussion_login_intro'))}</p>
       ${error ? `<div class="notice notice-error" role="alert">${esc(error)}</div>` : ''}
