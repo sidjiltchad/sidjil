@@ -199,7 +199,11 @@ function openResearcherMaterialModal(trigger) {
     item.textContent = `${label}: ${value}`;
     meta.appendChild(item);
   });
-  text.textContent = d.materialSummary || d.materialDescription || '';
+  const summary = d.materialSummary || d.materialDescription || '';
+  const transcription = d.materialTranscription || '';
+  text.textContent = transcription
+    ? `${summary ? `${summary}\n\n` : ''}النص المفرغ الموثق:\n${transcription}`
+    : summary;
   const materialId = d.materialId || '';
   if (translate) {
     translate.hidden = !d.materialPdf;
@@ -547,6 +551,11 @@ function initResearcherPage() {
     if (modal && event.target === modal) closeResearcherMaterialModal();
   });
   document.addEventListener('keydown', (event) => {
+    if ((event.key === 'Enter' || event.key === ' ') && event.target.closest('[data-material-details]')) {
+      event.preventDefault();
+      openResearcherMaterialModal(event.target.closest('[data-material-details]'));
+      return;
+    }
     if (event.key === 'Escape') { closeResearcherMaterialModal(); closeImageLightbox(); }
   });
 
