@@ -145,14 +145,16 @@ export async function searchMaterials(db, params = {}) {
     : `, NULL AS snippet`;
 
   const limit = perPage + 1;
-  const limitSql = ' LIMIT ? OFFSET ?';
+  // The limit is normalized above; keeping it as a literal preserves the
+  // look-ahead row on D1 and lets cursor requests avoid OFFSET entirely.
+  const limitSql = ` LIMIT ${limit}${cursor ? '' : ` OFFSET ${offset}`}`;
 
   const itemsSql =
     `SELECT m.*${snippetSql} FROM materials m${joinSql}${whereSql} ${orderSql}${limitSql}`;
   const itemsStarted = Date.now();
   let itemsRes;
   try {
-    itemsRes = await db.prepare(itemsSql).bind(...binds, limit, offset).all();
+    itemsRes = await db.prepare(itemsSql).bind(...binds).all();
     await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, Number(itemsRes.meta?.rows_read ?? itemsRes.results?.length ?? 0), false, metricsSampleRate);
   } catch (error) {
     await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, 0, true, metricsSampleRate);
