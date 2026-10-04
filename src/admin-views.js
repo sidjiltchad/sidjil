@@ -1777,7 +1777,7 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
   if (safeFeed === 'official') params.push(user.id);
   if (sectionFilter) params.push(Number(sectionId));
   if (searchFilter) {
-    if (ftsQuery) params.push(ftsQuery, `%${searchTerm}%`);
+    if (ftsQuery) params.push(ftsQuery);
     else params.push(`%${searchTerm}%`);
   }
   const result = params.length ? await env.DB.prepare(query).bind(...params).all() : await env.DB.prepare(query).all();
@@ -1856,7 +1856,7 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
        ) discussion_counts ON discussion_counts.material_id = m.id
        WHERE fl.follower_id = ? AND m.publish_status = 'published'${materialSearch}
        ORDER BY m.updated_at DESC, m.id DESC LIMIT 500`
-    ).bind(user.id, ...(materialSearch ? (ftsQuery ? [ftsQuery, `%${searchTerm}%`] : [`%${searchTerm}%`]) : [])).all(),
+    ).bind(user.id, ...(materialSearch ? (ftsQuery ? [ftsQuery] : [`%${searchTerm}%`]) : [])).all(),
     env.DB.prepare(
       `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
               d.created_at AS sort_date,
