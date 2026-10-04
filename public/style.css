@@ -3576,7 +3576,7 @@ body.translation-workspace-open { overflow: hidden; }
 .translation-pane-head span { color:var(--muted); font-size:.75rem; font-weight:400; }
 .translation-pane-scroll { min-height:0; overflow:auto; overscroll-behavior:contain; padding:.85rem; scroll-behavior:smooth; }
 .translation-page-card { width:min(100%, 760px); margin:0 auto 1rem; border:1px solid var(--line); border-radius:12px; background:var(--paper); box-shadow:var(--shadow-sm); overflow:hidden; scroll-margin-top:.5rem; }
-.translation-page-label { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.45rem .7rem; border-bottom:1px solid var(--line); color:var(--muted); font-size:.76rem; background:color-mix(in srgb, var(--paper) 90%, var(--gold) 10%); }
+.translation-page-label { display:none; }
 .translation-page-label strong { color:var(--ink-secondary); font-size:.78rem; }
 .translation-page-label span { color:var(--gold-deep); }
 .translation-pdf-canvas { display:block; max-width:100%; height:auto; margin:0 auto; background:#fff; direction:ltr !important; unicode-bidi:isolate; }
@@ -3634,8 +3634,6 @@ body.translation-workspace-open { overflow: hidden; }
   .translation-pane-head span { font-size:.67rem; }
   .translation-pane-scroll { flex:1 1 auto; min-height:0; max-height:none; padding:.5rem; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
   .translation-page-card { width:100%; margin-bottom:.6rem; border-radius:10px; }
-  .translation-page-label { gap:.35rem; padding:.35rem .5rem; font-size:.68rem; }
-  .translation-page-label strong { font-size:.7rem; }
   .translation-page-text { min-height:100px; padding:.7rem .75rem .85rem; font-size:.9rem; line-height:1.8; text-align:justify; }
   .translation-workspace-status { flex:0 0 auto; min-height:2rem; padding:.35rem .65rem max(.35rem, env(safe-area-inset-bottom, 0px)); font-size:.7rem; line-height:1.45; }
 }

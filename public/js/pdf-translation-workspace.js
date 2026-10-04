@@ -217,49 +217,70 @@ export function mountTranslationWorkspace(root, config) {
     if (!state || !liveTranslationStarted || destroyed) return false;
     if (state.translationPromise) return state.translationPromise;
     if (state.translatedText && state.translatedRendered) return true;
-    const text = state.translatedCard.querySelector('[data-page-text]');
-    const stateEl = state.translatedCard.querySelector('[data-page-state]');
-    if (stateEl) stateEl.textContent = workingLabel;
-    if (text) { text.classList.add('is-loading'); text.textContent = config.language === 'fr' ? 'Traduction de cette page…' : 'جارٍ ترجمة هذه الصفحة…'; }
-    state.translationPromise = (async () => {
-      try {
-        const sourceText = await extractPageText(pageNumber);
-        if (!sourceText) {
-          if (text) { text.classList.remove('is-loading'); text.innerHTML = config.language === 'fr' ? '<p>Aucun texte détectable sur cette page.</p>' : '<p>لا يوجد نص قابل للاستخراج في هذه الصفحة.</p>'; }
-          if (stateEl) stateEl.textContent = '';
-          state.translatedRendered = true;
-          return false;
-        }
-        const headers = { 'content-type': 'application/json' };
-        const csrf = csrfToken();
-        if (csrf) headers['X-CSRF-Token'] = csrf;
-        const response = await fetch(`/api/v1/documents/${encodeURIComponent(config.material)}/pages/${pageNumber}/translate`, {
-          method: 'POST', headers, credentials: 'same-origin',
-          body: JSON.stringify({ source_text: sourceText, source: sourceSelect.value, target: targetSelect.value, mode: 'text', page_count: pdfDoc?.numPages || null }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || unavailableLabel);
-        state.translatedText = String(data.page?.translated_text || '');
-        state.translatedRendered = false;
-        await renderTranslated(pageNumber);
-        setStatus(`${config.language === 'fr' ? 'Page traduite' : 'تمت ترجمة الصفحة'} ${pageTextLabel(pageNumber)}`);
-        // Warm the next page in the background after the visible page is
-        // ready. The service remains bounded by its AI semaphore, while the
-        // next page is usually cached before the reader reaches it.
-        if (pageNumber === activePage && pageNumber < (pdfDoc?.numPages || 0)) {
-          const next = pageNumber + 1;
-          window.setTimeout(() => {
-            if (!destroyed && liveTranslationStarted && pageState.has(next)) translatePage(next);
-          }, 250);
-        }
-        return true;
-      } catch (error) {
-        if (text) { text.classList.remove('is-loading'); text.textContent = error.message || unavailableLabel; }
-        if (stateEl) stateEl.textContent = config.language === 'fr' ? 'Erreur' : 'تعذر الترجمة';
-        return false;
-      } finally { state.translationPromise = null; }
+    const batchPages = [];
+    for (let page = pageNumber; page < pageNumber + 3 && page <= (pdfDoc?.numPages || 0); page += 1) {
+      const candidate = pageState.get(page);
+      if (candidate && !candidate.translationPromise && !(candidate.translatedText && candidate.translatedRendered)) batchPages.push(page);
+    }
+    if (!batchPages.length) return true;
+    const batchPromise = (async () => {
+      const texts = await Promise.all(batchPages.map(async (page) => ({ page, text: await extractPageText(page) })));
+      const translatable = texts.filter((item) => item.text);
+      texts.filter((item) => !item.text).forEach(({ page }) => {
+        const emptyState = pageState.get(page);
+        const emptyText = emptyState?.translatedCard.querySelector('[data-page-text]');
+        if (emptyText) { emptyText.classList.remove('is-loading'); emptyText.innerHTML = config.language === 'fr' ? '<p>Aucun texte détectable sur cette page.</p>' : '<p>لا يوجد نص قابل للاستخراج في هذه الصفحة.</p>'; }
+        if (emptyState) emptyState.translatedRendered = true;
+      });
+      if (!translatable.length) return false;
+      translatable.forEach(({ page }) => {
+        const pending = pageState.get(page);
+        const pendingText = pending?.translatedCard.querySelector('[data-page-text]');
+        const pendingState = pending?.translatedCard.querySelector('[data-page-state]');
+        if (pendingText) { pendingText.classList.add('is-loading'); pendingText.textContent = config.language === 'fr' ? 'Traduction de cette page…' : 'جارٍ ترجمة هذه الصفحة…'; }
+        if (pendingState) pendingState.textContent = workingLabel;
+      });
+      const headers = { 'content-type': 'application/json' };
+      const csrf = csrfToken();
+      if (csrf) headers['X-CSRF-Token'] = csrf;
+      const response = await fetch(`/api/v1/documents/${encodeURIComponent(config.material)}/pages/translate-batch`, {
+        method: 'POST', headers, credentials: 'same-origin',
+        body: JSON.stringify({ pages: translatable.map(({ page, text }) => ({ page_number: page, source_text: text })), source: sourceSelect.value, target: targetSelect.value, mode: 'text', page_count: pdfDoc?.numPages || null }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || unavailableLabel);
+      const translatedPages = Array.isArray(data.pages) ? data.pages : [];
+      await Promise.all(translatedPages.map(async (item) => {
+        const targetPage = Number(item.page_number);
+        const targetState = pageState.get(targetPage);
+        if (!targetState) return;
+        targetState.translatedText = String(item.translated_text || '');
+        targetState.translatedRendered = false;
+        await renderTranslated(targetPage);
+      }));
+      setStatus(`${config.language === 'fr' ? 'Pages traduites' : 'تمت ترجمة الصفحات'} ${batchPages.map(pageTextLabel).join('، ')}`);
+      const lastPage = batchPages[batchPages.length - 1];
+      if (pageNumber === activePage && lastPage < (pdfDoc?.numPages || 0)) {
+        const next = lastPage + 1;
+        window.setTimeout(() => {
+          if (!destroyed && liveTranslationStarted && pageState.has(next)) translatePage(next);
+        }, 250);
+      }
+      return translatedPages.length > 0;
     })();
-    return state.translationPromise;
+    batchPages.forEach((page) => { const item = pageState.get(page); if (item) item.translationPromise = batchPromise; });
+    try { return await batchPromise; }
+    catch (error) {
+      batchPages.forEach((page) => {
+        const failed = pageState.get(page);
+        const failedText = failed?.translatedCard.querySelector('[data-page-text]');
+        const failedState = failed?.translatedCard.querySelector('[data-page-state]');
+        if (failedText) { failedText.classList.remove('is-loading'); failedText.textContent = error.message || unavailableLabel; }
+        if (failedState) failedState.textContent = config.language === 'fr' ? 'Erreur' : 'تعذر الترجمة';
+      });
+      return false;
+    }
+    finally { batchPages.forEach((page) => { const item = pageState.get(page); if (item?.translationPromise === batchPromise) item.translationPromise = null; }); }
   }
 
   async function startBookTranslation(force = false) {

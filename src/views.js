@@ -109,7 +109,7 @@ ${ogUrl}
 <meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=20261004-translation-head-v3">
+<link rel="stylesheet" href="/style.css?v=20261005-translation-batch-v1">
 </head>`;
 }
 

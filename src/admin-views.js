@@ -135,7 +135,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v6">
+<link rel="stylesheet" href="/admin.css?v=20261005-translation-batch-v1">
 ${head}
 </head>
 <body>

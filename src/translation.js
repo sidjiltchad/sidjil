@@ -234,6 +234,114 @@ function pageLanguageDirection(lang) {
   return String(lang || '').toLowerCase() === 'ar' ? 'rtl' : 'ltr';
 }
 
+async function ensureTranslationDocument(db, material, file, source, target, mode, pageCount, userId) {
+  let document = await db.prepare('SELECT * FROM translation_documents WHERE material_id = ? AND source_file_id = ? AND source_language = ? AND target_language = ? AND output_mode = ?')
+    .bind(material.id, file.id, source, target, mode).first();
+  if (!document) {
+    const documentId = id();
+    await db.prepare(`INSERT OR IGNORE INTO translation_documents
+      (id, material_id, source_file_id, source_language, target_language, output_mode, status, page_count, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, 'RUNNING', ?, ?)`)
+      .bind(documentId, material.id, file.id, source, target, mode, Number(pageCount) || null, userId || null).run();
+    document = await db.prepare('SELECT * FROM translation_documents WHERE material_id = ? AND source_file_id = ? AND source_language = ? AND target_language = ? AND output_mode = ?')
+      .bind(material.id, file.id, source, target, mode).first();
+  }
+  return document;
+}
+
+function batchPageMarker(index) {
+  return `SIDJIL_PAGE_BREAK_${String.fromCharCode(65 + index)}`;
+}
+
+async function pageTranslationBatch(req, env, value) {
+  const s = await settings(env.DB);
+  if (!s.enabled || s.maintenance_mode || !s.text_enabled) return fail('الترجمة غير متاحة حاليًا', 503, 'TRANSLATION_DISABLED');
+  const user = await getSessionUser(req, env);
+  if (user && !verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
+  if (!user && !s.guest_enabled) return fail('تسجيل الدخول مطلوب لاستخدام الترجمة', 401, 'LOGIN_REQUIRED');
+  let body;
+  try { body = await req.json(); } catch (_) { return fail('بيانات الطلب غير صالحة'); }
+  const source = String(body.source || 'auto');
+  const target = String(body.target || 'ar');
+  const mode = ['translated', 'bilingual', 'text'].includes(body.mode) ? body.mode : 'text';
+  if (!validLang(source, true) || !validLang(target) || source === target) return fail('لغة المصدر أو الهدف غير صالحة');
+  if (!Array.isArray(body.pages) || body.pages.length < 1 || body.pages.length > 4) return fail('عدد صفحات الدفعة غير صالح', 400, 'INVALID_BATCH_SIZE');
+  const pages = body.pages.map((item) => ({
+    page_number: Number(item?.page_number),
+    source_text: String(item?.source_text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim(),
+  }));
+  if (pages.some((item) => !Number.isInteger(item.page_number) || item.page_number < 1 || item.page_number > 3000)) return fail('رقم الصفحة غير صالح', 400, 'INVALID_PAGE');
+  if (new Set(pages.map((item) => item.page_number)).size !== pages.length) return fail('تكرار رقم الصفحة في الدفعة', 400, 'DUPLICATE_PAGE');
+  const maxPageChars = Number(s.max_text_chars || 12000);
+  if (pages.some((item) => item.source_text.length > maxPageChars)) return fail('نص إحدى الصفحات يتجاوز الحد المسموح', 413, 'PAGE_TOO_LARGE');
+  const pendingInput = pages.filter((item) => item.source_text);
+  if (!pendingInput.length) return fail('نص الصفحات فارغ', 400, 'EMPTY_PAGE');
+  const batchChars = pendingInput.reduce((sum, item) => sum + item.source_text.length, 0);
+  if (batchChars > Math.min(maxPageChars * 2, 18000)) return fail('حجم دفعة الصفحات كبير', 413, 'BATCH_TOO_LARGE');
+  const material = await materialById(env.DB, value);
+  if (!material) return fail('المادة غير موجودة', 404, 'MATERIAL_NOT_FOUND');
+  const file = await publishedFile(env.DB, material.id);
+  if (!file) return fail('لا يوجد ملف PDF لهذه المادة', 400, 'PDF_NOT_FOUND');
+  const document = await ensureTranslationDocument(env.DB, material, file, source, target, mode, body.page_count, user?.id);
+  if (!document) return fail('تعذر إنشاء سجل الترجمة', 500, 'TRANSLATION_DOCUMENT_CREATE_FAILED');
+  if (['PAUSED', 'CANCELLED'].includes(String(document.status))) return fail('ترجمة هذا المستند متوقفة', 409, 'TRANSLATION_PAUSED');
+
+  const results = [];
+  const pending = [];
+  for (const item of pages) {
+    const sourceHash = await sha256(`${file.sha256 || file.r2_key}|${item.page_number}|${item.source_text}`);
+    const row = await env.DB.prepare('SELECT * FROM translation_pages WHERE document_id = ? AND page_number = ?').bind(document.id, item.page_number).first();
+    if (row?.status === 'completed' && row.source_hash === sourceHash && row.translated_text) {
+      results.push({ page_number: item.page_number, source_hash: sourceHash, translated_text: row.translated_text, status: 'completed', progress: 100, direction: row.direction || pageLanguageDirection(target), cached: true });
+    } else if (item.source_text) {
+      pending.push({ ...item, sourceHash });
+    }
+  }
+  if (pending.length) {
+    const combined = pending.map((item, index) => `${batchPageMarker(index)}\n${item.source_text}`).join('\n\n');
+    const immutable = protectImmutableTokens(combined);
+    const glossaryTerms = await loadGlossary(env.DB, source, target);
+    const protected_ = protectGlossaryTerms(immutable.text, glossaryTerms);
+    try {
+      const result = await new OllamaTranslationProvider(env).translate({ text: protected_.text, source, target });
+      const translated = restoreImmutableTokens(restoreGlossaryTerms(result.translatedText, protected_.map), immutable.map);
+      const segments = pending.map((item, index) => {
+        const marker = batchPageMarker(index);
+        const start = translated.indexOf(marker);
+        if (start < 0) return null;
+        const nextMarkers = pending.slice(index + 1).map((_, nextIndex) => translated.indexOf(batchPageMarker(index + nextIndex + 1), start + marker.length)).filter((position) => position >= 0);
+        const end = nextMarkers.length ? Math.min(...nextMarkers) : translated.length;
+        return { item, text: translated.slice(start + marker.length, end).trim() };
+      });
+      if (segments.some((segment) => !segment || !segment.text)) throw new Error('BATCH_PAGE_MARKER_LOST');
+      for (const segment of segments) {
+        const { item, text } = segment;
+        await env.DB.prepare(`INSERT OR REPLACE INTO translation_pages
+          (document_id, page_number, source_hash, source_text, translated_text, direction, status, progress, error_code, error_message, updated_at, completed_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'completed', 100, NULL, NULL, datetime('now'), datetime('now'))`)
+          .bind(document.id, item.page_number, item.sourceHash, item.source_text, text, pageLanguageDirection(target)).run();
+        await env.DB.prepare(`INSERT OR REPLACE INTO translation_page_segments
+          (page_id, sequence_number, source_text, translated_text, kind, direction)
+          SELECT id, 1, ?, ?, 'page', ? FROM translation_pages WHERE document_id = ? AND page_number = ?`)
+          .bind(item.source_text, text, pageLanguageDirection(target), document.id, item.page_number).run().catch(() => {});
+        results.push({ page_number: item.page_number, source_hash: item.sourceHash, translated_text: text, status: 'completed', progress: 100, direction: pageLanguageDirection(target), cached: false });
+      }
+    } catch (e) {
+      // The client can fall back to the single-page route if a model ever
+      // drops a batch marker; no partially translated page is persisted.
+      return fail('تعذر ترجمة دفعة الصفحات الآن', 503, 'PAGE_BATCH_UNAVAILABLE');
+    }
+  }
+  results.sort((a, b) => a.page_number - b.page_number);
+  const complete = await env.DB.prepare("SELECT COUNT(*) AS c FROM translation_pages WHERE document_id = ? AND status = 'completed'").bind(document.id).first();
+  const completedPages = Number(complete?.c || 0);
+  const pageCount = Number(document.page_count || body.page_count || 0);
+  const progress = pageCount > 0 ? Math.min(100, Math.round((completedPages / pageCount) * 100)) : 0;
+  await env.DB.prepare(`UPDATE translation_documents SET status = ?, completed_pages = ?, progress = ?, page_count = COALESCE(page_count, ?), updated_at = datetime('now') WHERE id = ?`)
+    .bind(pageCount > 0 && completedPages >= pageCount ? 'COMPLETED' : 'RUNNING', completedPages, progress, pageCount || null, document.id).run();
+  return json({ success: true, cached: results.every((item) => item.cached), documentId: document.id, pages: results, direction: pageLanguageDirection(target) });
+}
+
 async function pageTranslation(req, env, value, pageNumber) {
   const s = await settings(env.DB);
   if (!s.enabled || s.maintenance_mode || !s.text_enabled) return fail('الترجمة غير متاحة حاليًا', 503, 'TRANSLATION_DISABLED');
@@ -445,6 +553,8 @@ export async function routeTranslationApi(req, env) {
   if (path === '/api/v1/translate/text' && req.method === 'POST') return translateText(req, env);
   if (path === '/api/v1/translate/ocr-page' && req.method === 'POST') return ocrPage(req, env);
   if (path === '/api/v1/translate/document' && req.method === 'POST') return fail('استخدم ترجمة المادة من عارضها', 410, 'USE_DOCUMENT_TRANSLATION');
+  let batchMatch = path.match(/^\/api\/v1\/documents\/([^/]+)\/pages\/translate-batch$/);
+  if (batchMatch && req.method === 'POST') return pageTranslationBatch(req, env, decodeURIComponent(batchMatch[1]));
   let pageMatch = path.match(/^\/api\/v1\/documents\/([^/]+)\/pages\/(\d+)\/translate$/);
   if (pageMatch && req.method === 'POST') return pageTranslation(req, env, decodeURIComponent(pageMatch[1]), pageMatch[2]);
   pageMatch = path.match(/^\/api\/v1\/documents\/([^/]+)\/pages\/(\d+)$/);
