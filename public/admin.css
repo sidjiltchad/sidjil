@@ -1574,6 +1574,9 @@ body.translation-workspace-open { overflow: hidden; }
 .rpdf-target-label { display: inline-flex; align-items: center; gap: .25rem; min-height: 40px; padding-inline: .35rem; color: var(--muted); font-size: .78rem; white-space: nowrap; }
 .rpdf-target-label select { min-height: 32px; border: 1px solid var(--line); border-radius: 999px; padding: .2rem .45rem; background: var(--card); color: var(--ink); font: inherit; }
 .rpdf-translation-progress { min-width: 3rem; color: var(--teal); font-size: .78rem; font-variant-numeric: tabular-nums; text-align: center; }
+.rpdf-translation-controls { display: inline-flex; align-items: center; gap: .25rem; padding-inline: .15rem; }
+.rpdf-translation-controls button { min-height: 32px; padding: .2rem .55rem; font-size: .78rem; }
+.rpdf-translation-controls [data-rpdf-translation-cancel] { color: #9a3412; }
 .rpdf-num { font-size: .85rem; color: var(--muted); padding: 0 .3rem; }
 .rpdf-num b { color: inherit; }
 .rpdf-sep { flex: 1; }

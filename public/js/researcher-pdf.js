@@ -21,6 +21,7 @@ async function requestJson(path, method = 'GET', body) {
 const api = (...args) => typeof window.api === 'function' ? window.api(...args) : requestJson(...args);
 const toast = (...args) => (window.toast ? window.toast(...args) : alert(args[0]));
 const esc = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const setBusy = (button, busy) => { if (button) { button.disabled = !!busy; button.dataset.busy = busy ? '1' : '0'; } };
 
 export async function mount(container, { url, materialId, materialTitle }) {
   container.innerHTML = '';
@@ -37,6 +38,11 @@ export async function mount(container, { url, materialId, materialTitle }) {
       <button type="button" data-rpdf-live-translation aria-pressed="false">ترجمة الصفحات</button>
       <label class="rpdf-target-label">إلى <select data-rpdf-target aria-label="لغة الترجمة"><option value="ar" selected>العربية</option><option value="fr">Français</option><option value="en">English</option></select></label>
       <span class="rpdf-translation-progress" data-rpdf-translation-progress hidden>0%</span>
+      <span class="rpdf-translation-controls" data-rpdf-translation-controls hidden>
+        <button type="button" data-rpdf-translation-pause>إيقاف مؤقت</button>
+        <button type="button" data-rpdf-translation-resume hidden>استئناف</button>
+        <button type="button" data-rpdf-translation-cancel>إلغاء</button>
+      </span>
       <button type="button" data-rpdf-full aria-pressed="false">ملء الشاشة</button>
     </div>
     <div class="rpdf-stage" data-rpdf-stage tabindex="0" aria-label="صفحات المستند، مرر للأعلى أو الأسفل">
@@ -65,11 +71,15 @@ export async function mount(container, { url, materialId, materialTitle }) {
   const liveTranslationButton = container.querySelector('[data-rpdf-live-translation]');
   const targetSelect = container.querySelector('[data-rpdf-target]');
   const translationProgress = container.querySelector('[data-rpdf-translation-progress]');
+  const translationControls = container.querySelector('[data-rpdf-translation-controls]');
+  const translationPause = container.querySelector('[data-rpdf-translation-pause]');
+  const translationResume = container.querySelector('[data-rpdf-translation-resume]');
+  const translationCancel = container.querySelector('[data-rpdf-translation-cancel]');
   const actions = container.querySelector('[data-rpdf-actions]');
   const composer = container.querySelector('[data-rpdf-composer]');
   const quotePreview = container.querySelector('[data-rpdf-quote-preview]');
   const selectionLabel = container.querySelector('[data-rpdf-selection-label]');
-  const state = { doc: null, page: 1, scale: 1, fit: true, cancelled: false, quote: null, observer: null, pinch: null, tapAt: 0, translation: false, target: 'ar', translationRequests: new Map(), translatedPages: new Set() };
+  const state = { doc: null, page: 1, scale: 1, fit: true, cancelled: false, quote: null, observer: null, pinch: null, tapAt: 0, translation: false, target: 'ar', translationRequests: new Map(), translatedPages: new Set(), translationDocumentId: null, translationPaused: false };
 
   function pageScale(page) {
     if (state.fit) {
@@ -148,6 +158,8 @@ export async function mount(container, { url, materialId, materialTitle }) {
         status.textContent = result?.cached ? 'محفوظة' : 'مترجمة';
         article.dataset.rpdfTranslatedTarget = target;
         state.translatedPages.add(key);
+        if (result?.documentId) state.translationDocumentId = result.documentId;
+        if (state.translationDocumentId && document.querySelector('meta[name="csrf-token"]')?.content) translationControls.hidden = false;
         updateTranslationProgress();
       } catch (err) {
         body.classList.remove('is-loading');
@@ -157,6 +169,25 @@ export async function mount(container, { url, materialId, materialTitle }) {
     })();
     state.translationRequests.set(key, task);
     return task;
+  }
+
+  async function controlTranslation(action) {
+    if (!state.translationDocumentId) return;
+    const button = action === 'pause' ? translationPause : action === 'resume' ? translationResume : translationCancel;
+    setBusy(button, true);
+    try {
+      const result = await requestJson(`/api/v1/translate/documents/${encodeURIComponent(state.translationDocumentId)}/${action}`, 'POST', {});
+      state.translationPaused = result.status === 'PAUSED';
+      translationPause.hidden = state.translationPaused;
+      translationResume.hidden = !state.translationPaused;
+      if (result.status === 'CANCELLED') {
+        state.cancelled = true;
+        liveTranslationButton.setAttribute('aria-pressed', 'false');
+        liveTranslationButton.textContent = 'ترجمة الصفحات';
+      }
+      toast(result.status === 'PAUSED' ? 'أوقفت ترجمة هذا المستند مؤقتًا' : result.status === 'CANCELLED' ? 'ألغيت ترجمة هذا المستند' : 'استؤنفت ترجمة هذا المستند');
+    } catch (err) { toast(err.message || 'تعذر التحكم في الترجمة', false); }
+    finally { setBusy(button, false); }
   }
 
   function queueNearbyTranslations(article, sourceText) {
@@ -277,6 +308,9 @@ export async function mount(container, { url, materialId, materialTitle }) {
     updateTranslationProgress();
     redrawAtCurrentPage();
   });
+  translationPause.addEventListener('click', () => controlTranslation('pause'));
+  translationResume.addEventListener('click', () => controlTranslation('resume'));
+  translationCancel.addEventListener('click', () => controlTranslation('cancel'));
   targetSelect.addEventListener('change', () => {
     state.target = targetSelect.value || 'ar';
     state.translatedPages.clear();
