@@ -39,6 +39,7 @@
           <span class="translation-arrow" aria-hidden="true">→</span>
           <label class="translation-language"><span>${labels.to}</span><select data-ta-target><option value="ar">العربية</option><option value="fr">Français</option><option value="en">English</option></select></label>
           <a class="btn btn-small btn-ghost" data-ta-download-original href="${esc(originalDownload)}">${labels.download} ${lang === 'fr' ? 'original' : 'الأصل'}</a>
+          <button class="btn btn-small btn-primary" type="button" data-ta-start-translation>${labels.translate}</button>
           <button class="btn btn-small" type="button" data-ta-download-translation disabled>${lang === 'fr' ? 'Télécharger le texte' : 'تنزيل النص المترجم'}</button>
           <button class="btn btn-small btn-primary" type="button" data-ta-create-pdf>${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}</button>
           <button class="translation-action-close" type="button" data-translation-close aria-label="${labels.close}">×</button>
@@ -53,7 +54,7 @@
         <section class="translation-pane translation-pane-original is-mobile-active" id="taOriginalPane" role="tabpanel"><div class="translation-pane-head"><strong>${lang === 'fr' ? 'Fichier original' : 'الملف الأصلي'}</strong><span>${lang === 'fr' ? 'Défilement synchronisé' : 'التمرير متزامن'}</span></div><div class="translation-pane-scroll" data-ta-original-scroll></div></section>
         <section class="translation-pane translation-pane-result" id="taTranslatedPane" role="tabpanel"><div class="translation-pane-head"><strong>${lang === 'fr' ? 'Traduction en direct' : 'الترجمة الحية'}</strong><span data-ta-target-label>العربية</span></div><div class="translation-pane-scroll" data-ta-translated-scroll></div></section>
       </div>
-      <footer class="translation-workspace-status" data-ta-status aria-live="polite">${lang === 'fr' ? 'Le livre sera traduit en arrière-plan, page par page.' : 'ستتم ترجمة الكتاب كاملًا في الخلفية صفحةً صفحة.'}</footer>
+      <footer class="translation-workspace-status" data-ta-status aria-live="polite">${lang === 'fr' ? 'Lisez le fichier original ou lancez la traduction quand vous le souhaitez.' : 'يمكنك قراءة الملف الأصلي، أو بدء الترجمة عند الحاجة.'}</footer>
     </div>`);
     el.classList.add('translation-workspace-modal');
     el.querySelector('.translation-action-card')?.classList.add('translation-workspace-card');
@@ -67,8 +68,9 @@
       el.querySelector('.translation-pane-result')?.classList.toggle('is-mobile-active', selected === 'translated');
     }));
     try {
-      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-text-reader-v2');
+      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-reader-flow-v1');
       const workspace = mod.mountTranslationWorkspace(el.querySelector('[data-translation-workspace]'), { pdf, material, language: lang, labels, title, originalDownload, target: el.querySelector('[data-ta-target]')?.value || 'ar' });
+      el.querySelector('[data-ta-start-translation]')?.addEventListener('click', () => workspace.startBookTranslation());
       el.querySelector('[data-ta-create-pdf]')?.addEventListener('click', () => workspace.exportPdf());
       el.querySelector('[data-ta-download-translation]')?.addEventListener('click', () => workspace.downloadTranslation());
     } catch (e) {
@@ -77,6 +79,12 @@
       console.error('translation workspace failed', e);
     }
   }
+  window.SidjilOpenDocumentReader = (data = {}) => documentAction({ dataset: {
+    translateDocument: data.material || '',
+    translatePdf: data.pdf || '',
+    translateTitle: data.title || '',
+    translateOriginalDownload: data.originalDownload || data.pdf || '',
+  } });
   async function poll(jobId, status, el) { for (let i = 0; i < 180; i++) { await new Promise((r) => setTimeout(r, 2000)); try { const r = await fetch(`/api/v1/translate/jobs/${encodeURIComponent(jobId)}`); const d = await r.json(); const j = d.job || {}; status.textContent = j.status === 'COMPLETED' ? labels.ready : j.status === 'FAILED' ? (j.error_message || labels.error) : `${labels.working} (${j.progress || 0}%)`; if (j.status === 'COMPLETED') { status.innerHTML = `${labels.ready} · <a href="/api/v1/translate/jobs/${encodeURIComponent(jobId)}/download">${labels.download}</a>`; return; } if (j.status === 'FAILED') return; } catch (_) {} } }
   document.addEventListener('click', (e) => { const t = e.target.closest('[data-translate-text]'); if (t) { e.preventDefault(); textAction(t); return; } const d = e.target.closest('[data-translate-document]'); if (d) { e.preventDefault(); documentAction(d); } });
 })();

@@ -1204,6 +1204,8 @@ input[type="checkbox"], input[type="radio"] {
 .researcher-modal-veil { position: fixed; inset: 0; z-index: 500; display: grid; place-items: center; padding: 1rem; background: rgba(7, 14, 27, .72); backdrop-filter: blur(8px); }
 .researcher-modal-veil[hidden] { display: none; }
 .researcher-material-modal { position: relative; display: grid; grid-template-columns: minmax(280px, .9fr) minmax(280px, 1.1fr); width: min(920px, 100%); max-height: min(90vh, 900px); overflow: auto; border: 1px solid var(--line); border-radius: 1.25rem; background: var(--card); box-shadow: 0 24px 80px rgba(0, 0, 0, .28); }
+.researcher-material-modal.details-only { display: block; width: min(760px, 100%); }
+.researcher-material-modal.details-only .researcher-material-modal-content { min-height: 0; }
 /* --- عارض الصور بملء الشاشة (أسلوب فيسبوك) --- */
 .researcher-image-lightbox { position: fixed; inset: 0; z-index: 999; background: rgba(4, 6, 12, .94); display: grid; place-items: center; padding: 1rem; cursor: zoom-out; animation: veilIn 200ms ease; }
 .researcher-image-lightbox[hidden] { display: none; }

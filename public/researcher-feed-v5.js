@@ -145,41 +145,25 @@ async function openResearcherMaterialModal(trigger) {
   const title = document.getElementById('researcherMaterialModalTitle');
   const meta = document.getElementById('researcherMaterialModalMeta');
   const text = document.getElementById('researcherMaterialModalText');
-  const translate = document.getElementById('researcherMaterialModalTranslate');
+  const read = document.getElementById('researcherMaterialModalRead');
   const download = document.getElementById('researcherMaterialModalDownload');
   const discussion = document.getElementById('researcherMaterialModalDiscussion');
   if (!media || !type || !title || !meta || !text || !discussion) return;
   lastResearcherModalTrigger = trigger;
+  const modalCard = modal.querySelector('.researcher-material-modal');
+  modalCard?.classList.add('details-only');
 
   media.textContent = '';
-  media.classList.toggle('researcher-material-modal-pdf', !!d.materialPdf);
-  if (d.materialPdf) {
-    const readerBox = document.createElement('div');
-    readerBox.className = 'researcher-material-modal-pdf-reader';
-    media.appendChild(readerBox);
-    if (window.SidjilPdfReader && window.SidjilPdfReader.mount) {
-      window.SidjilPdfReader.mount(readerBox, {
-        url: d.materialPdf,
-        materialId: d.materialId || '',
-        materialTitle: d.materialTitle || 'الكتاب',
-      }).then(reader => { activePdfReader = reader; }).catch(() => {});
-    } else {
-      // بديل: iframe عند تعذر تحميل الوحدة
-      const frame = document.createElement('iframe');
-      frame.className = 'researcher-material-modal-pdf-frame';
-      frame.src = `${d.materialPdf}#toolbar=1&navpanes=0&view=FitH`;
-      frame.title = `قراءة ${d.materialTitle || 'الكتاب'}`;
-      frame.loading = 'eager';
-      frame.setAttribute('allowfullscreen', 'true');
-      readerBox.appendChild(frame);
-    }
-  } else if (d.materialImage) {
+  // نافذة التفاصيل لا تحمل عارض PDF. يفتح القارئ الموحد من زر القراءة فقط.
+  media.classList.remove('researcher-material-modal-pdf');
+  media.hidden = !!d.materialPdf;
+  if (!d.materialPdf && d.materialImage) {
     const image = document.createElement('img');
     image.src = d.materialImage;
     image.alt = d.materialTitle || '';
     image.loading = 'eager';
     media.appendChild(image);
-  } else {
+  } else if (!d.materialPdf) {
     const placeholder = document.createElement('div');
     placeholder.className = 'researcher-material-modal-placeholder';
     placeholder.textContent = d.materialType || 'مادة من الأرشيف';
@@ -212,6 +196,19 @@ async function openResearcherMaterialModal(trigger) {
   modal.hidden = false;
   document.body.classList.add('researcher-modal-open');
   const materialId = d.materialId || '';
+  if (read) {
+    read.hidden = !d.materialPdf;
+    read.onclick = () => {
+      if (!d.materialPdf || typeof window.SidjilOpenDocumentReader !== 'function') return;
+      closeResearcherMaterialModal();
+      window.SidjilOpenDocumentReader({
+        material: materialId,
+        pdf: d.materialPdf,
+        title: d.materialTitle || '',
+        originalDownload: d.materialPdfDownload || d.materialPdf,
+      });
+    };
+  }
   if (materialId) {
     try {
       const response = await fetch(`/researcher/material-text?material_id=${encodeURIComponent(materialId)}`, {
@@ -227,20 +224,6 @@ async function openResearcherMaterialModal(trigger) {
         }
       }
     } catch { /* يبقى الملخص إذا تعذر تحميل النص الكامل */ }
-  }
-  if (translate) {
-    translate.hidden = !d.materialPdf;
-    if (d.materialPdf) {
-      translate.dataset.translateDocument = materialId;
-      translate.dataset.translatePdf = d.materialPdf;
-      translate.dataset.translateTitle = d.materialTitle || '';
-      translate.dataset.translateOriginalDownload = d.materialPdfDownload || d.materialPdf;
-    } else {
-      delete translate.dataset.translateDocument;
-      delete translate.dataset.translatePdf;
-      delete translate.dataset.translateTitle;
-      delete translate.dataset.translateOriginalDownload;
-    }
   }
   if (download) {
     download.hidden = !d.materialPdf;
@@ -274,6 +257,7 @@ function closeResearcherMaterialModal() {
   if (activePdfReader) { try { activePdfReader.destroy(); } catch {} activePdfReader = null; }
   const modal = document.getElementById('researcherMaterialModal');
   if (!modal) return;
+  modal.querySelector('.researcher-material-modal')?.classList.remove('details-only');
   modal.hidden = true;
   document.body.classList.remove('researcher-modal-open');
   if (lastResearcherModalTrigger && document.contains(lastResearcherModalTrigger)) {

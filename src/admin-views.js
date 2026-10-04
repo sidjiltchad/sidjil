@@ -1644,7 +1644,7 @@ ${csrfMeta}
       <div class="researcher-material-modal-meta" id="researcherMaterialModalMeta"></div>
       <p id="researcherMaterialModalText"></p>
       <div class="researcher-material-modal-actions researcher-pdf-actions">
-        <button class="rpdf-action" id="researcherMaterialModalTranslate" type="button" data-translate-document hidden><span class="rpdf-action-icon" aria-hidden="true">🌐</span><span class="rpdf-action-label">ترجمة الكتاب</span></button>
+        <button class="rpdf-action" id="researcherMaterialModalRead" type="button" hidden><span class="rpdf-action-icon" aria-hidden="true">📖</span><span class="rpdf-action-label">قراءة الكتاب</span></button>
         <a class="rpdf-action" id="researcherMaterialModalDownload" href="#" hidden><span class="rpdf-action-icon" aria-hidden="true">⬇️</span><span class="rpdf-action-label">تنزيل PDF الأصلي</span></a>
         <button class="rpdf-action" id="researcherMaterialModalDiscussion" type="button" aria-expanded="false" aria-controls="researcherMaterialModalDiscussionPanel"><span class="rpdf-action-icon" aria-hidden="true">💬</span><span class="rpdf-action-label">فتح النقاش</span></button>
       </div>
@@ -1671,8 +1671,8 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v6"></script>
-<script src="/researcher-feed-v5.js?v=20261004-fulltext-v2" defer></script>
-<script src="/translate-inline.js?v=20261004-text-reader-v2" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-reader-flow-v1" defer></script>
+<script src="/translate-inline.js?v=20261004-reader-flow-v1" defer></script>
 <script>
 (() => {
   const init = () => {

@@ -36,6 +36,7 @@ export function mountTranslationWorkspace(root, config) {
   const status = root.querySelector('[data-ta-status]');
   const progress = root.querySelector('[data-ta-progress]');
   const progressLabel = root.querySelector('[data-ta-progress-label]');
+  const startButton = root.querySelector('[data-ta-start-translation]');
   const downloadButton = root.querySelector('[data-ta-download-translation]');
   const pdfExportButton = root.querySelector('[data-ta-create-pdf]');
   const originalLabel = config.language === 'fr' ? 'Page' : 'الصفحة';
@@ -192,6 +193,7 @@ export function mountTranslationWorkspace(root, config) {
     if (!force && translationKey === key && translatedDoc) return true;
     if (starting) return starting;
     translationKey = key; resetTranslationView();
+    if (startButton) startButton.disabled = true;
     setProgress(1, config.language === 'fr' ? 'préparation' : 'تهيئة');
     setStatus(`${workingLabel} · ${sourceSelect.value} → ${targetSelect.value}`);
     starting = (async () => {
@@ -226,7 +228,10 @@ export function mountTranslationWorkspace(root, config) {
         throw new Error(config.language === 'fr' ? 'Le délai de traitement est dépassé.' : 'انتهت مهلة انتظار الترجمة. يمكنك إعادة المحاولة.');
       } catch (error) {
         setStatus(error.message || unavailableLabel); setProgress(0, config.language === 'fr' ? 'échec' : 'فشل'); return false;
-      } finally { starting = null; }
+      } finally {
+        starting = null;
+        if (startButton) startButton.disabled = false;
+      }
     })();
     return starting;
   }
@@ -292,7 +297,9 @@ export function mountTranslationWorkspace(root, config) {
 
   function onLanguageChange() {
     targetLabel.textContent = targetSelect.options[targetSelect.selectedIndex]?.textContent || targetSelect.value;
-    startBookTranslation(true);
+    translationKey = '';
+    resetTranslationView();
+    setStatus(config.language === 'fr' ? 'Lancez la traduction pour cette langue.' : 'اضغط «ترجمة الكتاب» لبدء الترجمة بهذه اللغة.');
   }
   function onResize() {
     pageState.forEach((state) => { state.rendered = false; state.translatedRendered = false; });
@@ -310,7 +317,9 @@ export function mountTranslationWorkspace(root, config) {
         renderOriginal(page); syncTranslation(page);
       }), { root: originalScroll, rootMargin: '260px 0px', threshold: [0.25, 0.6] });
       pageState.forEach((state) => observer.observe(state.original));
-      renderOriginal(1); await startBookTranslation();
+      renderOriginal(1);
+      setProgress(0);
+      setStatus(config.language === 'fr' ? 'Lisez le fichier original ou lancez la traduction quand vous le souhaitez.' : 'يمكنك قراءة الملف الأصلي، أو بدء الترجمة عند الحاجة.');
     } catch (_) { setStatus(unavailableLabel); }
   }
 
