@@ -55,6 +55,7 @@ const NAV = [
   ['announcements', '/admin/announcements', 'الإعلانات'],
   ['glossary', '/admin/glossary', 'قاموس الترجمة'],
   ['translation', '/admin/translation', 'الترجمة'],
+  ['quality', '/admin/content-health', 'صحة المحتوى'],
   ['verification', '/admin/verification', 'التوثيق'],
   ['users', '/admin/users', 'المستخدمون'],
   ['discussions', '/admin/discussions', 'النقاشات'],
@@ -64,7 +65,7 @@ const NAV = [
 const NAV_MARKS = {
   dashboard: '⌂', materials: '▦', review: '✓', people: '♙', places: '⌖', sources: '◈',
   tags: '#', collections: '▤', journal: '▣', announcements: '!', glossary: 'Aa', translation: '文',
-  verification: '✓', users: '♙', discussions: '◌', backup: '⇩', audit: '≡',
+  verification: '✓', quality: '◇', users: '♙', discussions: '◌', backup: '⇩', audit: '≡',
 };
 
 // ---------- أدوات ----------
@@ -279,6 +280,59 @@ async function dashboardPage(env, user) {
     </section>
   </div>`;
   return layout({ title: 'لوحة التحكم', active: 'dashboard', user, body });
+}
+
+// ---------- صحة المحتوى والأصول ----------
+async function contentHealthPage(env, user, req) {
+  const db = env.DB;
+  const url = new URL(req.url);
+  const status = ['all', 'published', 'draft'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'published';
+  const type = String(url.searchParams.get('type') || '').trim();
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 120);
+  const where = [];
+  const binds = [];
+  if (status !== 'all') { where.push('m.publish_status = ?'); binds.push(status); }
+  if (type) { where.push('m.type = ?'); binds.push(type); }
+  if (q) { where.push('(m.ark LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ?)'); binds.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const [summary, rows] = await Promise.all([
+    Promise.all([
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m ${status === 'all' ? '' : 'WHERE m.publish_status = ?'}`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.cover_file_id IS NULL' : 'WHERE m.publish_status = ? AND a.cover_file_id IS NULL'}`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE' : 'AND'} a.pdf_file_id IS NULL AND m.type IN ('book','article','journal')`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m ${status === 'all' ? 'WHERE' : 'WHERE m.publish_status = ? AND'} m.type IN ('document','article','excerpt','correspondence','manuscript') AND COALESCE(length(trim(m.full_text)), 0) = 0 AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM material_assets_index WHERE integrity_status = 'missing'`).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM translation_pages WHERE status = 'failed'`).first(),
+    ]),
+    db.prepare(`SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.publish_status, m.updated_at,
+      a.cover_file_id, a.pdf_file_id, a.image_file_id, a.text_file_id, a.integrity_status,
+      CASE WHEN COALESCE(length(trim(m.full_text)), 0) > 0 OR EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0) THEN 1 ELSE 0 END AS has_text
+      FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${whereSql}
+      ORDER BY m.updated_at DESC, m.id DESC LIMIT 250`).bind(...binds).all(),
+  ]);
+  const [allCount, missingCovers, missingPdfs, missingText, missingR2, failedPages] = summary;
+  const cards = [
+    ['المواد المفحوصة', allCount?.c || 0, 'k-total'],
+    ['بلا غلاف', missingCovers?.c || 0, 'k-img'],
+    ['كتب/مقالات بلا PDF', missingPdfs?.c || 0, 'k-draft'],
+    ['بلا نص موثق', missingText?.c || 0, 'k-review'],
+    ['ملفات R2 مفقودة', missingR2?.c || 0, 'k-trl'],
+    ['صفحات ترجمة فاشلة', failedPages?.c || 0, 'k-review'],
+  ].map(([label, value, cls]) => `<div class="stat-card ${cls}"><div class="stat-num">${esc(value)}</div><div class="stat-label">${esc(label)}</div></div>`).join('');
+  const rowsHtml = (rows.results || []).map((m) => {
+    const issues = [];
+    if (!m.cover_file_id) issues.push('غلاف');
+    if (['book', 'article', 'journal'].includes(m.type) && !m.pdf_file_id) issues.push('PDF');
+    if (!Number(m.has_text) && ['document', 'article', 'excerpt', 'correspondence'].includes(m.type)) issues.push('نص');
+    if (m.integrity_status === 'missing') issues.push('R2');
+    return `<tr><td class="mono small">${esc(m.ark)}</td><td><a href="/admin/materials/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a></td><td>${esc(TYPE_LABELS[m.type] || m.type)}</td><td>${issues.length ? `<span class="badge b-review">${esc(issues.join(' · '))}</span>` : '<span class="badge b-pub">سليمة مبدئيًا</span>'}</td><td class="muted">${fmtDate(m.updated_at)}</td><td><a class="btn btn-sm btn-ghost" href="/admin/materials/${m.id}">فحص وإصلاح</a></td></tr>`;
+  }).join('');
+  const typeOpts = Object.entries(TYPE_LABELS).map(([value, label]) => `<option value="${esc(value)}"${type === value ? ' selected' : ''}>${esc(label)}</option>`).join('');
+  const body = `${pageHead('صحة المحتوى', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div>
+  <section class="card"><div class="section-head"><div><h2>طابور المواد التي تحتاج معالجة</h2><p class="muted">الفحص يحدد النقص في قاعدة البيانات. فحص وجود كائن R2 يحدّثه العامل الدوري ولا يُنفذ داخل كل زيارة.</p></div></div>
+  <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><button class="btn btn-primary" type="submit">تصفية</button></form>
+  <div class="table-wrap"><table class="tbl"><thead><tr><th>الرمز</th><th>المادة</th><th>النوع</th><th>الحالة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="6" class="muted">لا توجد مواد مطابقة.</td></tr>'}</tbody></table></div></section>`;
+  return layout({ title: 'صحة المحتوى', active: 'quality', user, body });
 }
 
 // ---------- الترجمة: مؤشرات الكاش والـJobs ----------
@@ -1287,6 +1341,7 @@ export async function renderAdmin(pathname, req, env, user) {
 
   const clean = pathname.replace(/\/+$/, '') || '/admin';
   if (clean === '/admin') return htmlRes(await dashboardPage(env, user));
+  if (clean === '/admin/content-health') return htmlRes(await contentHealthPage(env, user, req));
   if (clean === '/admin/translation') return htmlRes(await translationPage(env, user, req));
   if (clean === '/admin/journal') return htmlRes(await journalAdminPage(env, user));
   if (clean === '/admin/materials') return htmlRes(await materialsListPage(env, user, req));
