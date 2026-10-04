@@ -132,7 +132,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v2">
 ${head}
 </head>
 <body>
@@ -192,7 +192,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v2">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -1549,7 +1549,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v2">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1644,7 +1644,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
 </script>
-<script type="module" src="/js/researcher-pdf.js?v=20261004-mobile-pdf-reader-v1"></script>
+<script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v2"></script>
 <script src="/researcher-feed-v5.js?v=20261004-fulltext-v1" defer></script>
 <script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>
 <script>
