@@ -327,14 +327,14 @@ export async function apiDiscussionCreate(env, req, user) {
   return json({ ok: true, id: discussionId }, 201);
 }
 
-async function recordSocialMetadata(db, { text, actorId, targetType, targetId }) {
+async function recordSocialMetadata(db, { text, actorId, targetType, targetId, discussionId = null }) {
   const body = String(text || '');
   const usernames = [...new Set([...body.matchAll(/@([A-Za-z0-9_.-]{3,64})/g)].map(match => match[1].toLowerCase()))].slice(0, 20);
   for (const username of usernames) {
     const target = await db.prepare("SELECT id, display_name, username FROM admin_users WHERE lower(username) = ? AND is_active = 1 AND role IN ('researcher','admin')").bind(username).first();
     if (!target || Number(target.id) === Number(actorId)) continue;
     await db.prepare('INSERT OR IGNORE INTO social_mentions (mentioned_user_id, actor_id, target_type, target_id) VALUES (?, ?, ?, ?)').bind(target.id, actorId, targetType, targetId).run().catch(() => {});
-    await notifyUser(db, target.id, 'mention', 'أشار إليك باحث', `ذُكر اسمك في منشور: ${body.slice(0, 120)}`, `/researcher/discussions?focus=${targetType === 'discussion' ? targetId : ''}`);
+    await notifyUser(db, target.id, 'mention', 'أشار إليك باحث', `ذُكر اسمك في منشور: ${body.slice(0, 120)}`, `/researcher/discussions?focus=${targetType === 'discussion' ? targetId : (discussionId || targetId)}`);
   }
   const tags = [...new Set([...body.matchAll(/#([\p{L}\p{N}_-]{1,40})/gu)].map(match => match[1]))].slice(0, 10);
   for (const name of tags) {
@@ -423,7 +423,7 @@ export async function apiReplyCreate(env, req, user, discussionId) {
   const res = await db.prepare(
     'INSERT INTO discussion_replies (discussion_id, parent_id, author_id, body) VALUES (?, ?, ?, ?)'
   ).bind(discussionId, parentId, user.id, text).run();
-  await recordSocialMetadata(db, { text, actorId: user.id, targetType: 'reply', targetId: res.meta.last_row_id });
+  await recordSocialMetadata(db, { text, actorId: user.id, targetType: 'reply', targetId: res.meta.last_row_id, discussionId });
   await audit(db, { userId: user.id, action: 'discussion.reply', target: String(discussionId), ip: clientIp(req) });
   try {
     const d = await db.prepare('SELECT author_id, title FROM discussions WHERE id = ?').bind(discussionId).first();
