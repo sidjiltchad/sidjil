@@ -59,13 +59,14 @@ const NAV = [
   ['verification', '/admin/verification', 'التوثيق'],
   ['users', '/admin/users', 'المستخدمون'],
   ['discussions', '/admin/discussions', 'النقاشات'],
+  ['social-reports', '/admin/social-reports', 'بلاغات المجتمع'],
   ['backup', '/admin/backup', 'النسخ الاحتياطي'],
   ['audit', '/admin/audit', 'سجل العمليات'],
 ];
 const NAV_MARKS = {
   dashboard: '⌂', materials: '▦', review: '✓', people: '♙', places: '⌖', sources: '◈',
   tags: '#', collections: '▤', journal: '▣', announcements: '!', glossary: 'Aa', translation: '文',
-  verification: '✓', quality: '◇', users: '♙', discussions: '◌', backup: '⇩', audit: '≡',
+  verification: '✓', quality: '◇', users: '♙', discussions: '◌', 'social-reports': '⚑', backup: '⇩', audit: '≡',
 };
 
 // ---------- أدوات ----------
@@ -1327,6 +1328,24 @@ async function adminDiscussionsPage(env, user) {
   return layout({ title: 'النقاشات', active: 'discussions', user, body });
 }
 
+async function socialReportsPage(env, user, req) {
+  const status = ['open', 'reviewing', 'resolved', 'dismissed', 'all'].includes(new URL(req.url).searchParams.get('status')) ? new URL(req.url).searchParams.get('status') : 'open';
+  const where = status === 'all' ? '' : 'WHERE r.status = ?';
+  const rows = await env.DB.prepare(`SELECT r.id, r.target_type, r.target_id, r.reason, r.note, r.status, r.created_at,
+    reporter.display_name AS reporter_name, reporter.username AS reporter_username,
+    CASE WHEN r.target_type = 'material' THEN (SELECT title_ar FROM materials WHERE id = r.target_id)
+      WHEN r.target_type = 'discussion' THEN (SELECT title FROM discussions WHERE id = r.target_id)
+      WHEN r.target_type = 'reply' THEN (SELECT substr(body, 1, 140) FROM discussion_replies WHERE id = r.target_id)
+      WHEN r.target_type = 'researcher' THEN (SELECT display_name FROM admin_users WHERE id = r.target_id) END AS target_title
+    FROM social_reports r JOIN admin_users reporter ON reporter.id = r.reporter_id ${where}
+    ORDER BY CASE r.status WHEN 'open' THEN 0 WHEN 'reviewing' THEN 1 ELSE 2 END, r.created_at ASC LIMIT 200`).bind(...(status === 'all' ? [] : [status])).all();
+  const state = { open: 'مفتوح', reviewing: 'قيد المعالجة', resolved: 'تمت المعالجة', dismissed: 'مرفوض' };
+  const bodyRows = (rows.results || []).map(r => `<tr data-social-report-row="${r.id}"><td class="mono">#${r.id}</td><td><strong>${esc(r.target_title || `${r.target_type}:${r.target_id}`)}</strong><br><span class="muted small">${esc(r.target_type)} · ${esc(r.reason)}</span>${r.note ? `<br><span class="muted small">${esc(r.note)}</span>` : ''}</td><td>${esc(r.reporter_name || r.reporter_username || '—')}</td><td>${badge(state[r.status] || r.status, r.status === 'open' ? 'b-review' : r.status === 'resolved' ? 'b-pub' : 'b-hidden')}</td><td class="muted">${fmtDate(r.created_at)}</td><td class="row-actions"><select data-social-report-status="${r.id}" aria-label="حالة البلاغ"><option value="open"${r.status === 'open' ? ' selected' : ''}>مفتوح</option><option value="reviewing"${r.status === 'reviewing' ? ' selected' : ''}>قيد المعالجة</option><option value="resolved"${r.status === 'resolved' ? ' selected' : ''}>تمت المعالجة</option><option value="dismissed"${r.status === 'dismissed' ? ' selected' : ''}>مرفوض</option></select><button class="btn btn-sm btn-primary" type="button" data-social-report-save="${r.id}">حفظ</button></td></tr>`).join('');
+  const tabs = ['open', 'reviewing', 'resolved', 'dismissed', 'all'].map(v => `<a class="btn btn-sm ${v === status ? 'btn-primary' : 'btn-ghost'}" href="/admin/social-reports?status=${v}">${state[v] || 'الكل'}</a>`).join(' ');
+  const body = `${pageHead('بلاغات المجتمع', tabs)}<section class="card"><p class="muted">تصل البلاغات من مساحة الباحث، وتُحفظ كل قرارات المعالجة في سجل العمليات.</p><div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>المحتوى والسبب</th><th>المبلّغ</th><th>الحالة</th><th>التاريخ</th><th>الإجراء</th></tr></thead><tbody>${bodyRows || '<tr><td colspan="6" class="muted">لا توجد بلاغات في هذه الحالة.</td></tr>'}</tbody></table></div></section>`;
+  return layout({ title: 'بلاغات المجتمع', active: 'social-reports', user, body });
+}
+
 // ---------- الموجّه ----------
 export async function renderAdmin(pathname, req, env, user) {
   // صفحة الدخول: متاحة بدون جلسة فقط
@@ -1359,6 +1378,7 @@ export async function renderAdmin(pathname, req, env, user) {
   if (clean === '/admin/users') return htmlRes(await usersPage(env, user));
   if (clean === '/admin/verification') return htmlRes(await verificationPage(env, user));
   if (clean === '/admin/discussions') return htmlRes(await adminDiscussionsPage(env, user));
+  if (clean === '/admin/social-reports') return htmlRes(await socialReportsPage(env, user, req));
 
   return htmlRes(layout({
     title: 'غير موجود', active: '', user,
@@ -1714,6 +1734,8 @@ function researcherMaterialCard(m, feed, verified) {
     ${detailsButton}
     ${excerpt ? `<p class="researcher-feed-excerpt">${esc(String(excerpt).slice(0, 420))}</p>` : ''}
     <div class="researcher-feed-actions">
+      <button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="material" data-target-id="${esc(m.id)}" data-reaction-kind="like" aria-pressed="false">♡ أعجبني <span data-social-count>0</span></button>
+      <button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="material" data-target-id="${esc(m.id)}" aria-pressed="false">🔖 حفظ</button>
       ${discussionAction('comment', '💬 علّق')}
       ${discussionAction('text', '📝 لخّص')}
       ${discussionAction('review', '✦ راجع')}

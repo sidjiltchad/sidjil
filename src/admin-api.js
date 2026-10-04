@@ -253,6 +253,36 @@ async function admGlossaryDelete(env, user, req, id) {
   return json({ ok: true });
 }
 
+async function admSocialReportsList(env, user, url) {
+  if (user.role !== 'admin') return err('صلاحية الإدارة مطلوبة', 403);
+  const status = ['open', 'reviewing', 'resolved', 'dismissed', 'all'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'open';
+  const where = status === 'all' ? '' : 'WHERE r.status = ?';
+  const rows = await env.DB.prepare(`SELECT r.id, r.target_type, r.target_id, r.reason, r.note, r.status, r.created_at, r.reviewed_at,
+      reporter.display_name AS reporter_name, reporter.username AS reporter_username,
+      reviewer.username AS reviewer_username,
+      CASE WHEN r.target_type = 'material' THEN (SELECT title_ar FROM materials WHERE id = r.target_id)
+           WHEN r.target_type = 'discussion' THEN (SELECT title FROM discussions WHERE id = r.target_id)
+           WHEN r.target_type = 'reply' THEN (SELECT substr(body, 1, 140) FROM discussion_replies WHERE id = r.target_id)
+           WHEN r.target_type = 'researcher' THEN (SELECT display_name FROM admin_users WHERE id = r.target_id)
+      END AS target_title
+    FROM social_reports r JOIN admin_users reporter ON reporter.id = r.reporter_id
+    LEFT JOIN admin_users reviewer ON reviewer.id = r.reviewed_by
+    ${where} ORDER BY CASE r.status WHEN 'open' THEN 0 WHEN 'reviewing' THEN 1 ELSE 2 END, r.created_at ASC LIMIT 200`).bind(...(status === 'all' ? [] : [status])).all();
+  return json({ items: rows.results || [], status });
+}
+
+async function admSocialReportReview(env, user, req, id) {
+  if (user.role !== 'admin') return err('صلاحية الإدارة مطلوبة', 403);
+  const body = await readJson(req);
+  const status = ['open', 'reviewing', 'resolved', 'dismissed'].includes(body?.status) ? body.status : null;
+  if (!status) return err('حالة البلاغ غير صالحة');
+  const report = await env.DB.prepare('SELECT id FROM social_reports WHERE id = ?').bind(id).first();
+  if (!report) return err('البلاغ غير موجود', 404);
+  await env.DB.prepare('UPDATE social_reports SET status = ?, reviewed_by = ?, reviewed_at = datetime(\'now\') WHERE id = ?').bind(status, user.id, id).run();
+  await audit(env.DB, { userId: user.id, action: 'social.report_review', target: String(id), detail: status, ip: clientIp(req) });
+  return json({ ok: true, status });
+}
+
 export async function routeAdminApi(req, env) {
   const url = new URL(req.url);
   const path = normPath(url.pathname);
@@ -448,6 +478,9 @@ export async function routeAdminApi(req, env) {
   if (rest === 'glossary' && method === 'GET') return admGlossaryList(env, url);
   if (rest === 'glossary' && method === 'POST')
     return withJsonBody(req, (body) => admGlossaryAdd(env, user, req, body));
+  if (rest === 'social-reports' && method === 'GET') return admSocialReportsList(env, user, url);
+  m = rest.match(/^social-reports\/(\d+)$/);
+  if (m && method === 'PATCH') return admSocialReportReview(env, user, req, parseInt(m[1], 10));
   m = rest.match(/^glossary\/(\d+)$/);
   if (m && method === 'DELETE') return admGlossaryDelete(env, user, req, parseInt(m[1], 10));
 

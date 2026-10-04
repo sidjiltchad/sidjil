@@ -104,22 +104,28 @@ async function apiFeed(env, req, user) {
     `SELECT 'discussion' AS item_type, d.id AS item_id, d.title, d.kind AS sub_kind,
             substr(d.body, 1, 300) AS excerpt, d.created_at,
             u.id AS author_id, u.display_name AS author_name, u.avatar_url AS author_avatar,
-            m.title AS material_title
+            m.title_ar AS material_title,
+            (SELECT COUNT(*) FROM social_reactions sr WHERE sr.target_type = 'discussion' AND sr.target_id = d.id) AS reactions_count
      FROM discussions d
      JOIN admin_users u ON u.id = d.author_id
      LEFT JOIN materials m ON m.id = d.material_id
      WHERE d.status = 'published' AND d.author_id IN (SELECT followed_id FROM researcher_follows WHERE follower_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM social_blocks b WHERE b.blocker_id = ? AND b.blocked_id = d.author_id)
+       AND NOT EXISTS (SELECT 1 FROM social_mutes mu WHERE mu.muter_id = ? AND mu.muted_id = d.author_id)
      UNION ALL
-     SELECT 'material' AS item_type, mat.id AS item_id, mat.title, mat.type AS sub_kind,
-            substr(mat.description_ar || ' ' || mat.description_fr, 1, 300) AS excerpt, mat.created_at,
+     SELECT 'material' AS item_type, mat.id AS item_id, mat.title_ar AS title, mat.type AS sub_kind,
+            substr(COALESCE(mat.description, '') || ' ' || COALESCE(mat.summary, ''), 1, 300) AS excerpt, mat.created_at,
             u.id AS author_id, u.display_name AS author_name, u.avatar_url AS author_avatar,
-            NULL AS material_title
+            NULL AS material_title,
+            (SELECT COUNT(*) FROM social_reactions sr WHERE sr.target_type = 'material' AND sr.target_id = mat.id) AS reactions_count
      FROM materials mat
      JOIN admin_users u ON u.id = mat.created_by
      WHERE mat.publish_status = 'published'
        AND mat.created_by IN (SELECT followed_id FROM researcher_follows WHERE follower_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM social_blocks b WHERE b.blocker_id = ? AND b.blocked_id = mat.created_by)
+       AND NOT EXISTS (SELECT 1 FROM social_mutes mu WHERE mu.muter_id = ? AND mu.muted_id = mat.created_by)
      ORDER BY created_at DESC LIMIT ?`
-  ).bind(user.id, user.id, limit).all();
+  ).bind(user.id, user.id, user.id, user.id, user.id, user.id, limit).all();
   return json({ items: items.results || [] });
 }
 
@@ -151,6 +157,98 @@ async function apiNotificationsRead(env, req, user) {
   return json({ ok: true });
 }
 
+const TARGET_TYPES = new Set(['material', 'discussion', 'reply']);
+async function socialTarget(db, type, id) {
+  if (!TARGET_TYPES.has(type) || !Number.isInteger(id) || id < 1) return null;
+  if (type === 'material') return db.prepare("SELECT id, title_ar AS title FROM materials WHERE id = ? AND publish_status = 'published'").bind(id).first();
+  if (type === 'discussion') return db.prepare("SELECT id, title FROM discussions WHERE id = ? AND status = 'published'").bind(id).first();
+  return db.prepare("SELECT id, body AS title FROM discussion_replies WHERE id = ? AND status = 'published'").bind(id).first();
+}
+
+async function apiReaction(env, req, user) {
+  const blocked = requireVerified(user); if (blocked) return blocked;
+  let body = {}; try { body = await req.json(); } catch { return err('طلب غير صالح'); }
+  const type = String(body.target_type || ''); const targetId = Number(body.target_id); const kind = ['like', 'support', 'useful', 'oppose'].includes(body.kind) ? body.kind : 'like';
+  if (!await socialTarget(env.DB, type, targetId)) return err('المحتوى غير موجود', 404);
+  const existing = await env.DB.prepare('SELECT id, kind FROM social_reactions WHERE actor_id = ? AND target_type = ? AND target_id = ?').bind(user.id, type, targetId).first();
+  if (existing && existing.kind === kind) {
+    await env.DB.prepare('DELETE FROM social_reactions WHERE id = ?').bind(existing.id).run();
+    return json({ ok: true, active: false, kind, count: Number((await env.DB.prepare('SELECT COUNT(*) AS c FROM social_reactions WHERE target_type = ? AND target_id = ?').bind(type, targetId).first())?.c || 0) });
+  }
+  if (existing) await env.DB.prepare('UPDATE social_reactions SET kind = ?, created_at = datetime(\'now\') WHERE id = ?').bind(kind, existing.id).run();
+  else await env.DB.prepare('INSERT INTO social_reactions (actor_id, target_type, target_id, kind) VALUES (?, ?, ?, ?)').bind(user.id, type, targetId, kind).run();
+  await audit(env.DB, { userId: user.id, action: 'social.reaction', target: `${type}:${targetId}`, detail: kind, ip: clientIp(req) });
+  return json({ ok: true, active: true, kind, count: Number((await env.DB.prepare('SELECT COUNT(*) AS c FROM social_reactions WHERE target_type = ? AND target_id = ?').bind(type, targetId).first())?.c || 0) });
+}
+
+async function apiReactionStatus(env, req, user) {
+  const url = new URL(req.url); const type = String(url.searchParams.get('target_type') || ''); const targetId = Number(url.searchParams.get('target_id'));
+  if (!await socialTarget(env.DB, type, targetId)) return err('المحتوى غير موجود', 404);
+  const [counts, mine] = await Promise.all([
+    env.DB.prepare('SELECT kind, COUNT(*) AS c FROM social_reactions WHERE target_type = ? AND target_id = ? GROUP BY kind').bind(type, targetId).all(),
+    user ? env.DB.prepare('SELECT kind FROM social_reactions WHERE actor_id = ? AND target_type = ? AND target_id = ?').bind(user.id, type, targetId).first() : null,
+  ]);
+  return json({ counts: Object.fromEntries((counts.results || []).map(row => [row.kind, Number(row.c || 0)])), mine: mine?.kind || null });
+}
+
+async function apiBookmark(env, req, user) {
+  if (!user) return err('سجّل الدخول أولًا', 401);
+  let body = {}; try { body = await req.json(); } catch { return err('طلب غير صالح'); }
+  const type = String(body.target_type || ''); const targetId = Number(body.target_id);
+  if (!await socialTarget(env.DB, type, targetId)) return err('المحتوى غير موجود', 404);
+  const existing = await env.DB.prepare('SELECT id FROM social_bookmarks WHERE user_id = ? AND target_type = ? AND target_id = ?').bind(user.id, type, targetId).first();
+  if (existing) { await env.DB.prepare('DELETE FROM social_bookmarks WHERE id = ?').bind(existing.id).run(); return json({ ok: true, saved: false }); }
+  await env.DB.prepare('INSERT INTO social_bookmarks (user_id, target_type, target_id) VALUES (?, ?, ?)').bind(user.id, type, targetId).run();
+  return json({ ok: true, saved: true });
+}
+
+async function apiTagTarget(env, req, user) {
+  const blocked = requireVerified(user); if (blocked) return blocked;
+  let body = {}; try { body = await req.json(); } catch { return err('طلب غير صالح'); }
+  const type = String(body.target_type || ''); const targetId = Number(body.target_id);
+  if (!await socialTarget(env.DB, type, targetId)) return err('المحتوى غير موجود', 404);
+  const rawTags = Array.isArray(body.tags) ? body.tags : String(body.tags || '').split(/[\s,]+/);
+  const tags = [...new Set(rawTags.map(t => String(t).replace(/^#/, '').trim()).filter(t => /^[\p{L}\p{N}_-]{1,40}$/u.test(t)).slice(0, 10))];
+  for (const name of tags) {
+    const normalized = name.normalize('NFKC').toLocaleLowerCase();
+    await env.DB.prepare('INSERT OR IGNORE INTO social_tags (name, normalized_name, created_by) VALUES (?, ?, ?)').bind(name, normalized, user.id).run();
+    const row = await env.DB.prepare('SELECT id FROM social_tags WHERE normalized_name = ?').bind(normalized).first();
+    if (row) await env.DB.prepare('INSERT OR IGNORE INTO social_post_tags (tag_id, target_type, target_id) VALUES (?, ?, ?)').bind(row.id, type, targetId).run();
+  }
+  return json({ ok: true, tags });
+}
+
+async function apiRelation(env, req, user, relation) {
+  if (!user) return err('سجّل الدخول أولًا', 401);
+  let body = {}; try { body = await req.json(); } catch { return err('طلب غير صالح'); }
+  const targetId = Number(body.user_id);
+  if (!targetId || targetId === Number(user.id)) return err('حساب غير صالح');
+  const target = await env.DB.prepare("SELECT id FROM admin_users WHERE id = ? AND role = 'researcher' AND is_active = 1").bind(targetId).first();
+  if (!target) return err('الباحث غير موجود', 404);
+  const table = relation === 'block' ? 'social_blocks' : 'social_mutes';
+  const left = relation === 'block' ? 'blocker_id' : 'muter_id'; const right = relation === 'block' ? 'blocked_id' : 'muted_id';
+  const existing = await env.DB.prepare(`SELECT 1 AS present FROM ${table} WHERE ${left} = ? AND ${right} = ?`).bind(user.id, targetId).first();
+  if (existing) { await env.DB.prepare(`DELETE FROM ${table} WHERE ${left} = ? AND ${right} = ?`).bind(user.id, targetId).run(); return json({ ok: true, active: false }); }
+  await env.DB.prepare(`INSERT INTO ${table} (${left}, ${right}) VALUES (?, ?)`).bind(user.id, targetId).run();
+  await audit(env.DB, { userId: user.id, action: `social.${relation}`, target: String(targetId), ip: clientIp(req) });
+  return json({ ok: true, active: true });
+}
+
+async function apiReport(env, req, user) {
+  if (!user) return err('سجّل الدخول أولًا', 401);
+  let body = {}; try { body = await req.json(); } catch { return err('طلب غير صالح'); }
+  const type = String(body.target_type || ''); const targetId = Number(body.target_id); const reason = String(body.reason || '').trim().slice(0, 80); const note = String(body.note || '').trim().slice(0, 1000) || null;
+  if (!['material', 'discussion', 'reply', 'researcher'].includes(type) || !targetId || !reason) return err('بيانات البلاغ غير مكتملة');
+  if (type !== 'researcher' && !await socialTarget(env.DB, type, targetId)) return err('المحتوى غير موجود', 404);
+  try { await env.DB.prepare('INSERT INTO social_reports (reporter_id, target_type, target_id, reason, note) VALUES (?, ?, ?, ?, ?)').bind(user.id, type, targetId, reason, note).run(); } catch (e) { if (String(e.message || '').includes('UNIQUE')) return err('سبق أن أرسلت بلاغًا لهذا المحتوى', 409); throw e; }
+  await notifyUser(env.DB, user.id, 'report_received', 'تم استلام البلاغ', 'ستراجعه الإدارة وتُحدّث حالته عند اتخاذ القرار.', '/researcher');
+  await env.DB.prepare(`INSERT INTO notifications (user_id, kind, title, body, link)
+    SELECT id, 'social_report', 'بلاغ اجتماعي جديد', ?, '/admin/social-reports'
+    FROM admin_users WHERE role = 'admin' AND is_active = 1`).bind(`${type}:${targetId} · ${reason}`).run().catch(() => {});
+  await audit(env.DB, { userId: user.id, action: 'social.report', target: `${type}:${targetId}`, detail: reason, ip: clientIp(req) });
+  return json({ ok: true }, 201);
+}
+
 export async function routeSocialApi(req, env) {
   const url = new URL(req.url);
   const path = url.pathname;
@@ -165,5 +263,12 @@ export async function routeSocialApi(req, env) {
   if (req.method === 'GET' && path === '/api/v1/social/feed') return apiFeed(env, req, user);
   if (req.method === 'GET' && path === '/api/v1/social/notifications') return apiNotifications(env, req, user);
   if (req.method === 'POST' && path === '/api/v1/social/notifications/read') return apiNotificationsRead(env, req, user);
+  if (req.method === 'POST' && path === '/api/v1/social/reaction') return apiReaction(env, req, user);
+  if (req.method === 'GET' && path === '/api/v1/social/reactions') return apiReactionStatus(env, req, user);
+  if (req.method === 'POST' && path === '/api/v1/social/bookmark') return apiBookmark(env, req, user);
+  if (req.method === 'POST' && path === '/api/v1/social/tags') return apiTagTarget(env, req, user);
+  if (req.method === 'POST' && path === '/api/v1/social/block') return apiRelation(env, req, user, 'block');
+  if (req.method === 'POST' && path === '/api/v1/social/mute') return apiRelation(env, req, user, 'mute');
+  if (req.method === 'POST' && path === '/api/v1/social/report') return apiReport(env, req, user);
   return null;
 }

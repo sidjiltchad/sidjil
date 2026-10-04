@@ -763,6 +763,18 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) { toast(err.message, false); }
     });
   });
+  document.querySelectorAll('[data-social-report-save]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const select = document.querySelector(`[data-social-report-status="${btn.dataset.socialReportSave}"]`);
+      if (!select) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/v1/admin/social-reports/${btn.dataset.socialReportSave}`, 'PATCH', { status: select.value });
+        toast('حُدّثت حالة البلاغ');
+        setTimeout(() => location.reload(), 500);
+      } catch (err) { toast(err.message, false); btn.disabled = false; }
+    });
+  });
   document.querySelectorAll('[data-verify-researcher]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const type = btn.dataset.verificationType;

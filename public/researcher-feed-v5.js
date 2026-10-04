@@ -984,7 +984,38 @@ function initResearcherPage() {
   const feedRoot = document.querySelector('[data-researcher-feed]') || document.body;
   if (!feedRoot.dataset.sjDiscussionDelegation) {
     feedRoot.dataset.sjDiscussionDelegation = '1';
+    const socialRequest = async (path, body) => {
+      const headers = { 'Content-Type': 'application/json' };
+      const token = csrfToken();
+      if (token) headers['X-CSRF-Token'] = token;
+      const response = await fetch(path, { method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify(body) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `خطأ في العملية (${response.status})`);
+      return data;
+    };
     feedRoot.addEventListener('click', (event) => {
+      const reaction = event.target.closest('[data-social-reaction]');
+      if (reaction && feedRoot.contains(reaction)) {
+        event.preventDefault();
+        if (reaction.disabled) return;
+        reaction.disabled = true;
+        socialRequest('/api/v1/social/reaction', { target_type: reaction.dataset.targetType, target_id: reaction.dataset.targetId, kind: reaction.dataset.reactionKind || 'like' })
+          .then((data) => { reaction.setAttribute('aria-pressed', data.active ? 'true' : 'false'); reaction.classList.toggle('is-active', !!data.active); const count = reaction.querySelector('[data-social-count]'); if (count) count.textContent = String(data.count || 0); })
+          .catch((error) => toast(error.message, false))
+          .finally(() => { reaction.disabled = false; });
+        return;
+      }
+      const bookmark = event.target.closest('[data-social-bookmark]');
+      if (bookmark && feedRoot.contains(bookmark)) {
+        event.preventDefault();
+        if (bookmark.disabled) return;
+        bookmark.disabled = true;
+        socialRequest('/api/v1/social/bookmark', { target_type: bookmark.dataset.targetType, target_id: bookmark.dataset.targetId })
+          .then((data) => { bookmark.setAttribute('aria-pressed', data.saved ? 'true' : 'false'); bookmark.classList.toggle('is-active', !!data.saved); bookmark.lastChild.textContent = data.saved ? '🔖 محفوظ' : '🔖 حفظ'; })
+          .catch((error) => toast(error.message, false))
+          .finally(() => { bookmark.disabled = false; });
+        return;
+      }
       const trigger = event.target.closest('[data-discussion-open]');
       if (trigger && feedRoot.contains(trigger)) {
         event.preventDefault();

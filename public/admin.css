@@ -944,6 +944,8 @@ input[type="checkbox"], input[type="radio"] {
 .researcher-feed-actions a:hover { color: var(--gold-deep); }
 .researcher-feed-action-trigger { border: 0; padding: .3rem .4rem; color: var(--teal); background: transparent; font: inherit; font-size: .78rem; cursor: pointer; }
 .researcher-feed-action-trigger:hover, .researcher-feed-action-trigger[aria-expanded="true"] { color: var(--gold-deep); }
+.researcher-feed-action-trigger.is-active { color: var(--gold-deep); font-weight: 800; }
+.social-reaction-button:disabled, .social-bookmark-button:disabled { opacity: .55; }
 .feed-discussion-count { margin-inline-start: auto; color: var(--muted); font-size: .72rem; }
 .researcher-inline-discussion { margin: .85rem 1rem 1rem; padding: .9rem; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-2); }
 .researcher-inline-discussion[hidden] { display: none !important; }
