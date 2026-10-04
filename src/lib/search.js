@@ -153,7 +153,7 @@ export async function searchMaterials(db, params = {}) {
   let itemsRes;
   try {
     itemsRes = await db.prepare(itemsSql).bind(...binds, limit, offset).all();
-    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, itemsRes.results?.length || 0, false, metricsSampleRate);
+    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, Number(itemsRes.meta?.rows_read ?? itemsRes.results?.length ?? 0), false, metricsSampleRate);
   } catch (error) {
     await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, 0, true, metricsSampleRate);
     throw error;
@@ -164,8 +164,9 @@ export async function searchMaterials(db, params = {}) {
   const countStarted = Date.now();
   let countRow;
   try {
-    countRow = await db.prepare(countSql).bind(...countBinds).first();
-    await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, 1, false, metricsSampleRate);
+    const countRes = await db.prepare(countSql).bind(...countBinds).all();
+    countRow = countRes.results?.[0] || { c: 0 };
+    await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, Number(countRes.meta?.rows_read ?? 1), false, metricsSampleRate);
   } catch (error) {
     await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, 0, true, metricsSampleRate);
     throw error;
