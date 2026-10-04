@@ -181,6 +181,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ---------- طابور إصلاح المحتوى ----------
+  document.querySelectorAll('[data-repair-save]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.repairSave;
+      const select = document.querySelector(`[data-repair-status="${CSS.escape(id)}"]`);
+      if (!select) return;
+      setLoading(btn, true);
+      try {
+        await api(`/api/v1/admin/content-repair/${encodeURIComponent(id)}`, 'PATCH', { status: select.value });
+        toast('تم تحديث عنصر الإصلاح');
+        setTimeout(() => location.reload(), 500);
+      } catch (err) { toast(err.message, false); }
+      finally { setLoading(btn, false); }
+    });
+  });
+
   // ---------- حذف مادة ----------
   document.querySelectorAll('[data-del-material]').forEach(btn => {
     btn.addEventListener('click', async () => {

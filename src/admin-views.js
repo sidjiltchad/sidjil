@@ -7,6 +7,8 @@
 // ============================================================
 
 // ---------- ثوابت العرض ----------
+import { syncContentRepairQueue } from './admin-api.js';
+
 const TYPE_LABELS = {
   document: 'وثيقة',
   book: 'كتاب',
@@ -56,6 +58,7 @@ const NAV = [
   ['glossary', '/admin/glossary', 'قاموس الترجمة'],
   ['translation', '/admin/translation', 'الترجمة'],
   ['quality', '/admin/content-health', 'صحة المحتوى'],
+  ['repair', '/admin/content-repair', 'طابور إصلاح المحتوى'],
   ['verification', '/admin/verification', 'التوثيق'],
   ['users', '/admin/users', 'المستخدمون'],
   ['discussions', '/admin/discussions', 'النقاشات'],
@@ -67,7 +70,7 @@ const NAV = [
 const NAV_MARKS = {
   dashboard: '⌂', materials: '▦', review: '✓', people: '♙', places: '⌖', sources: '◈',
   tags: '#', collections: '▤', journal: '▣', announcements: '!', glossary: 'Aa', translation: '文',
-  verification: '✓', quality: '◇', users: '♙', discussions: '◌', 'social-reports': '⚑', metrics: '▥', backup: '⇩', audit: '≡',
+  verification: '✓', quality: '◇', repair: '⚙', users: '♙', discussions: '◌', 'social-reports': '⚑', metrics: '▥', backup: '⇩', audit: '≡',
 };
 
 // ---------- أدوات ----------
@@ -336,6 +339,27 @@ async function contentHealthPage(env, user, req) {
   <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><button class="btn btn-primary" type="submit">تصفية</button></form>
   <div class="table-wrap"><table class="tbl"><thead><tr><th>الرمز</th><th>المادة</th><th>النوع</th><th>الحالة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="6" class="muted">لا توجد مواد مطابقة.</td></tr>'}</tbody></table></div></section>`;
   return layout({ title: 'صحة المحتوى', active: 'quality', user, body });
+}
+
+async function contentRepairPage(env, user, req) {
+  await syncContentRepairQueue(env.DB);
+  const url = new URL(req.url);
+  const status = ['pending', 'processing', 'resolved', 'blocked', 'all'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'pending';
+  const issueType = ['cover', 'pdf', 'text', 'asset', 'ocr', 'metadata'].includes(url.searchParams.get('issue_type')) ? url.searchParams.get('issue_type') : '';
+  const where = [];
+  const binds = [];
+  if (status !== 'all') { where.push('q.status = ?'); binds.push(status); }
+  if (issueType) { where.push('q.issue_type = ?'); binds.push(issueType); }
+  const rows = await env.DB.prepare(`SELECT q.id, q.material_id, q.issue_type, q.status, q.source_file_id, q.note, q.created_at, q.updated_at,
+      m.ark, m.title_ar, m.type, m.publish_status
+      FROM content_repair_queue q JOIN materials m ON m.id = q.material_id
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY CASE q.status WHEN 'pending' THEN 0 WHEN 'processing' THEN 1 WHEN 'blocked' THEN 2 ELSE 3 END, q.updated_at DESC, q.id DESC LIMIT 300`).bind(...binds).all();
+  const issueLabels = { cover: 'غلاف/صورة', pdf: 'ملف PDF', text: 'تفريغ نصي', asset: 'ملف مفقود', ocr: 'OCR', metadata: 'بيانات وصفية' };
+  const statusLabels = { pending: 'معلّق', processing: 'قيد المعالجة', resolved: 'مكتمل', blocked: 'متوقف' };
+  const bodyRows = (rows.results || []).map(r => `<tr data-repair-row="${esc(r.id)}"><td class="mono">#${esc(r.id)}</td><td><a href="/admin/materials/${esc(r.material_id)}">${esc(r.title_ar || r.ark)}</a><br><span class="muted small">${esc(r.ark)} · ${esc(TYPE_LABELS[r.type] || r.type)}</span></td><td>${esc(issueLabels[r.issue_type] || r.issue_type)}</td><td><select data-repair-status="${esc(r.id)}" aria-label="حالة عنصر الإصلاح">${Object.entries(statusLabels).map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('')}</select></td><td class="muted small">${esc(r.note || '—')}</td><td class="muted">${fmtDate(r.updated_at || r.created_at)}</td><td><button class="btn btn-sm btn-primary" type="button" data-repair-save="${esc(r.id)}">حفظ</button></td></tr>`).join('');
+  const body = `${pageHead('طابور إصلاح المحتوى', '<a class="btn btn-ghost" href="/admin/content-health">← صحة المحتوى</a>')}<section class="card"><div class="section-head"><div><h2>نواقص تحتاج قرارًا أو مصدرًا</h2><p class="muted">يُنشئ النظام العناصر من النقص المرصود فقط. لا تُملأ الأغلفة أو الملفات أو النصوص تلقائيًا من دون مصدر موثوق.</p></div></div><form class="filters" method="get" action="/admin/content-repair"><label class="field"><span>الحالة</span><select name="status"><option value="pending"${status === 'pending' ? ' selected' : ''}>معلّق</option><option value="processing"${status === 'processing' ? ' selected' : ''}>قيد المعالجة</option><option value="blocked"${status === 'blocked' ? ' selected' : ''}>متوقف</option><option value="resolved"${status === 'resolved' ? ' selected' : ''}>مكتمل</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>نوع النقص</span><select name="issue_type"><option value="">الكل</option>${Object.entries(issueLabels).map(([v, l]) => `<option value="${v}"${issueType === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label><button class="btn btn-primary" type="submit">تصفية</button></form><div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>المادة</th><th>النقص</th><th>الحالة</th><th>ملاحظة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا توجد عناصر في هذا العرض.</td></tr>'}</tbody></table></div></section>`;
+  return layout({ title: 'طابور إصلاح المحتوى', active: 'repair', user, body });
 }
 
 async function metricsPage(env, user, req) {
@@ -1389,6 +1413,7 @@ export async function renderAdmin(pathname, req, env, user) {
   const clean = pathname.replace(/\/+$/, '') || '/admin';
   if (clean === '/admin') return htmlRes(await dashboardPage(env, user));
   if (clean === '/admin/content-health') return htmlRes(await contentHealthPage(env, user, req));
+  if (clean === '/admin/content-repair') return htmlRes(await contentRepairPage(env, user, req));
   if (clean === '/admin/metrics') return htmlRes(await metricsPage(env, user, req));
   if (clean === '/admin/translation') return htmlRes(await translationPage(env, user, req));
   if (clean === '/admin/journal') return htmlRes(await journalAdminPage(env, user));

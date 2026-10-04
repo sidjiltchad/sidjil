@@ -302,6 +302,91 @@ async function admSocialReportReview(env, user, req, id) {
   return json({ ok: true, status });
 }
 
+// ---------- طابور إصلاح المحتوى ----------
+// يكتشف النقص فقط ويضعه في طابور قابل للمراجعة؛ لا يخترع غلافًا أو نصًا أو مصدرًا.
+export async function syncContentRepairQueue(db) {
+  await db.batch([
+    db.prepare(`INSERT OR IGNORE INTO content_repair_queue (material_id, issue_type, note)
+      SELECT m.id, 'cover', 'لا يوجد غلاف أو صورة مرتبطة بالمادة'
+      FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id
+      WHERE a.cover_file_id IS NULL`),
+    db.prepare(`INSERT OR IGNORE INTO content_repair_queue (material_id, issue_type, note)
+      SELECT m.id, 'pdf', 'كتاب أو مقال أو عدد مجلة بلا ملف PDF مرتبط'
+      FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id
+      WHERE m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL`),
+    db.prepare(`INSERT OR IGNORE INTO content_repair_queue (material_id, issue_type, note)
+      SELECT m.id, 'text', 'وثيقة نصية بلا تفريغ نصي موثق'
+      FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id
+      WHERE m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
+        AND COALESCE(length(trim(m.full_text)), 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)`),
+  ]);
+}
+
+async function admContentRepairList(env, url) {
+  await syncContentRepairQueue(env.DB);
+  const sp = url.searchParams;
+  const status = ['pending', 'processing', 'resolved', 'blocked', 'all'].includes(sp.get('status')) ? sp.get('status') : 'pending';
+  const issueType = ['cover', 'pdf', 'text', 'asset', 'ocr', 'metadata'].includes(sp.get('issue_type')) ? sp.get('issue_type') : '';
+  const { page, perPage } = pageParams(url);
+  const cursor = decodeAdminCursor(sp.get('cursor'));
+  const where = [];
+  const binds = [];
+  if (status !== 'all') { where.push('q.status = ?'); binds.push(status); }
+  if (issueType) { where.push('q.issue_type = ?'); binds.push(issueType); }
+  if (cursor && cursor.updated_at !== undefined && cursor.id !== undefined) {
+    where.push('(q.updated_at < ? OR (q.updated_at = ? AND q.id < ?))');
+    binds.push(cursor.updated_at || '', cursor.updated_at || '', Number(cursor.id));
+  }
+  const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
+  const countWhere = [];
+  const countBinds = [];
+  if (status !== 'all') { countWhere.push('q.status = ?'); countBinds.push(status); }
+  if (issueType) { countWhere.push('q.issue_type = ?'); countBinds.push(issueType); }
+  const [itemsRes, countRow] = await Promise.all([
+    env.DB.prepare(`SELECT q.id, q.material_id, q.issue_type, q.status, q.source_file_id, q.note,
+      q.requested_by, q.resolved_by, q.resolved_at, q.created_at, q.updated_at,
+      m.ark, m.title_ar, m.title_orig, m.type, m.publish_status
+      FROM content_repair_queue q JOIN materials m ON m.id = q.material_id
+      ${whereSql} ORDER BY q.updated_at DESC, q.id DESC LIMIT ? OFFSET ?`)
+      .bind(...binds, perPage + 1, cursor ? 0 : (page - 1) * perPage).all(),
+    env.DB.prepare(`SELECT COUNT(*) AS c FROM content_repair_queue q${countWhere.length ? ` WHERE ${countWhere.join(' AND ')}` : ''}`).bind(...countBinds).first(),
+  ]);
+  const raw = itemsRes.results || [];
+  const items = raw.slice(0, perPage);
+  const tail = items[items.length - 1];
+  const nextCursor = raw.length > perPage && tail ? encodeAdminCursor({ updated_at: tail.updated_at || '', id: tail.id }) : null;
+  return json({ items, total: countRow?.c || 0, page, perPage, nextCursor, hasMore: Boolean(nextCursor), paginationMode: cursor ? 'cursor' : 'page' });
+}
+
+async function admContentRepairEnqueue(env, user, req, body) {
+  const materialId = asInt(body?.material_id);
+  const issueType = ['cover', 'pdf', 'text', 'asset', 'ocr', 'metadata'].includes(body?.issue_type) ? body.issue_type : null;
+  if (!materialId || !issueType) return err('المادة ونوع النقص مطلوبان', 400);
+  const material = await env.DB.prepare('SELECT id, ark FROM materials WHERE id = ?').bind(materialId).first();
+  if (!material) return err('المادة غير موجودة', 404);
+  const note = String(body?.note || '').trim().slice(0, 2000) || null;
+  await env.DB.prepare(`INSERT INTO content_repair_queue (material_id, issue_type, status, note, requested_by)
+    VALUES (?, ?, 'pending', ?, ?)
+    ON CONFLICT(material_id, issue_type) DO UPDATE SET note = COALESCE(excluded.note, content_repair_queue.note), status = CASE WHEN content_repair_queue.status = 'resolved' THEN 'pending' ELSE content_repair_queue.status END, requested_by = excluded.requested_by`)
+    .bind(materialId, issueType, note, user.id).run();
+  await audit(env.DB, { userId: user.id, action: 'content_repair.enqueue', target: material.ark, detail: issueType, ip: clientIp(req) });
+  return json({ ok: true });
+}
+
+async function admContentRepairUpdate(env, user, req, id, body) {
+  const status = ['pending', 'processing', 'resolved', 'blocked'].includes(body?.status) ? body.status : null;
+  if (!status) return err('حالة الطابور غير صالحة', 400);
+  const item = await env.DB.prepare(`SELECT q.id, q.material_id, m.ark FROM content_repair_queue q JOIN materials m ON m.id = q.material_id WHERE q.id = ?`).bind(id).first();
+  if (!item) return err('عنصر الطابور غير موجود', 404);
+  const sourceFileId = body?.source_file_id === null || body?.source_file_id === '' ? null : asInt(body?.source_file_id);
+  const note = body?.note === undefined ? null : String(body.note || '').trim().slice(0, 2000) || null;
+  await env.DB.prepare(`UPDATE content_repair_queue SET status = ?, source_file_id = COALESCE(?, source_file_id), note = COALESCE(?, note), resolved_by = CASE WHEN ? IN ('resolved', 'blocked') THEN ? ELSE resolved_by END, resolved_at = CASE WHEN ? IN ('resolved', 'blocked') THEN datetime('now') ELSE NULL END, updated_at = datetime('now') WHERE id = ?`)
+    .bind(status, sourceFileId, note, status, user.id, status, id).run();
+  await audit(env.DB, { userId: user.id, action: 'content_repair.update', target: item.ark, detail: `${id}:${status}`, ip: clientIp(req) });
+  return json({ ok: true, status });
+}
+
 export async function routeAdminApi(req, env) {
   const url = new URL(req.url);
   const path = normPath(url.pathname);
@@ -503,6 +588,12 @@ export async function routeAdminApi(req, env) {
   if (rest === 'social-reports' && method === 'GET') return admSocialReportsList(env, user, url);
   m = rest.match(/^social-reports\/(\d+)$/);
   if (m && method === 'PATCH') return admSocialReportReview(env, user, req, parseInt(m[1], 10));
+  if (rest === 'content-repair' && method === 'GET') return admContentRepairList(env, url);
+  if (rest === 'content-repair' && method === 'POST')
+    return withJsonBody(req, (body) => admContentRepairEnqueue(env, user, req, body));
+  m = rest.match(/^content-repair\/(\d+)$/);
+  if (m && method === 'PATCH')
+    return withJsonBody(req, (body) => admContentRepairUpdate(env, user, req, parseInt(m[1], 10), body));
   m = rest.match(/^glossary\/(\d+)$/);
   if (m && method === 'DELETE') return admGlossaryDelete(env, user, req, parseInt(m[1], 10));
 
