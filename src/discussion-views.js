@@ -88,6 +88,24 @@ function authErrorText(lang, code) {
     ? t(lang, 'discussion_auth_error_' + code) : '';
 }
 
+function googleMark() {
+  return `<svg class="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11c-.5 2.5-1.9 4.7-4 6.1v5h6.5c3.8-3.5 6.1-8.6 6.1-14.8Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.5-5c-1.8 1.2-4.1 2-7 2-5.4 0-10-3.6-11.7-8.5H5.6v5.2C8.9 39.5 15.9 44 24 44Z"/><path fill="#FBBC05" d="M12.3 27.7a12 12 0 0 1 0-7.4v-5.2H5.6a20 20 0 0 0 0 17.8l6.7-5.2Z"/><path fill="#EA4335" d="M24 11.8c3 0 5.7 1 7.8 3.1l5.9-5.9C34.1 5.7 29.5 4 24 4 15.9 4 8.9 8.5 5.6 15.1l6.7 5.2c1.7-4.9 6.3-8.5 11.7-8.5Z"/></svg>`;
+}
+
+function researcherStandalonePage(ctx, title, content, mainClass = '') {
+  const { lang, dir } = ctx;
+  const themeInit = `<script>try{var __st=localStorage.getItem('sidjil-theme');if(__st!=='dark'&&__st!=='light'){__st=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',__st);}catch(e){document.documentElement.setAttribute('data-theme','light');}</script>`;
+  return `<!doctype html><html lang="${esc(lang)}" dir="${esc(dir)}"><head>
+<meta charset="utf-8">${themeInit}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff"><title>${esc(title)} — ${esc(t(lang, 'site_name'))}</title>
+<link rel="stylesheet" href="/style.css?v=20261004-researcher-register-standalone"><link rel="manifest" href="/app-manifest.json">
+</head><body class="researcher-login-only">
+<header class="researcher-login-header"><a class="researcher-login-brand" href="/" aria-label="${esc(t(lang, 'site_name'))}"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></a><div class="researcher-login-controls" aria-label="إعدادات العرض"><button class="researcher-login-control researcher-login-language" type="button" aria-label="Français" title="Français">FR</button><button class="researcher-login-control researcher-login-theme" id="loginThemeToggle" type="button" aria-label="تبديل المظهر" title="تبديل المظهر"><span class="login-theme-moon" aria-hidden="true">☾</span><span class="login-theme-sun" aria-hidden="true">☀</span></button></div></header>
+<main class="researcher-login-main ${mainClass}">${content}</main>
+<script>(()=>{const root=document.documentElement,button=document.getElementById('loginThemeToggle');if(!button)return;button.addEventListener('click',()=>{const next=root.getAttribute('data-theme')==='dark'?'light':'dark';root.setAttribute('data-theme',next);try{localStorage.setItem('sidjil-theme',next)}catch(e){}})})();</script>
+</body></html>`;
+}
+
 function discussionAuthGate(ctx, standalone = false) {
   const { lang } = ctx;
   const url = new URL(ctx.url);
@@ -99,8 +117,8 @@ function discussionAuthGate(ctx, standalone = false) {
   const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : currentNext;
   return `<div class="wrap social-auth-page">
     <div class="social-auth-card">
-      <div class="social-auth-brand"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></div>
-      ${standalone ? `<p class="social-auth-welcome">${lang === 'fr' ? 'Bienvenue dans votre espace chercheur.' : 'مرحبًا بك في مساحة الباحثين.'}</p>` : ''}
+      ${standalone ? '' : `<div class="social-auth-brand"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></div>`}
+      ${standalone ? `<p class="social-auth-welcome">${lang === 'fr' ? 'Bienvenue dans la communauté des chercheurs.' : 'أهلًا بك في مجتمع الباحثين.'}</p>` : ''}
       <h1>${esc(t(lang, 'discussion_login_title'))}</h1>
       <p class="social-auth-intro">${esc(t(lang, 'discussion_login_intro'))}</p>
       ${error ? `<div class="notice notice-error" role="alert">${esc(error)}</div>` : ''}
@@ -113,7 +131,7 @@ function discussionAuthGate(ctx, standalone = false) {
         <button class="btn btn-primary btn-block" type="submit">${esc(t(lang, 'discussion_login_button'))}</button>
       </form>
       <div class="social-auth-divider"><span>أو</span></div>
-      <a class="btn btn-google btn-block" href="/auth/google/start?next=${encodeURIComponent(next)}">${esc(t(lang, 'discussion_google_button'))}</a>
+      <a class="btn btn-google btn-block" href="/auth/google/start?next=${encodeURIComponent(next)}">${googleMark()}<span>${esc(t(lang, 'discussion_google_button'))}</span></a>
       <p class="social-auth-note">${esc(t(lang, 'discussion_google_note'))}</p>
       <div class="social-auth-register"><span>${esc(t(lang, 'discussion_login_hint'))}</span> <a href="${langPath(ctx, '/researcher/register')}">${esc(t(lang, 'register_researcher'))}</a></div>
     </div>
@@ -121,16 +139,8 @@ function discussionAuthGate(ctx, standalone = false) {
 }
 
 export function researcherLoginPage(ctx) {
-  const { lang, dir } = ctx;
-  const title = t(lang, 'discussion_login_title');
-  const themeInit = `<script>try{var __st=localStorage.getItem('sidjil-theme');if(__st!=='dark'&&__st!=='light'){__st=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',__st);}catch(e){document.documentElement.setAttribute('data-theme','light');}</script>`;
-  return `<!doctype html><html lang="${esc(lang)}" dir="${esc(dir)}"><head>
-<meta charset="utf-8">${themeInit}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#ffffff"><title>${esc(title)} — ${esc(t(lang, 'site_name'))}</title>
-<link rel="stylesheet" href="/style.css?v=20261004-researcher-login-brand"><link rel="manifest" href="/app-manifest.json">
-</head><body class="researcher-login-only">
-<main class="researcher-login-main">${discussionAuthGate(ctx, true)}</main>
-</body></html>`;
+  const title = t(ctx.lang, 'discussion_login_title');
+  return researcherStandalonePage(ctx, title, discussionAuthGate(ctx, true));
 }
 
 function materialPostCard(ctx, material) {
@@ -323,7 +333,6 @@ export function registerPage(ctx) {
   const { lang } = ctx;
   const content = `
   <div class="wrap page-register">
-    <nav class="breadcrumb"><a href="${langPath(ctx, '/')}">${esc(t(lang, 'nav_home'))}</a> / ${esc(t(lang, 'register_researcher'))}</nav>
     <header class="page-head"><h1>${esc(t(lang, 'register_researcher'))}</h1>
       <p class="page-desc">${esc(t(lang, 'register_intro'))}</p></header>
     <form id="registerForm" class="card form-card register-card" novalidate>
@@ -388,12 +397,12 @@ export function registerPage(ctx) {
         <button class="btn btn-primary register-submit" type="submit">${esc(t(lang, 'register_submit'))}</button>
       </div>
       <div class="social-auth-divider"><span>${esc(lang === 'ar' ? 'أو' : 'ou')}</span></div>
-      <a class="btn btn-google btn-block" href="/auth/google/start?next=${encodeURIComponent('/researcher')}">${esc(t(lang, 'discussion_google_button'))}</a>
+      <a class="btn btn-google btn-block" href="/auth/google/start?next=${encodeURIComponent('/researcher')}">${googleMark()}<span>${esc(t(lang, 'discussion_google_button'))}</span></a>
       <p class="social-auth-note">${esc(t(lang, 'discussion_google_note'))}</p>
     </form>
   </div>
   <script src="/js/discussions.js" defer></script>`;
-  return layout(ctx, { title: t(lang, 'register_researcher'), active: '/discussions', content });
+  return researcherStandalonePage(ctx, t(lang, 'register_researcher'), content, 'researcher-register-main');
 }
 
 // ---------- قسم النقاشات في صفحة المادة ----------

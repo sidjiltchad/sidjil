@@ -3274,12 +3274,31 @@ blockquote {
 .social-auth-form input { width: 100%; min-height: 48px; padding: .75rem .9rem; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); font: inherit; }
 .social-auth-divider { display: flex; align-items: center; gap: .7rem; margin: 1.1rem 0; color: var(--muted); font-size: .82rem; }
 .social-auth-divider::before, .social-auth-divider::after { content: ''; height: 1px; flex: 1; background: var(--line); }
-.btn-google { display: inline-flex; align-items: center; justify-content: center; gap: .55rem; color: #26344a; background: #fff; border: 1px solid #c9d0da; }
-.btn-google::before { content: 'G'; font: 800 1rem Arial, sans-serif; color: #4285f4; }
-.btn-google:hover { color: #1f4276; background: #f7f9fc; }
+.btn-google { display: inline-flex; align-items: center; justify-content: center; gap: .7rem; min-height: 50px; color: #26344a; background: #fff; border: 1px solid #c9d0da; border-radius: 12px; box-shadow: 0 2px 5px rgba(31,47,70,.06); font-weight: 700; transition: background .18s, border-color .18s, box-shadow .18s, transform .18s; }
+.btn-google::before { content: none; }
+.btn-google:hover { color: #1f4276; background: #f7f9fc; border-color: #aeb8c7; box-shadow: 0 5px 14px rgba(31,47,70,.11); transform: translateY(-1px); }
+.btn-google:focus-visible { outline: 3px solid rgba(66,133,244,.28); outline-offset: 2px; }
+.google-mark { display: block; width: 21px; height: 21px; flex: none; }
 .social-auth-note { color: var(--muted); font-size: .76rem; line-height: 1.7; margin: .75rem 0 1.1rem; }
 .social-auth-register { border-top: 1px solid var(--line-soft); padding-top: 1rem; color: var(--muted); font-size: .86rem; }
 .social-auth-register a { font-weight: 700; }
+.researcher-login-only { min-height: 100vh; min-height: 100svh; }
+.researcher-login-header { position: fixed; z-index: 20; inset: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 68px; padding: .8rem clamp(1rem, 4vw, 2.5rem); background: transparent; border: 0; box-shadow: none; backdrop-filter: none; pointer-events: none; }
+.researcher-login-brand { display: inline-flex; align-items: center; gap: .65rem; color: var(--ink); text-decoration: none; font-size: 1.05rem; font-weight: 800; }
+.researcher-login-brand, .researcher-login-controls { pointer-events: auto; }
+.researcher-login-brand img { display: block; width: 42px; height: 42px; object-fit: contain; }
+.researcher-login-controls { display: flex; align-items: center; gap: .5rem; }
+.researcher-login-control { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink); font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; transition: color .18s, background .18s; }
+.researcher-login-control:hover { color: var(--teal); background: color-mix(in srgb, var(--teal) 9%, transparent); }
+.researcher-login-control:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.login-theme-sun { display: none; }
+[data-theme="dark"] .login-theme-moon { display: none; }
+[data-theme="dark"] .login-theme-sun { display: inline; }
+.researcher-login-main { min-height: 100vh; min-height: 100svh; padding: 86px 1rem 2rem; display: grid; place-items: center; }
+.researcher-register-main { display: block; padding-top: 86px; }
+.researcher-login-main .social-auth-page { width: 100%; min-height: 0; padding: 1rem; }
+.researcher-login-main .social-auth-card { width: min(100%, 460px); }
+[data-theme="dark"] .btn-google { color: #26344a; background: #fff; border-color: #c9d0da; }
 @media (max-width: 640px) {
   .social-auth-page { min-height: calc(100svh - 9rem); padding: 1rem .75rem 1.5rem; }
   .social-auth-card { width: 100%; max-width: 420px; padding: 1.35rem 1rem; border-radius: 17px; }
@@ -3287,6 +3306,14 @@ blockquote {
   .social-auth-brand img { width: 44px; height: 44px; }
   .social-auth-card h1 { font-size: clamp(1.2rem, 6vw, 1.5rem); }
   .social-auth-form input { font-size: 16px; }
+  .researcher-login-header { min-height: 60px; padding-inline: .85rem; }
+  .researcher-login-brand { gap: .45rem; font-size: .98rem; }
+  .researcher-login-brand img { width: 36px; height: 36px; }
+  .researcher-login-controls { gap: .35rem; }
+  .researcher-login-control { width: 37px; height: 37px; }
+  .researcher-login-main { padding: 70px .5rem 1rem; }
+  .researcher-register-main { padding: 70px .5rem 1rem; }
+  .researcher-login-main .social-auth-page { padding: .6rem .25rem; }
 }
 /* نموذج تسجيل الباحث — واضح ومريح على الشاشات الصغيرة والكبيرة */
 .page-register .page-head { max-width: 760px; margin-inline: auto; }
