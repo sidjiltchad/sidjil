@@ -203,7 +203,10 @@ const LIST_CONFIG = {
   places: { table: 'places', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig', 'region'] },
   sources: { table: 'sources', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name'] },
   tags: { table: 'tags', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig'] },
-  collections: { table: 'collections', order: 'sort_order, title_ar, id', cursor: ['sort_order', 'title_ar', 'id'], searchCols: ['title_ar', 'title_fr'] },
+  // Keep the cursor key numeric. Arabic title comparison depends on the
+  // database collation and can make a valid title cursor re-include the same
+  // row; sort_order + id preserves the intended grouping without that risk.
+  collections: { table: 'collections', order: 'sort_order, id', cursor: ['sort_order', 'id'], searchCols: ['title_ar', 'title_fr'] },
 };
 
 function encodeListCursor(value) {
