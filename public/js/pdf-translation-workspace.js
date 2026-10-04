@@ -138,6 +138,17 @@ export function mountTranslationWorkspace(root, config) {
       text.lang = target;
       text.classList.toggle('translation-text-rtl', target === 'ar');
       text.classList.remove('is-loading');
+      text.textContent = '';
+      const token = (state.animationToken || 0) + 1;
+      state.animationToken = token;
+      const delay = Math.max(2, Math.min(12, Math.floor(9000 / Math.max(1, value.length))));
+      for (let index = 0; index < value.length; index += 1) {
+        if (destroyed || state.animationToken !== token) return;
+        text.textContent += value[index];
+        if (index % 2 === 0) await wait(delay);
+      }
+      if (destroyed || state.animationToken !== token) return;
+      text.innerHTML = formatTranslationText(value, target);
       state.translatedRendered = true;
       const stateEl = state.translatedCard.querySelector('[data-page-state]');
       if (stateEl) stateEl.textContent = readyLabel;
@@ -152,6 +163,7 @@ export function mountTranslationWorkspace(root, config) {
     pageState.forEach((state) => {
       state.translatedRendered = false;
       state.translatedText = '';
+      state.animationToken = (state.animationToken || 0) + 1;
       state.sourceText = '';
       state.sourcePromise = null;
       state.translationPromise = null;
@@ -169,7 +181,7 @@ export function mountTranslationWorkspace(root, config) {
     if (!state || !pdfDoc) return '';
     if (state.sourceText) return state.sourceText;
     if (state.sourcePromise) return state.sourcePromise;
-    state.sourcePromise = pdfDoc.getPage(pageNumber).then((page) => page.getTextContent()).then((content) => {
+    state.sourcePromise = pdfDoc.getPage(pageNumber).then((page) => page.getTextContent()).then(async (content) => {
       let previousY = null;
       state.sourceText = (content.items || []).map((item) => {
         const value = String(item.str || '').trim();
@@ -178,6 +190,21 @@ export function mountTranslationWorkspace(root, config) {
         previousY = Number.isFinite(y) ? y : previousY;
         return `${lineBreak ? '\n' : ''}${value}`;
       }).join(' ').replace(/ +\n/g, '\n').replace(/\n +/g, '\n').replace(/[ \t]+/g, ' ').trim();
+      if (state.sourceText) return state.sourceText;
+      if (!liveTranslationStarted) return '';
+      if (status) status.textContent = config.language === 'fr' ? 'OCR de cette page…' : 'جارٍ قراءة الصفحة ضوئيًا…';
+      await renderOriginal(pageNumber);
+      const canvas = state.original.querySelector('[data-page-canvas="original"]');
+      if (!canvas || !canvas.toBlob) return '';
+      const image = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!image) return '';
+      const headers = { 'content-type': 'image/png', 'X-Sidjil-OCR-Source': sourceSelect.value };
+      const csrf = csrfToken();
+      if (csrf) headers['X-CSRF-Token'] = csrf;
+      const response = await fetch('/api/v1/translate/ocr-page', { method: 'POST', headers, credentials: 'same-origin', body: image });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return '';
+      state.sourceText = String(data.text || '').replace(/\r\n/g, '\n').trim();
       return state.sourceText;
     }).catch(() => '').finally(() => { state.sourcePromise = null; });
     return state.sourcePromise;
