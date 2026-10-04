@@ -5,8 +5,8 @@
 // - الـ API: network-only (لا تخزين مؤقت للنقاشات — تظهر تلقائيًا)
 // ============================================================
 
-const STATIC_CACHE = 'sidjil-static-v1';
-const PAGES_CACHE = 'sidjil-pages-v1';
+const STATIC_CACHE = 'sidjil-static-v2';
+const PAGES_CACHE = 'sidjil-pages-v2';
 
 const STATIC_ASSETS = [
   '/style.css',
@@ -42,6 +42,12 @@ function isApi(url) {
   return url.pathname.startsWith('/api/') || url.pathname.startsWith('/file/');
 }
 
+// صفحات الجلسات (مساحة الباحث والإدارة): شبكة فقط دائمًا — لا تُخزّن
+// أبدًا حتى لا تُعرض صفحة حساب بعد تسجيل الخروج
+function isPrivatePage(url) {
+  return url.pathname.startsWith('/researcher') || url.pathname.startsWith('/admin');
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -50,6 +56,12 @@ self.addEventListener('fetch', (event) => {
 
   // الـ API والملفات: شبكة فقط دائمًا
   if (isApi(url)) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  // صفحات الجلسات: شبكة فقط دائمًا (لا كاش لصفحات الحساب)
+  if (isPrivatePage(url)) {
     event.respondWith(fetch(request));
     return;
   }

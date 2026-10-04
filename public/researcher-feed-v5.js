@@ -139,7 +139,8 @@ function openResearcherMaterialModal(trigger) {
     download.hidden = !d.materialPdf;
     if (d.materialPdf) {
       download.href = d.materialPdfDownload || `${d.materialPdf}?download=1`;
-      download.textContent = 'تنزيل PDF الأصلي';
+      const dlLabel = download.querySelector('.rpdf-action-label');
+      if (dlLabel) dlLabel.textContent = 'تنزيل PDF الأصلي';
     } else {
       download.removeAttribute('href');
     }
@@ -159,11 +160,47 @@ function closeResearcherMaterialModal() {
   document.body.classList.remove('researcher-modal-open');
 }
 
+// ---------- عارض الصور بأسلوب فيسبوك (الصورة نفسها بملء الشاشة) ----------
+function openImageLightbox(src, alt) {
+  if (!src) return;
+  let box = document.getElementById('researcherImageLightbox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'researcherImageLightbox';
+    box.className = 'researcher-image-lightbox';
+    box.hidden = true;
+    box.innerHTML = '<button class="researcher-lightbox-close" type="button" aria-label="إغلاق">×</button><img alt="">';
+    box.addEventListener('click', (e) => {
+      if (e.target === box || e.target.closest('.researcher-lightbox-close')) closeImageLightbox();
+    });
+    document.body.appendChild(box);
+  }
+  const img = box.querySelector('img');
+  img.src = src;
+  img.alt = alt || '';
+  box.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+function closeImageLightbox() {
+  const box = document.getElementById('researcherImageLightbox');
+  if (!box) return;
+  box.hidden = true;
+  box.querySelector('img').removeAttribute('src');
+  document.body.style.overflow = '';
+}
+
 function initResearcherPage() {
   initSocial();
 
   // ---------- عارض الصور وتفاصيل المواد داخل مساحة الباحث ----------
   document.addEventListener('click', (event) => {
+    const lightboxTrigger = event.target.closest('[data-material-lightbox]');
+    if (lightboxTrigger) {
+      event.preventDefault();
+      const img = lightboxTrigger.querySelector('img');
+      openImageLightbox(lightboxTrigger.dataset.materialLightbox, img ? img.alt : '');
+      return;
+    }
     const trigger = event.target.closest('[data-material-details]');
     if (trigger) {
       event.preventDefault();
@@ -179,7 +216,7 @@ function initResearcherPage() {
     if (modal && event.target === modal) closeResearcherMaterialModal();
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeResearcherMaterialModal();
+    if (event.key === 'Escape') { closeResearcherMaterialModal(); closeImageLightbox(); }
   });
 
   // ---------- تغيير كلمة المرور ----------
@@ -372,9 +409,26 @@ function initResearcherPage() {
   // ---------- تسجيل الخروج ----------
   const btnLogout = document.getElementById('btnLogout');
   const logout = async () => {
-      try { await api('/api/v1/admin/logout', 'POST'); } catch (_) { /* تجاهل */ }
-      sessionStorage.removeItem('csrfToken');
-      location.href = '/admin/login';
+    const headers = {};
+    const token = csrfToken();
+    if (token) headers['X-CSRF-Token'] = token;
+    let res = null;
+    try {
+      res = await fetch('/api/v1/admin/logout', { method: 'POST', credentials: 'same-origin', headers });
+    } catch (_) { res = null; }
+    // 401 تعني الجلسة ميتة أصلًا — نُكمل التنظيف. أي فشل آخر: لا نتظاهر بالخروج
+    if (!res || (!res.ok && res.status !== 401)) {
+      toast('تعذّر تسجيل الخروج — تحقق من الاتصال ثم حاول مجددًا.', false);
+      return;
+    }
+    sessionStorage.removeItem('csrfToken');
+    try {
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter((k) => /sidjil/i.test(k)).map((k) => caches.delete(k)));
+      }
+    } catch (_) { /* تجاهل */ }
+    location.replace('/admin/login');
   };
   if (btnLogout) btnLogout.addEventListener('click', logout);
   document.querySelectorAll('[data-account-logout]').forEach((btn) => btn.addEventListener('click', logout));
