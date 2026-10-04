@@ -111,7 +111,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-mobile-translation-v2">
+<link rel="stylesheet" href="/admin.css?v=20261004-discover-feed-v1">
 ${head}
 </head>
 <body>
@@ -166,7 +166,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-mobile-translation-v2">
+<link rel="stylesheet" href="/admin.css?v=20261004-discover-feed-v1">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -1368,7 +1368,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-mobile-translation-v2">
+<link rel="stylesheet" href="/admin.css?v=20261004-discover-feed-v1">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1824,7 +1824,7 @@ async function researcherDashPage(env, user, req) {
   <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?feed=discover#feed">اكتشف</a><a class="researcher-feed-tab${feed === 'following' ? ' active' : ''}" href="/researcher?feed=following#feed">المتابَعون</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?feed=latest#feed">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?feed=official#feed">اعتمادات الإدارة</a></section>
   ${feed === 'discover' ? `<section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions?view=researchers">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين مسجلة بعد.</p>'}</section>` : ''}
   ${dashboardComposer}
-  ${feed === 'following' ? '' : `<div class="researcher-category-tabs" aria-label="أقسام الموجز">${categoryTabs}</div>`}
+  ${feed === 'following' ? '' : `<nav class="researcher-category-filter" aria-label="تصفية المواد بحسب القسم"><span>القسم</span><div class="researcher-category-tabs">${categoryTabs}</div></nav>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
   <div class="researcher-published-feed">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
   ${feed === 'discover' ? `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
