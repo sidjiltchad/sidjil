@@ -1728,10 +1728,32 @@ function diversifyResearcherMaterials(rows, count = 18) {
   return selected;
 }
 
-async function loadResearcherPublishedFeed(env, user, { feed = 'discover', sectionId = null, search = '', offset = 0, limit = 18 } = {}) {
+function encodeResearcherCursor(value) {
+  try {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  } catch { return ''; }
+}
+
+function decodeResearcherCursor(value) {
+  if (!value) return null;
+  try {
+    const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(normalized + '='.repeat((4 - (normalized.length % 4)) % 4));
+    const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+    const parsed = JSON.parse(new TextDecoder().decode(bytes));
+    const date = parsed.updated_at || parsed.sort_date;
+    if (!parsed || typeof parsed !== 'object' || !date || !Number.isInteger(Number(parsed.id))) return null;
+    return { date: String(date), id: Number(parsed.id), kind: String(parsed.kind || '') };
+  } catch { return null; }
+}
+
+async function loadResearcherPublishedFeed(env, user, { feed = 'discover', sectionId = null, search = '', cursor = '', limit = 18 } = {}) {
   const safeFeed = ['discover', 'latest', 'official'].includes(feed) ? feed : 'discover';
-  const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
   const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
+  const decodedCursor = decodeResearcherCursor(cursor);
   const officialFilter = safeFeed === 'official'
     ? ` AND EXISTS (SELECT 1 FROM audit_log approval WHERE approval.action = 'material.review_approve' AND approval.target = m.ark)`
     : '';
@@ -1750,22 +1772,22 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
       ? ' AND search_fts MATCH ?'
       : ' AND m.ark LIKE ?'
     : '';
-  const feedOrder = safeFeed === 'discover'
-    ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
-    : 'ORDER BY m.updated_at DESC, m.id DESC';
-  const fetchLimit = Math.min(500, safeOffset + safeLimit + 36);
+  // ترتيب ثابت مع Cursor حقيقي حتى لا تتكرر المواد ولا تتغير الصفحة أثناء التصفح.
+  const cursorFilter = decodedCursor
+    ? ' AND (m.updated_at < ? OR (m.updated_at = ? AND m.id < ?))'
+    : '';
+  const feedOrder = 'ORDER BY m.updated_at DESC, m.id DESC';
   const query = `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
             m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
             creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
             ${approvedAtSelect}
             s.name_ar AS source_name_ar, s.name AS source_name,
             p.name_ar AS place_name,
-            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('thumbnail', 'cover') OR f.mime LIKE 'image/%')
-             ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 WHEN f.mime LIKE 'image/%' THEN 2 ELSE 3 END, f.id LIMIT 1) AS thumb_id,
-            (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
-             ORDER BY f.id LIMIT 1) AS pdf_id,
+            mai.cover_file_id AS thumb_id,
+            mai.pdf_file_id AS pdf_id,
             COALESCE(discussion_counts.discussions_count, 0) AS discussions_count
      FROM materials m${searchJoin}
+     LEFT JOIN material_assets_index mai ON mai.material_id = m.id
      LEFT JOIN sources s ON s.id = m.source_id
      LEFT JOIN places p ON p.id = m.place_id
      LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
@@ -1775,7 +1797,7 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
        WHERE d.status = 'published'
        GROUP BY d.material_id
      ) discussion_counts ON discussion_counts.material_id = m.id
-     WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}${searchFilter}
+     WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}${searchFilter}${cursorFilter}
      ${feedOrder} LIMIT ?`;
   const params = [];
   if (sectionFilter) params.push(Number(sectionId));
@@ -1783,16 +1805,22 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
     if (ftsQuery) params.push(ftsQuery);
     else params.push(`%${searchTerm}%`);
   }
-  params.push(fetchLimit);
+  if (decodedCursor) params.push(decodedCursor.date, decodedCursor.date, decodedCursor.id);
+  params.push(safeLimit + 1);
   const result = params.length ? await env.DB.prepare(query).bind(...params).all() : await env.DB.prepare(query).all();
-  const ordered = diversifyResearcherMaterials(result.results || [], safeOffset + safeLimit);
-  const pageRows = ordered.slice(safeOffset, safeOffset + safeLimit);
+  const rows = result.results || [];
+  const hasMore = rows.length > safeLimit;
+  const pageRows = rows.slice(0, safeLimit);
   const verified = Number(user.is_verified) === 1;
+  const last = pageRows[pageRows.length - 1];
+  const nextCursor = hasMore && last
+    ? encodeResearcherCursor({ updated_at: last.updated_at, id: Number(last.id) })
+    : '';
   return {
     html: pageRows.map(m => researcherMaterialCard(m, safeFeed, verified)).join(''),
-    offset: safeOffset,
-    nextOffset: safeOffset + pageRows.length,
-    hasMore: ordered.length > safeOffset + pageRows.length,
+    cursor: cursor || '',
+    nextCursor,
+    hasMore,
     count: pageRows.length,
   };
 }
@@ -1810,7 +1838,7 @@ async function researcherFeedPartial(env, user, req) {
   if (feed === 'following') {
     return researcherFeedJson(await loadResearcherFollowingFeed(env, user, {
       search: url.searchParams.get('search'),
-      offset: url.searchParams.get('offset'),
+      cursor: url.searchParams.get('cursor'),
       limit: url.searchParams.get('limit'),
     }));
   }
@@ -1820,15 +1848,15 @@ async function researcherFeedPartial(env, user, req) {
     feed,
     sectionId,
     search: url.searchParams.get('search'),
-    offset: url.searchParams.get('offset'),
+    cursor: url.searchParams.get('cursor'),
     limit: url.searchParams.get('limit'),
   });
   return researcherFeedJson(result);
 }
 
-async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0, limit = 18 } = {}) {
-  const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
+async function loadResearcherFollowingFeed(env, user, { search = '', cursor = '', limit = 18 } = {}) {
   const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
+  const decodedCursor = decodeResearcherCursor(cursor);
   const searchTerm = String(search || '').trim().slice(0, 120);
   const arkSearch = /^ARC-[A-Z0-9-]+$/i.test(searchTerm);
   const ftsQuery = arkSearch ? '' : buildResearcherFtsQuery(searchTerm);
@@ -1839,7 +1867,13 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
       : ' AND m.ark LIKE ?'
     : '';
   const discussionSearch = searchTerm ? ` AND (d.title LIKE ? OR d.body LIKE ? OR m.title_ar LIKE ?)` : '';
-  const fetchLimit = Math.min(500, safeOffset + safeLimit + 36);
+  const materialCursor = decodedCursor
+    ? ' AND (m.updated_at < ? OR (m.updated_at = ? AND (m.id < ? OR (m.id = ? AND ? < ?))))'
+    : '';
+  const discussionCursor = decodedCursor
+    ? ' AND (d.created_at < ? OR (d.created_at = ? AND (d.id < ? OR (d.id = ? AND ? < ?))))'
+    : '';
+  const fetchLimit = safeLimit + 1;
   const [fMats, fDiscs] = await Promise.all([
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
@@ -1847,10 +1881,11 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
               m.updated_at AS sort_date,
               COALESCE(u.display_name, u.username, 'باحث') AS author_name,
               u.id AS creator_id, u.display_name AS creator_name, u.avatar_url AS creator_avatar_url, u.avatar_r2_key AS creator_avatar_r2_key,
-              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.kind IN ('thumbnail', 'cover') OR f2.mime LIKE 'image/%') ORDER BY CASE WHEN f2.kind = 'cover' THEN 0 WHEN f2.kind = 'thumbnail' THEN 1 ELSE 2 END, f2.id LIMIT 1) AS thumb_id,
-              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.mime = 'application/pdf' OR lower(f2.filename) LIKE '%.pdf') ORDER BY f2.id LIMIT 1) AS pdf_id,
+              mai.cover_file_id AS thumb_id,
+              mai.pdf_file_id AS pdf_id,
               COALESCE(discussion_counts.discussions_count, 0) AS discussions_count
        FROM materials m${materialSearchJoin}
+       LEFT JOIN material_assets_index mai ON mai.material_id = m.id
        JOIN researcher_follows fl ON fl.followed_id = m.created_by
        LEFT JOIN admin_users u ON u.id = m.created_by AND u.role = 'researcher'
        LEFT JOIN (
@@ -1859,9 +1894,9 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
          WHERE d.status = 'published'
          GROUP BY d.material_id
        ) discussion_counts ON discussion_counts.material_id = m.id
-       WHERE fl.follower_id = ? AND m.publish_status = 'published'${materialSearch}
+       WHERE fl.follower_id = ? AND m.publish_status = 'published'${materialSearch}${materialCursor}
        ORDER BY m.updated_at DESC, m.id DESC LIMIT ?`
-    ).bind(user.id, ...(materialSearch ? (ftsQuery ? [ftsQuery] : [`%${searchTerm}%`]) : []), fetchLimit).all(),
+    ).bind(user.id, ...(materialSearch ? (ftsQuery ? [ftsQuery] : [`%${searchTerm}%`]) : []), ...(decodedCursor ? [decodedCursor.date, decodedCursor.date, decodedCursor.id, decodedCursor.id, 'material', decodedCursor.kind || ''] : []), fetchLimit).all(),
     env.DB.prepare(
       `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
               d.created_at AS sort_date,
@@ -1872,22 +1907,25 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
        JOIN researcher_follows fl ON fl.followed_id = d.author_id
        JOIN admin_users u ON u.id = d.author_id
        LEFT JOIN materials m ON m.id = d.material_id
-       WHERE fl.follower_id = ? AND d.status = 'published'${discussionSearch}
+       WHERE fl.follower_id = ? AND d.status = 'published'${discussionSearch}${discussionCursor}
        ORDER BY d.created_at DESC, d.id DESC LIMIT ?`
-    ).bind(user.id, ...Array(discussionSearch ? 3 : 0).fill(`%${searchTerm}%`), fetchLimit).all(),
+    ).bind(user.id, ...Array(discussionSearch ? 3 : 0).fill(`%${searchTerm}%`), ...(decodedCursor ? [decodedCursor.date, decodedCursor.date, decodedCursor.id, decodedCursor.id, 'discussion', decodedCursor.kind || ''] : []), fetchLimit).all(),
   ]);
   await attachDiscussionImages(env.DB, fDiscs.results || []);
   const verified = Number(user.is_verified) === 1;
   const merged = [
-    ...((fMats.results || []).map(m => ({ sort: String(m.sort_date || ''), html: researcherMaterialCard(m, 'following', verified) }))),
-    ...((fDiscs.results || []).map(d => ({ sort: String(d.sort_date || ''), html: researcherDiscussionCard(d) }))),
-  ].sort((a, b) => (b.sort < a.sort ? -1 : b.sort > a.sort ? 1 : 0));
-  const page = merged.slice(safeOffset, safeOffset + safeLimit);
+    ...((fMats.results || []).map(m => ({ sort: String(m.sort_date || ''), id: Number(m.id), kind: 'material', html: researcherMaterialCard(m, 'following', verified) }))),
+    ...((fDiscs.results || []).map(d => ({ sort: String(d.sort_date || ''), id: Number(d.id), kind: 'discussion', html: researcherDiscussionCard(d) }))),
+  ].sort((a, b) => b.sort < a.sort ? -1 : b.sort > a.sort ? 1 : b.id - a.id || (b.kind < a.kind ? -1 : b.kind > a.kind ? 1 : 0));
+  const page = merged.slice(0, safeLimit);
+  const hasMore = merged.length > safeLimit;
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? encodeResearcherCursor({ sort_date: last.sort, id: last.id, kind: last.kind }) : '';
   return {
     html: page.map(x => x.html).join(''),
-    offset: safeOffset,
-    nextOffset: safeOffset + page.length,
-    hasMore: merged.length > safeOffset + page.length,
+    cursor: cursor || '',
+    nextCursor,
+    hasMore,
     count: page.length,
   };
 }
@@ -1899,28 +1937,17 @@ async function researcherDashPage(env, user, req) {
     : 'discover';
   const searchTerm = String(url.searchParams.get('search') || '').trim().slice(0, 120);
   const feedLabels = { discover: 'اكتشف', latest: 'الأحدث', official: 'اعتمادات الإدارة', following: 'المتابَعون' };
-  const sectionScope = feed === 'official' ? ' AND m.created_by = ?' : '';
-  const sectionRows = feed === 'official'
-    ? await env.DB.prepare(
-      `SELECT c.id, c.title_ar, c.sort_order, COUNT(DISTINCT m.id) AS material_count
-       FROM collections c
-       JOIN material_collections mc ON mc.collection_id = c.id
-       JOIN materials m ON m.id = mc.material_id AND m.publish_status = 'published'
-       WHERE c.kind = 'section'${sectionScope}
-       GROUP BY c.id, c.title_ar, c.sort_order
-       HAVING COUNT(DISTINCT m.id) > 0
-       ORDER BY c.sort_order, c.id`
-    ).bind(user.id).all()
-    : await env.DB.prepare(
-      `SELECT c.id, c.title_ar, c.sort_order, COUNT(DISTINCT m.id) AS material_count
-       FROM collections c
-       JOIN material_collections mc ON mc.collection_id = c.id
-       JOIN materials m ON m.id = mc.material_id AND m.publish_status = 'published'
-       WHERE c.kind = 'section'
-       GROUP BY c.id, c.title_ar, c.sort_order
-       HAVING COUNT(DISTINCT m.id) > 0
-       ORDER BY c.sort_order, c.id`
-    ).all();
+  // «اعتمادات الإدارة» موجّه إلى المواد المعتمدة كلها، لا إلى مواد صاحب الحساب.
+  const sectionRows = await env.DB.prepare(
+    `SELECT c.id, c.title_ar, c.sort_order, COUNT(DISTINCT m.id) AS material_count
+     FROM collections c
+     JOIN material_collections mc ON mc.collection_id = c.id
+     JOIN materials m ON m.id = mc.material_id AND m.publish_status = 'published'
+     WHERE c.kind = 'section'
+     GROUP BY c.id, c.title_ar, c.sort_order
+     HAVING COUNT(DISTINCT m.id) > 0
+     ORDER BY c.sort_order, c.id`
+  ).all();
   const sections = sectionRows.results || [];
   const requestedSection = url.searchParams.get('section');
   const selectedSection = requestedSection && requestedSection !== 'all'
@@ -1933,15 +1960,14 @@ async function researcherDashPage(env, user, req) {
   ).bind(user.id).all();
   const items = rows.results || [];
 
-  // الدفعة الأولى محدودة، وتُستكمل من /researcher/feed عند الاقتراب من أسفل الصفحة.
-  // الترتيب بالتناوب يضمن ظهور الكتب والوثائق إلى جانب الصور.
+  // الدفعة الأولى محدودة، وتُستكمل من /researcher/feed عبر Cursor ثابت.
   const publishedPage = feed === 'following'
-    ? { html: '', nextOffset: 0, hasMore: false, count: 0 }
+    ? { html: '', nextCursor: '', hasMore: false, count: 0 }
     : await loadResearcherPublishedFeed(env, user, {
       feed,
       sectionId: selectedSection?.id || null,
       search: searchTerm,
-      offset: 0,
+      cursor: '',
       limit: 18,
     });
   const publishedFeed = publishedPage.html;
@@ -1949,8 +1975,8 @@ async function researcherDashPage(env, user, req) {
 
   /* تبويب «المتابَعون»: مواد ونقاشات الباحثين الذين يتابعهم المستخدم — تُبنى خادوميًا */
   const followingPage = feed === 'following'
-    ? await loadResearcherFollowingFeed(env, user, { search: searchTerm, offset: 0, limit: 18 })
-    : { html: '', nextOffset: 0, hasMore: false, count: 0 };
+    ? await loadResearcherFollowingFeed(env, user, { search: searchTerm, cursor: '', limit: 18 })
+    : { html: '', nextCursor: '', hasMore: false, count: 0 };
   const followingFeed = followingPage.html;
   const communityRows = feed === 'discover' ? await env.DB.prepare(
     `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
@@ -2051,7 +2077,7 @@ async function researcherDashPage(env, user, req) {
   ${dashboardComposer}
   ${feed === 'following' ? '' : `<nav class="researcher-category-filter" aria-label="تصفية المواد بحسب القسم"><span>القسم</span><div class="researcher-category-tabs">${categoryTabs}</div></nav>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
-  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-search="${esc(searchTerm)}" data-offset="${activeFeedPage.nextOffset}" data-limit="18" data-has-more="${activeFeedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || emptyFeedHtml}</div>
+  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-search="${esc(searchTerm)}" data-cursor="${esc(activeFeedPage.nextCursor || '')}" data-limit="18" data-has-more="${activeFeedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || emptyFeedHtml}</div>
   ${activeFeedPage.hasMore ? '<div class="researcher-feed-loader" data-researcher-feed-loader role="status" aria-live="polite"><span class="researcher-feed-loader-spinner" aria-hidden="true"></span><span>جارٍ تحميل المزيد عند الاقتراب من نهاية الصفحة…</span></div>' : ''}
   ${feed === 'discover' ? `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
   <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>` : ''}

@@ -451,7 +451,6 @@ function initResearcherLiveSearch() {
     const currentRequest = ++requestId;
     const params = new URLSearchParams({
       feed: feed?.dataset.feed || 'discover',
-      offset: '0',
       limit: '18',
       search: term,
     });
@@ -514,7 +513,7 @@ function initResearcherInfiniteFeed() {
     try {
       const params = new URLSearchParams({
         feed: feed.dataset.feed || 'discover',
-        offset: feed.dataset.offset || '0',
+        cursor: feed.dataset.cursor || '',
         limit: feed.dataset.limit || '18',
       });
       if (feed.dataset.section) params.set('section', feed.dataset.section);
@@ -523,7 +522,7 @@ function initResearcherInfiniteFeed() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       if (data.html) feed.insertAdjacentHTML('beforeend', data.html);
-      feed.dataset.offset = String(data.nextOffset ?? Number(feed.dataset.offset || 0));
+      feed.dataset.cursor = String(data.nextCursor || '');
       feed.dataset.hasMore = data.hasMore ? 'true' : 'false';
       if (!data.hasMore) stop();
     } catch (error) {

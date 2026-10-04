@@ -206,6 +206,117 @@ async function requestDocumentTranslation(req, env, value) {
   return json({ success: true, jobId, status: 'QUEUED', reused: false, progress: 0 }, 202);
 }
 
+function pageLanguageDirection(lang) {
+  return String(lang || '').toLowerCase() === 'ar' ? 'rtl' : 'ltr';
+}
+
+async function pageTranslation(req, env, value, pageNumber) {
+  const s = await settings(env.DB);
+  if (!s.enabled || s.maintenance_mode || !s.text_enabled) return fail('الترجمة غير متاحة حاليًا', 503, 'TRANSLATION_DISABLED');
+  const user = await getSessionUser(req, env);
+  if (user && !verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
+  if (!user && !s.guest_enabled) return fail('تسجيل الدخول مطلوب لاستخدام الترجمة', 401, 'LOGIN_REQUIRED');
+  const page = Number(pageNumber);
+  if (!Number.isInteger(page) || page < 1 || page > 3000) return fail('رقم الصفحة غير صالح', 400, 'INVALID_PAGE');
+  let body;
+  try { body = await req.json(); } catch (_) { return fail('بيانات الطلب غير صالحة'); }
+  const sourceText = String(body.source_text || '').replace(/\r\n/g, '\n').trim();
+  const source = String(body.source || 'auto');
+  const target = String(body.target || 'ar');
+  const mode = ['translated', 'bilingual', 'text'].includes(body.mode) ? body.mode : 'translated';
+  if (!sourceText) return fail('نص الصفحة فارغ', 400, 'EMPTY_PAGE');
+  if (sourceText.length > Number(s.max_text_chars || 12000)) return fail('نص الصفحة يتجاوز الحد المسموح', 413, 'PAGE_TOO_LARGE');
+  if (!validLang(source, true) || !validLang(target) || source === target) return fail('لغة المصدر أو الهدف غير صالحة');
+  const material = await materialById(env.DB, value);
+  if (!material) return fail('المادة غير موجودة', 404, 'MATERIAL_NOT_FOUND');
+  const file = await publishedFile(env.DB, material.id);
+  if (!file) return fail('لا يوجد ملف PDF لهذه المادة', 400, 'PDF_NOT_FOUND');
+  const sourceHash = await sha256(`${file.sha256 || file.r2_key}|${page}|${sourceText}`);
+  const docFingerprint = await sha256(`${material.id}|${file.id}|${source}|${target}|${mode}`);
+  let document = await env.DB.prepare('SELECT * FROM translation_documents WHERE material_id = ? AND source_file_id = ? AND source_language = ? AND target_language = ? AND output_mode = ?')
+    .bind(material.id, file.id, source, target, mode).first();
+  if (!document) {
+    const documentId = id();
+    await env.DB.prepare(`INSERT OR IGNORE INTO translation_documents
+      (id, material_id, source_file_id, source_language, target_language, output_mode, status, page_count, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, 'RUNNING', ?, ?)`)
+      .bind(documentId, material.id, file.id, source, target, mode, Number(body.page_count) || null, user?.id || null).run();
+    document = await env.DB.prepare('SELECT * FROM translation_documents WHERE material_id = ? AND source_file_id = ? AND source_language = ? AND target_language = ? AND output_mode = ?')
+      .bind(material.id, file.id, source, target, mode).first();
+  }
+  if (!document) return fail('تعذر إنشاء سجل الترجمة', 500, 'TRANSLATION_DOCUMENT_CREATE_FAILED');
+  if (['PAUSED', 'CANCELLED'].includes(String(document.status))) return fail('ترجمة هذا المستند متوقفة', 409, 'TRANSLATION_PAUSED');
+  let row = await env.DB.prepare('SELECT * FROM translation_pages WHERE document_id = ? AND page_number = ?').bind(document.id, page).first();
+  if (row?.status === 'completed' && row.source_hash === sourceHash && row.translated_text) {
+    return json({ success: true, cached: true, documentId: document.id, page: { ...row, source_text: undefined }, direction: pageLanguageDirection(target) });
+  }
+  if (!row) {
+    await env.DB.prepare(`INSERT INTO translation_pages (document_id, page_number, source_hash, source_text, status, progress)
+      VALUES (?, ?, ?, ?, 'processing', 10)`).bind(document.id, page, sourceHash, sourceText).run();
+  } else {
+    await env.DB.prepare(`UPDATE translation_pages SET source_hash = ?, source_text = ?, translated_text = NULL,
+      status = 'processing', progress = 10, attempts = attempts + 1, error_code = NULL, error_message = NULL,
+      updated_at = datetime('now'), completed_at = NULL WHERE id = ?`).bind(sourceHash, sourceText, row.id).run();
+  }
+  try {
+    const glossaryTerms = await loadGlossary(env.DB, source, target);
+    const protected_ = protectGlossaryTerms(sourceText, glossaryTerms);
+    const result = await new OllamaTranslationProvider(env).translate({ text: protected_.text, source, target });
+    const translatedText = restoreGlossaryTerms(result.translatedText, protected_.map);
+    const latest = await env.DB.prepare('SELECT id FROM translation_pages WHERE document_id = ? AND page_number = ?').bind(document.id, page).first();
+    if (!latest) return fail('تعذر حفظ صفحة الترجمة', 500, 'PAGE_NOT_FOUND');
+    await env.DB.prepare(`UPDATE translation_pages SET translated_text = ?, direction = ?, status = 'completed', progress = 100,
+      updated_at = datetime('now'), completed_at = datetime('now'), error_code = NULL, error_message = NULL WHERE id = ?`)
+      .bind(translatedText, pageLanguageDirection(target), latest.id).run();
+    const complete = await env.DB.prepare("SELECT COUNT(*) AS c FROM translation_pages WHERE document_id = ? AND status = 'completed'").bind(document.id).first();
+    const completedPages = Number(complete?.c || 0);
+    const pageCount = Number(document.page_count || body.page_count || 0);
+    const progress = pageCount > 0 ? Math.min(100, Math.round((completedPages / pageCount) * 100)) : 0;
+    await env.DB.prepare(`UPDATE translation_documents SET status = ?, completed_pages = ?, progress = ?,
+      page_count = COALESCE(page_count, ?), updated_at = datetime('now'), completed_at = CASE WHEN ? > 0 AND ? >= ? THEN datetime('now') ELSE completed_at END
+      WHERE id = ?`)
+      .bind(pageCount > 0 && completedPages >= pageCount ? 'COMPLETED' : 'RUNNING', completedPages, progress, pageCount || null, completedPages, completedPages, pageCount || 0, document.id).run();
+    await env.DB.prepare(`INSERT OR REPLACE INTO translation_page_segments
+      (page_id, sequence_number, source_text, translated_text, kind, direction)
+      SELECT id, 1, ?, ?, 'page', ? FROM translation_pages WHERE document_id = ? AND page_number = ?`)
+      .bind(sourceText, translatedText, pageLanguageDirection(target), document.id, page).run().catch(() => {});
+    return json({ success: true, cached: false, documentId: document.id, page: { page_number: page, source_hash: sourceHash, translated_text: translatedText, status: 'completed', progress: 100, direction: pageLanguageDirection(target) }, direction: pageLanguageDirection(target) });
+  } catch (e) {
+    await env.DB.prepare(`UPDATE translation_pages SET status = 'failed', progress = 0, error_code = ?, error_message = ?, updated_at = datetime('now') WHERE document_id = ? AND page_number = ?`)
+      .bind('PAGE_TRANSLATION_FAILED', String(e?.message || 'تعذر تنفيذ الترجمة').slice(0, 500), document.id, page).run().catch(() => {});
+    return fail('تعذر ترجمة هذه الصفحة الآن. حاول مرة أخرى لاحقًا.', 503, 'PAGE_TRANSLATION_UNAVAILABLE');
+  }
+}
+
+async function getTranslatedPage(req, env, value, pageNumber) {
+  const page = Number(pageNumber);
+  if (!Number.isInteger(page) || page < 1) return fail('رقم الصفحة غير صالح', 400, 'INVALID_PAGE');
+  const material = await materialById(env.DB, value);
+  if (!material) return fail('المادة غير موجودة', 404, 'MATERIAL_NOT_FOUND');
+  const url = new URL(req.url);
+  const source = String(url.searchParams.get('source') || 'auto');
+  const target = String(url.searchParams.get('target') || 'ar');
+  const mode = ['translated', 'bilingual', 'text'].includes(url.searchParams.get('mode')) ? url.searchParams.get('mode') : 'translated';
+  const file = await publishedFile(env.DB, material.id);
+  if (!file) return fail('لا يوجد ملف PDF لهذه المادة', 400, 'PDF_NOT_FOUND');
+  const document = await env.DB.prepare('SELECT id, status, page_count, progress, completed_pages FROM translation_documents WHERE material_id = ? AND source_file_id = ? AND source_language = ? AND target_language = ? AND output_mode = ?')
+    .bind(material.id, file.id, source, target, mode).first();
+  if (!document) return json({ success: true, page: null, document: null });
+  const row = await env.DB.prepare('SELECT page_number, source_hash, translated_text, direction, status, progress, error_code FROM translation_pages WHERE document_id = ? AND page_number = ?').bind(document.id, page).first();
+  return json({ success: true, document, page: row || null });
+}
+
+async function translationDocumentControl(req, env, documentId, action) {
+  const user = await getSessionUser(req, env);
+  if (!user) return fail('تسجيل الدخول مطلوب', 401, 'LOGIN_REQUIRED');
+  if (!verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
+  const row = await env.DB.prepare('SELECT id FROM translation_documents WHERE id = ?').bind(documentId).first();
+  if (!row) return fail('وثيقة الترجمة غير موجودة', 404);
+  const status = action === 'pause' ? 'PAUSED' : action === 'resume' ? 'RUNNING' : 'CANCELLED';
+  await env.DB.prepare('UPDATE translation_documents SET status = ?, updated_at = datetime(\'now\') WHERE id = ?').bind(status, documentId).run();
+  return json({ success: true, status });
+}
+
 async function listJobs(req, env) {
   const user = await getSessionUser(req, env); if (!user) return fail('تسجيل الدخول مطلوب', 401, 'LOGIN_REQUIRED');
   const rows = await env.DB.prepare(`SELECT id, material_id, file_id, source_language, target_language, output_mode, ocr_mode, status, progress, current_stage, error_code, created_at, updated_at, completed_at, output_mime, output_size FROM translation_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`).bind(user.id).all();
@@ -308,6 +419,12 @@ export async function routeTranslationApi(req, env) {
   if (path === '/api/v1/translate/text' && req.method === 'POST') return translateText(req, env);
   if (path === '/api/v1/translate/ocr-page' && req.method === 'POST') return ocrPage(req, env);
   if (path === '/api/v1/translate/document' && req.method === 'POST') return fail('استخدم ترجمة المادة من عارضها', 410, 'USE_DOCUMENT_TRANSLATION');
+  let pageMatch = path.match(/^\/api\/v1\/documents\/([^/]+)\/pages\/(\d+)\/translate$/);
+  if (pageMatch && req.method === 'POST') return pageTranslation(req, env, decodeURIComponent(pageMatch[1]), pageMatch[2]);
+  pageMatch = path.match(/^\/api\/v1\/documents\/([^/]+)\/pages\/(\d+)$/);
+  if (pageMatch && req.method === 'GET') return getTranslatedPage(req, env, decodeURIComponent(pageMatch[1]), pageMatch[2]);
+  let controlMatch = path.match(/^\/api\/v1\/translate\/documents\/([^/]+)\/(pause|resume|cancel)$/);
+  if (controlMatch && req.method === 'POST') return translationDocumentControl(req, env, decodeURIComponent(controlMatch[1]), controlMatch[2]);
   let m = path.match(/^\/api\/v1\/documents\/([^/]+)\/translations$/);
   if (m && req.method === 'GET') {
     const material = await materialById(env.DB, decodeURIComponent(m[1])); if (!material) return fail('المادة غير موجودة', 404);
