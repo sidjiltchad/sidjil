@@ -67,9 +67,12 @@
   --line-soft: #f0ebda;
   --line-strong: #cfc39f;
 
-  --radius-sm: 8px;
-  --radius: 12px;
-  --radius-lg: 16px;
+  --radius-sm: 12px;
+  --radius: 18px;
+  --radius-lg: 24px;
+  --shape-control: 16px;
+  --shape-card: 24px;
+  --shape-pill: 9999px;
   --shadow-sm: 0 1px 2px rgba(31, 66, 118, 0.07);
   --shadow: 0 2px 10px -2px rgba(31, 66, 118, 0.10);
   --shadow-lg: 0 14px 34px -8px rgba(31, 66, 118, 0.22);
@@ -1678,3 +1681,28 @@ button[data-account-logout] .ran-icon { background: rgba(179, 38, 30, .1); color
 .account-display-controls .theme-toggle svg { width: 16px; height: 16px; flex: none; }
 .researcher-account-menu .account-display-controls .language-preview:disabled { opacity: .72; cursor: default; }
 .language-preview-code { display: inline-grid; place-items: center; min-width: 1.55rem; height: 1.4rem; border-radius: 5px; background: var(--surface-2); color: var(--teal); font-size: .68rem; font-weight: 800; }
+
+/* قواعد الحواف المستديرة الموحدة للوحة الإدارة ومساحة الباحث */
+.btn,
+button:not([data-square-control]),
+[role="button"],
+.tab,
+.chip,
+[class*="-tab"] { border-radius: var(--shape-pill); }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select,
+textarea { border-radius: var(--shape-control); }
+.card,
+[class*="-card"],
+[class*="-panel"],
+[class*="-dropdown"],
+[class*="-menu"],
+[class*="-dialog"],
+[role="dialog"],
+.panel,
+.dropdown,
+.popover,
+.modal,
+.notice,
+.table-wrap,
+.table-container { border-radius: var(--shape-card); }
