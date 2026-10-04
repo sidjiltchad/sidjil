@@ -1670,7 +1670,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
   window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
 }
 </script>
-<script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v5"></script>
+<script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v6"></script>
 <script src="/researcher-feed-v5.js?v=20261004-fulltext-v1" defer></script>
 <script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>
 <script>

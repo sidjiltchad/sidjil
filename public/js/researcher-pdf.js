@@ -293,6 +293,21 @@ export async function mount(container, { url, materialId, materialTitle }) {
     if (current) { state.page = Number(current.dataset.rpdfPage); numEl.textContent = String(state.page); }
   }
 
+  // Keep only a small window of rendered canvases/text layers around the
+  // viewport. The page articles remain as height-preserving slots, so removing
+  // a distant canvas never jumps the reader to another location.
+  function virtualizeArticle(article) {
+    if (!article || article.dataset.rendered !== '1' || article.dataset.rendering === '1') return;
+    const pageNo = Number(article.dataset.rpdfPage);
+    if (!Number.isFinite(pageNo) || Math.abs(pageNo - state.page) <= 3) return;
+    const canvas = article.querySelector('[data-rpdf-canvas]');
+    const layer = article.querySelector('[data-rpdf-text]');
+    if (canvas) { canvas.width = 0; canvas.height = 0; canvas.style.width = '0px'; canvas.style.height = '0px'; }
+    layer?.replaceChildren();
+    article.dataset.rendered = '0';
+    article.dataset.virtualized = '1';
+  }
+
   function go(pageNo) {
     if (!state.doc) return;
     const targetNo = Math.min(state.doc.numPages, Math.max(1, pageNo));
@@ -461,7 +476,8 @@ export async function mount(container, { url, materialId, materialTitle }) {
     for (let pageNo = 1; pageNo <= state.doc.numPages; pageNo += 1) makePage(pageNo);
     state.observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
       if (entry.isIntersecting) renderArticle(entry.target);
-    }), { root: stage, rootMargin: '700px 0px' });
+      else virtualizeArticle(entry.target);
+    }), { root: stage, rootMargin: '900px 0px' });
     pages.querySelectorAll('[data-rpdf-page]').forEach((article) => state.observer.observe(article));
     renderArticle(pages.firstElementChild);
   } catch { error.hidden = false; }
