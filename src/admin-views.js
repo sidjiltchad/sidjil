@@ -1917,7 +1917,8 @@ async function researcherDashPage(env, user, req) {
     const avatar = avatarSrc
       ? `<img class="researcher-story-avatar" src="${esc(avatarSrc)}" alt="${esc(name)}" loading="lazy">`
       : `<span class="researcher-story-avatar" aria-hidden="true">${esc(initial)}</span>`;
-    return `<a class="researcher-story" href="/researcher/profile/${encodeURIComponent(researcher.id)}" aria-label="صفحة ${esc(name)}">${avatar}<span class="researcher-story-name">${esc(String(name).slice(0, 28))}</span>${researcher.job_title ? `<small>${esc(String(researcher.job_title).slice(0, 36))}</small>` : ''}</a>`;
+    const jobTitle = String(researcher.job_title || '').trim();
+    return `<a class="researcher-story" href="/researcher/profile/${encodeURIComponent(researcher.id)}" aria-label="صفحة ${esc(name)}">${avatar}<span class="researcher-story-name">${esc(String(name).slice(0, 28))}</span>${jobTitle ? `<small title="${esc(jobTitle)}">${esc(jobTitle)}</small>` : ''}</a>`;
   }).join('');
   const categoryTabs = [
     `<a class="${selectedSection ? '' : 'active'}" href="/researcher?feed=${encodeURIComponent(feed)}#feed">الكل</a>`,

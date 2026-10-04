@@ -1984,7 +1984,7 @@ textarea { border-radius: var(--shape-control); }
 .researcher-story-row { gap: 1rem; }
 .researcher-story { flex-basis: 116px; width: 116px; }
 .researcher-story-name { max-width: 116px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.4; }
-.researcher-story small { max-width: 116px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 1.4; }
+.researcher-story small { max-width: 116px; white-space: normal; display: block; overflow-wrap: anywhere; line-height: 1.4; }
 .researcher-story-avatar { width: 60px; height: 60px; }
 @media (max-width: 560px) {
   .researcher-main-search { min-height: 50px; margin-bottom: .8rem; padding-inline-start: .6rem; }
