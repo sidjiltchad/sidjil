@@ -61,6 +61,11 @@ const NAV = [
   ['backup', '/admin/backup', 'النسخ الاحتياطي'],
   ['audit', '/admin/audit', 'سجل العمليات'],
 ];
+const NAV_MARKS = {
+  dashboard: '⌂', materials: '▦', review: '✓', people: '♙', places: '⌖', sources: '◈',
+  tags: '#', collections: '▤', journal: '▣', announcements: '!', glossary: 'Aa', translation: '文',
+  verification: '✓', users: '♙', discussions: '◌', backup: '⇩', audit: '≡',
+};
 
 // ---------- أدوات ----------
 function esc(s) {
@@ -99,7 +104,7 @@ const THEME_TOGGLE_ADMIN = `<button class="theme-toggle" id="themeToggle" type="
 
 function layout({ title, active, user, body, head = '' }) {
   const nav = NAV.map(([key, href, label]) =>
-    `<a href="${href}" class="nav-item${active === key ? ' active' : ''}">${esc(label)}</a>`
+    `<a href="${href}" class="nav-item${active === key ? ' active' : ''}" title="${esc(label)}"><span class="nav-item-icon" aria-hidden="true">${NAV_MARKS[key] || '•'}</span><span class="nav-item-label">${esc(label)}</span></a>`
   ).join('');
   // رمز CSRF للطلبات المعدِّلة (يُقرأ من admin.js عبر الميتا)
   const csrfMeta = user && user.csrfToken
@@ -125,14 +130,19 @@ ${head}
   </div>
   <aside class="sidebar" id="adminNav">
     <div class="brand">
-      <div class="brand-name">سِجِل</div>
-      <div class="brand-sub">لوحة الإدارة</div>
+      <div class="brand-head">
+        <a class="brand-link" href="/admin" aria-label="لوحة التحكم">
+          <span class="brand-mark" aria-hidden="true">س</span>
+          <span class="brand-copy"><span class="brand-name">سِجِل</span><span class="brand-sub">لوحة الإدارة</span></span>
+        </a>
+        <button class="sidebar-collapse" id="sidebarCollapse" type="button" aria-expanded="true" aria-controls="adminNav" aria-label="طي القائمة الجانبية" title="طي القائمة الجانبية"><span aria-hidden="true">‹</span></button>
+      </div>
     </div>
     <nav class="nav">${nav}</nav>
     <div class="side-foot">
-      <div class="who">المستخدم: <strong>${esc(user?.username || '')}</strong></div>
+      <div class="who"><span class="side-user-label">المستخدم: </span><strong>${esc(user?.username || '')}</strong></div>
       <div class="foot-row">
-        <button class="btn btn-ghost btn-sm" id="btnLogout" type="button">تسجيل الخروج</button>
+        <button class="btn btn-ghost btn-sm" id="btnLogout" type="button"><span class="nav-item-label">تسجيل الخروج</span><span class="logout-mark" aria-hidden="true">↪</span></button>
         ${THEME_TOGGLE_ADMIN}
       </div>
     </div>

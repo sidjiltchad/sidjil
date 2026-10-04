@@ -893,4 +893,37 @@ document.addEventListener('DOMContentLoaded', () => {
   sidebar.querySelectorAll('.nav-item').forEach(function (a) {
     a.addEventListener('click', function () { setOpen(false); });
   });
+
+  // طي القائمة على الشاشات الكبيرة مع حفظ التفضيل محليًا.
+  var collapseBtn = document.getElementById('sidebarCollapse');
+  var desktopQuery = window.matchMedia('(min-width: 901px)');
+  function setCollapsed(collapsed) {
+    var active = desktopQuery.matches && collapsed;
+    shell.classList.toggle('sidebar-collapsed', active);
+    if (collapseBtn) {
+      collapseBtn.setAttribute('aria-expanded', active ? 'false' : 'true');
+      collapseBtn.setAttribute('aria-label', active ? 'فتح القائمة الجانبية' : 'طي القائمة الجانبية');
+      collapseBtn.title = active ? 'فتح القائمة الجانبية' : 'طي القائمة الجانبية';
+    }
+  }
+  if (collapseBtn) {
+    var saved = false;
+    try { saved = localStorage.getItem('sidjil-admin-sidebar-collapsed') === '1'; } catch (_) { /* خاص */ }
+    setCollapsed(saved);
+    collapseBtn.addEventListener('click', function () {
+      var next = !shell.classList.contains('sidebar-collapsed');
+      setCollapsed(next);
+      try { localStorage.setItem('sidjil-admin-sidebar-collapsed', next ? '1' : '0'); } catch (_) { /* خاص */ }
+    });
+    var onViewportChange = function () {
+      if (!desktopQuery.matches) shell.classList.remove('sidebar-collapsed');
+      else {
+        var persisted = false;
+        try { persisted = localStorage.getItem('sidjil-admin-sidebar-collapsed') === '1'; } catch (_) { /* خاص */ }
+        setCollapsed(persisted);
+      }
+    };
+    if (desktopQuery.addEventListener) desktopQuery.addEventListener('change', onViewportChange);
+    else if (desktopQuery.addListener) desktopQuery.addListener(onViewportChange);
+  }
 })();
