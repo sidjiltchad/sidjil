@@ -3383,9 +3383,10 @@ blockquote {
 .material-post { overflow: hidden; padding: 1rem; }
 .material-post .post-head { margin-bottom: .75rem; }
 .material-post .post-kind { margin-inline-start: auto; color: var(--muted); font-size: .7rem; }
-.material-post .post-avatar { width: 38px; height: 38px; }
+.material-post .post-avatar { width: 34px; height: 34px; overflow: hidden; }
 .post-avatar-image { display: block; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .material-post .brand-avatar { background: #fff; }
+.material-post .brand-avatar .post-avatar-image { object-fit: contain; padding: 3px; }
 .post-avatar { width: 42px; height: 42px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none; background: var(--teal); color: #fff; font-weight: 800; }
 .material-post-title { display: block; color: var(--ink); font-family: var(--font-head); font-size: 1rem; font-weight: 700; line-height: 1.7; margin-bottom: .75rem; }
 .material-post-title:hover { color: var(--teal); }
