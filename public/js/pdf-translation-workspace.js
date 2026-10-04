@@ -32,42 +32,28 @@ export function mountTranslationWorkspace(root, config) {
   const sourceSelect = root.querySelector('[data-ta-source]');
   const targetSelect = root.querySelector('[data-ta-target]');
   const targetLabel = root.querySelector('[data-ta-target-label]');
-  const pageStatus = root.querySelector('[data-ta-page-status]');
   const status = root.querySelector('[data-ta-status]');
-  const progress = root.querySelector('[data-ta-progress]');
-  const progressLabel = root.querySelector('[data-ta-progress-label]');
   const startButton = root.querySelector('[data-ta-start-translation]');
-  const downloadButton = root.querySelector('[data-ta-download-translation]');
   const pdfExportButton = root.querySelector('[data-ta-create-pdf]');
   const originalLabel = config.language === 'fr' ? 'Page' : 'الصفحة';
-  const readyLabel = config.language === 'fr' ? 'Traduction complète' : 'اكتملت ترجمة الكتاب';
-  const workingLabel = config.language === 'fr' ? 'Traduction du livre' : 'جارٍ ترجمة الكتاب كاملًا';
+  const readyLabel = config.language === 'fr' ? 'Traduit' : 'تمت ترجمة الصفحة';
+  const exportReadyLabel = config.language === 'fr' ? 'PDF prêt' : 'اكتمل تجهيز PDF';
+  const workingLabel = config.language === 'fr' ? 'Traduction en cours' : 'جارٍ ترجمة الصفحة';
   const unavailableLabel = config.language === 'fr' ? 'La traduction est temporairement indisponible.' : 'تعذر تنفيذ الترجمة الآن. ستتم إعادة المحاولة تلقائيًا.';
   let pdfDoc = null;
-  let translatedDoc = null;
-  let translatedObjectUrl = '';
-  let translatedBlob = null;
-  let translatedText = '';
-  let translatedTextPages = [];
   let observer = null;
   let destroyed = false;
   let activePage = 1;
   let pageLabels = null;
-  let bookJobId = null;
   let translationKey = '';
   let starting = null;
   let lastSyncedPage = 0;
+  let liveTranslationStarted = false;
   const pageState = new Map();
 
   function pageTextLabel(page) { return pageLabels && pageLabels[page - 1] ? String(pageLabels[page - 1]) : String(page); }
   function setStatus(value) { if (status) status.textContent = value || ''; }
-  function setProgress(value, detail = '') {
-    const n = Math.max(0, Math.min(100, Number(value) || 0));
-    if (progress) progress.style.width = `${n}%`;
-    if (progressLabel) progressLabel.textContent = `${n}%${detail ? ` · ${detail}` : ''}`;
-    root.dataset.translationProgress = String(n);
-  }
-  function updatePageStatus(page) { if (pageStatus) pageStatus.textContent = `${originalLabel} ${pageTextLabel(page)}`; }
+  function updatePageStatus() {}
 
   function pageCard(page, kind) {
     const card = document.createElement('article');
@@ -92,7 +78,7 @@ export function mountTranslationWorkspace(root, config) {
       text.dataset.pageText = '';
       text.dir = config.target === 'ar' ? 'rtl' : 'ltr';
       text.lang = config.target || 'ar';
-      text.textContent = config.language === 'fr' ? 'La traduction complète apparaîtra ici.' : 'ستظهر ترجمة الكتاب كاملة هنا بعد انتهاء المعالجة.';
+      text.textContent = config.language === 'fr' ? 'La traduction de cette page apparaîtra ici.' : 'ستظهر ترجمة هذه الصفحة هنا عند بدء الترجمة.';
       card.appendChild(text);
     }
     return card;
@@ -107,7 +93,7 @@ export function mountTranslationWorkspace(root, config) {
       const translated = pageCard(n, 'translated');
       originalScroll.appendChild(original);
       translatedScroll.appendChild(translated);
-      pageState.set(n, { original, translatedCard: translated, rendered: false, translatedRendered: false, rendering: false, translatedRendering: false });
+      pageState.set(n, { original, translatedCard: translated, rendered: false, translatedRendered: false, rendering: false, translatedRendering: false, sourceText: '', sourcePromise: null, translationPromise: null });
     }
   }
 
@@ -144,8 +130,8 @@ export function mountTranslationWorkspace(root, config) {
     state.translatedRendering = true;
     const text = state.translatedCard.querySelector('[data-page-text]');
     try {
-      if (!translatedTextPages.length || !text) return;
-      const value = translatedTextPages[pageNumber - 1] || '';
+      if (!text || !state.translatedText) return;
+      const value = state.translatedText;
       text.innerHTML = value.trim() ? formatTranslationText(value, targetSelect?.value || config.target || 'ar') : (config.language === 'fr' ? '<p>Aucun texte traduit pour cette page.</p>' : '<p>لا يوجد نص مترجم لهذه الصفحة.</p>');
       const target = targetSelect?.value || config.target || 'ar';
       text.dir = target === 'ar' ? 'rtl' : 'ltr';
@@ -162,94 +148,95 @@ export function mountTranslationWorkspace(root, config) {
   }
 
   function resetTranslationView() {
-    translatedDoc = null; translatedBlob = null; translatedText = ''; translatedTextPages = [];
-    if (translatedObjectUrl) URL.revokeObjectURL(translatedObjectUrl);
-    translatedObjectUrl = '';
+    liveTranslationStarted = false;
     pageState.forEach((state) => {
       state.translatedRendered = false;
+      state.translatedText = '';
+      state.sourceText = '';
+      state.sourcePromise = null;
+      state.translationPromise = null;
       const text = state.translatedCard.querySelector('[data-page-text]');
       const stateEl = state.translatedCard.querySelector('[data-page-state]');
-      if (text) { text.classList.add('is-loading'); text.textContent = config.language === 'fr' ? 'La traduction complète apparaîtra ici.' : 'ستظهر ترجمة الكتاب كاملة هنا بعد انتهاء المعالجة.'; }
+      if (text) { text.classList.add('is-loading'); text.textContent = config.language === 'fr' ? 'La traduction apparaîtra ici lorsque vous la lancerez.' : 'ستظهر الترجمة هنا عند بدء ترجمة الصفحة.'; }
       if (stateEl) stateEl.textContent = '';
     });
-    if (downloadButton) downloadButton.disabled = true;
-    if (pdfExportButton) pdfExportButton.disabled = true;
+    if (pdfExportButton) pdfExportButton.disabled = false;
     lastSyncedPage = 0;
-    setProgress(0);
   }
 
-  async function loadTranslatedText(blob) {
-    translatedBlob = blob;
-    translatedText = await blob.text();
-    translatedTextPages = translatedText.split('\f');
-    pageState.forEach((state) => { state.translatedRendered = false; });
-    if (downloadButton) downloadButton.disabled = false;
-    if (pdfExportButton) pdfExportButton.disabled = false;
-    await renderTranslated(activePage);
+  async function extractPageText(pageNumber) {
+    const state = pageState.get(pageNumber);
+    if (!state || !pdfDoc) return '';
+    if (state.sourceText) return state.sourceText;
+    if (state.sourcePromise) return state.sourcePromise;
+    state.sourcePromise = pdfDoc.getPage(pageNumber).then((page) => page.getTextContent()).then((content) => {
+      state.sourceText = (content.items || []).map((item) => String(item.str || '')).join(' ').replace(/\s+/g, ' ').trim();
+      return state.sourceText;
+    }).catch(() => '').finally(() => { state.sourcePromise = null; });
+    return state.sourcePromise;
+  }
+
+  async function translatePage(pageNumber) {
+    const state = pageState.get(pageNumber);
+    if (!state || !liveTranslationStarted || destroyed) return false;
+    if (state.translationPromise) return state.translationPromise;
+    if (state.translatedText && state.translatedRendered) return true;
+    const text = state.translatedCard.querySelector('[data-page-text]');
+    const stateEl = state.translatedCard.querySelector('[data-page-state]');
+    if (stateEl) stateEl.textContent = workingLabel;
+    if (text) { text.classList.add('is-loading'); text.textContent = config.language === 'fr' ? 'Traduction de cette page…' : 'جارٍ ترجمة هذه الصفحة…'; }
+    state.translationPromise = (async () => {
+      try {
+        const sourceText = await extractPageText(pageNumber);
+        if (!sourceText) {
+          if (text) { text.classList.remove('is-loading'); text.innerHTML = config.language === 'fr' ? '<p>Aucun texte détectable sur cette page.</p>' : '<p>لا يوجد نص قابل للاستخراج في هذه الصفحة.</p>'; }
+          if (stateEl) stateEl.textContent = '';
+          state.translatedRendered = true;
+          return false;
+        }
+        const headers = { 'content-type': 'application/json' };
+        const csrf = csrfToken();
+        if (csrf) headers['X-CSRF-Token'] = csrf;
+        const response = await fetch(`/api/v1/documents/${encodeURIComponent(config.material)}/pages/${pageNumber}/translate`, {
+          method: 'POST', headers, credentials: 'same-origin',
+          body: JSON.stringify({ source_text: sourceText, source: sourceSelect.value, target: targetSelect.value, mode: 'text', page_count: pdfDoc?.numPages || null }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || unavailableLabel);
+        state.translatedText = String(data.page?.translated_text || '');
+        state.translatedRendered = false;
+        await renderTranslated(pageNumber);
+        setStatus(`${config.language === 'fr' ? 'Page traduite' : 'تمت ترجمة الصفحة'} ${pageTextLabel(pageNumber)}`);
+        return true;
+      } catch (error) {
+        if (text) { text.classList.remove('is-loading'); text.textContent = error.message || unavailableLabel; }
+        if (stateEl) stateEl.textContent = config.language === 'fr' ? 'Erreur' : 'تعذر الترجمة';
+        return false;
+      } finally { state.translationPromise = null; }
+    })();
+    return state.translationPromise;
   }
 
   async function startBookTranslation(force = false) {
     const key = `${sourceSelect.value}->${targetSelect.value}`;
-    if (!force && translationKey === key && translatedDoc) return true;
-    if (starting) return starting;
-    translationKey = key; resetTranslationView();
+    if (force || translationKey !== key) { translationKey = key; resetTranslationView(); }
+    if (liveTranslationStarted && !force) return translatePage(activePage);
+    liveTranslationStarted = true;
     if (startButton) startButton.disabled = true;
-    setProgress(1, config.language === 'fr' ? 'préparation' : 'تهيئة');
-    setStatus(`${workingLabel} · ${sourceSelect.value} → ${targetSelect.value}`);
-    starting = (async () => {
-      try {
-        const headers = { 'content-type': 'application/json' };
-        const csrf = csrfToken();
-        if (csrf) headers['X-CSRF-Token'] = csrf;
-        const response = await fetch(`/api/v1/documents/${encodeURIComponent(config.material)}/translations`, {
-          method: 'POST', headers, credentials: 'same-origin',
-          body: JSON.stringify({ source: sourceSelect.value, target: targetSelect.value, mode: 'text', ocr: 'auto' }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || unavailableLabel);
-        bookJobId = data.jobId;
-        for (let i = 0; i < 1800 && bookJobId && !destroyed; i += 1) {
-          if (i) await wait(2000);
-          const check = await fetch(`/api/v1/translate/jobs/${encodeURIComponent(bookJobId)}`, { credentials: 'same-origin' });
-          const detail = await check.json().catch(() => ({}));
-          const job = detail.job || {};
-          const donePages = Number(job.processed_pages || 0); const totalPages = Number(job.page_count || 0);
-          setProgress(job.progress || 0, totalPages ? `${donePages}/${totalPages}` : job.current_stage || '');
-          setStatus(`${workingLabel} · ${job.current_stage || job.status || ''}${totalPages ? ` · ${donePages}/${totalPages}` : ''}`);
-          if (job.status === 'COMPLETED') {
-            const file = await fetch(`/api/v1/translate/jobs/${encodeURIComponent(bookJobId)}/download`, { credentials: 'same-origin' });
-            if (!file.ok) throw new Error(unavailableLabel);
-            await loadTranslatedText(await file.blob());
-            setProgress(100, config.language === 'fr' ? 'terminé' : 'تم'); setStatus(readyLabel);
-            return true;
-          }
-          if (job.status === 'FAILED') throw new Error(job.error_message || unavailableLabel);
-        }
-        throw new Error(config.language === 'fr' ? 'Le délai de traitement est dépassé.' : 'انتهت مهلة انتظار الترجمة. يمكنك إعادة المحاولة.');
-      } catch (error) {
-        setStatus(error.message || unavailableLabel); setProgress(0, config.language === 'fr' ? 'échec' : 'فشل'); return false;
-      } finally {
-        starting = null;
-        if (startButton) startButton.disabled = false;
-      }
-    })();
-    return starting;
+    setStatus(config.language === 'fr' ? 'La traduction commence page par page…' : 'بدأت الترجمة صفحةً صفحة…');
+    try { return await translatePage(activePage); }
+    finally { if (startButton) startButton.disabled = false; }
   }
 
   function syncTranslation(pageNumber) {
     const state = pageState.get(pageNumber);
     if (!state) return;
-    updatePageStatus(pageNumber); activePage = pageNumber; renderTranslated(pageNumber);
+    updatePageStatus(pageNumber); activePage = pageNumber;
+    if (liveTranslationStarted) translatePage(pageNumber);
+    else renderTranslated(pageNumber);
     if (lastSyncedPage === pageNumber) return;
     lastSyncedPage = pageNumber;
     translatedScroll.scrollTo({ top: state.translatedCard.offsetTop - 8, behavior: 'smooth' });
-  }
-
-  function downloadTranslation() {
-    if (!translatedBlob) return startBookTranslation().then(() => downloadTranslation());
-    const link = document.createElement('a'); link.href = URL.createObjectURL(translatedBlob);
-    link.download = `sidjil-translation-${targetSelect.value}.txt`; link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
 
   async function exportPdf() {
@@ -280,7 +267,7 @@ export function mountTranslationWorkspace(root, config) {
           const link = document.createElement('a'); link.href = URL.createObjectURL(await file.blob());
           link.download = `sidjil-translation-${targetSelect.value}.pdf`; link.click();
           setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-          setStatus(readyLabel);
+          setStatus(exportReadyLabel);
           return true;
         }
         setStatus(`${workingLabel} · ${job.current_stage || job.status || ''}${job.progress != null ? ` (${job.progress}%)` : ''}`);
@@ -299,6 +286,7 @@ export function mountTranslationWorkspace(root, config) {
     targetLabel.textContent = targetSelect.options[targetSelect.selectedIndex]?.textContent || targetSelect.value;
     translationKey = '';
     resetTranslationView();
+    if (startButton) startButton.disabled = false;
     setStatus(config.language === 'fr' ? 'Lancez la traduction pour cette langue.' : 'اضغط «ترجمة الكتاب» لبدء الترجمة بهذه اللغة.');
   }
   function onResize() {
@@ -318,14 +306,13 @@ export function mountTranslationWorkspace(root, config) {
       }), { root: originalScroll, rootMargin: '260px 0px', threshold: [0.25, 0.6] });
       pageState.forEach((state) => observer.observe(state.original));
       renderOriginal(1);
-      setProgress(0);
       setStatus(config.language === 'fr' ? 'Lisez le fichier original ou lancez la traduction quand vous le souhaitez.' : 'يمكنك قراءة الملف الأصلي، أو بدء الترجمة عند الحاجة.');
     } catch (_) { setStatus(unavailableLabel); }
   }
 
   sourceSelect.addEventListener('change', onLanguageChange); targetSelect.addEventListener('change', onLanguageChange);
-  downloadButton.addEventListener('click', downloadTranslation); window.addEventListener('resize', onResize, { passive: true }); init();
-  const cleanup = () => { destroyed = true; observer?.disconnect(); window.removeEventListener('resize', onResize); if (translatedObjectUrl) URL.revokeObjectURL(translatedObjectUrl); };
+  window.addEventListener('resize', onResize, { passive: true }); init();
+  const cleanup = () => { destroyed = true; observer?.disconnect(); window.removeEventListener('resize', onResize); };
   window.__sidjilTranslationWorkspaceCleanup = cleanup;
-  return { downloadTranslation, exportPdf, createPdf: exportPdf, cleanup, startBookTranslation };
+  return { exportPdf, createPdf: exportPdf, cleanup, startBookTranslation };
 }

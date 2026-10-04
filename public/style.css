@@ -3651,7 +3651,7 @@ body.translation-workspace-open { overflow: hidden; }
 .translation-icon-action-primary { border-color:var(--teal); background:color-mix(in srgb, var(--teal) 12%, var(--paper)); color:var(--teal); }
 .translation-icon { display:block; font-size:1.12rem; font-weight:800; line-height:1; }
 .translation-icon-pdf { font-size:.58rem; letter-spacing:-.04em; }
-.translation-workspace-close { position:absolute; inset-block-start:.38rem; inset-inline-start:50%; z-index:3; display:grid; place-items:center; width:4.5rem; height:1.35rem; padding:0; border:0; border-radius:999px; background:transparent; color:var(--muted); cursor:grab; transform:translateX(-50%); touch-action:none; }
+.translation-workspace-close { position:absolute; inset-block-start:.38rem; left:50%; right:auto; inset-inline-start:auto; inset-inline-end:auto; z-index:3; display:grid; place-items:center; width:4.5rem; height:1.35rem; padding:0; border:0; border-radius:999px; background:transparent; color:var(--muted); cursor:grab; transform:translateX(-50%); touch-action:none; }
 .translation-workspace-close:active { cursor:grabbing; }
 .translation-close-grip { display:block; width:2.8rem; height:.24rem; border-radius:999px; background:currentColor; opacity:.6; transition:width .18s ease, opacity .18s ease; }
 .translation-workspace-close:hover .translation-close-grip, .translation-workspace-close:focus-visible .translation-close-grip { width:3.35rem; opacity:1; }

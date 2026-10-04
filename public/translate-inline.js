@@ -43,12 +43,10 @@
           <div class="translation-icon-actions" role="toolbar" aria-label="${lang === 'fr' ? 'Actions du lecteur' : 'إجراءات القارئ'}">
             <a class="translation-icon-action" data-ta-download-original href="${esc(originalDownload)}" aria-label="${lang === 'fr' ? 'Télécharger l’original' : 'تنزيل الأصل'}" title="${lang === 'fr' ? 'Télécharger l’original' : 'تنزيل الأصل'}"><span class="translation-icon translation-icon-download" aria-hidden="true">↓</span><span class="sr-only">${lang === 'fr' ? 'Original' : 'الأصل'}</span></a>
             <button class="translation-icon-action translation-icon-action-primary" type="button" data-ta-start-translation aria-label="${labels.translate}" title="${labels.translate}"><span class="translation-icon" aria-hidden="true">✦</span><span class="sr-only">${labels.translate}</span></button>
-            <button class="translation-icon-action" type="button" data-ta-download-translation aria-label="${lang === 'fr' ? 'Télécharger le texte traduit' : 'تنزيل النص المترجم'}" title="${lang === 'fr' ? 'Télécharger le texte traduit' : 'تنزيل النص المترجم'}" disabled><span class="translation-icon" aria-hidden="true">T↓</span><span class="sr-only">${lang === 'fr' ? 'Texte traduit' : 'النص المترجم'}</span></button>
-            <button class="translation-icon-action" type="button" data-ta-create-pdf aria-label="${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}" title="${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}" disabled><span class="translation-icon translation-icon-pdf" aria-hidden="true">PDF</span><span class="sr-only">PDF</span></button>
+            <button class="translation-icon-action" type="button" data-ta-create-pdf aria-label="${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}" title="${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}"><span class="translation-icon translation-icon-pdf" aria-hidden="true">PDF</span><span class="sr-only">PDF</span></button>
           </div>
         </div>
       </header>
-      <div class="translation-progress-wrap" aria-live="polite"><div class="translation-progress-track"><div class="translation-progress-bar" data-ta-progress></div></div><span class="translation-progress-label" data-ta-progress-label>0%</span></div>
       <div class="translation-workspace-mobile-tabs" role="tablist" aria-label="${lang === 'fr' ? 'Panneau de lecture' : 'لوحة القراءة'}">
         <button type="button" role="tab" data-ta-mobile-tab="original" aria-controls="taOriginalPane" aria-selected="true">${lang === 'fr' ? 'Original' : 'الأصل'}</button>
         <button type="button" role="tab" data-ta-mobile-tab="translated" aria-controls="taTranslatedPane" aria-selected="false">${lang === 'fr' ? 'Traduction' : 'الترجمة'}</button>
@@ -98,11 +96,10 @@
       el.querySelector('.translation-pane-result')?.classList.toggle('is-mobile-active', selected === 'translated');
     }));
     try {
-      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-reader-flow-v1');
+      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-reader-live-v1');
       const workspace = mod.mountTranslationWorkspace(el.querySelector('[data-translation-workspace]'), { pdf, material, language: lang, labels, title, originalDownload, target: el.querySelector('[data-ta-target]')?.value || 'ar' });
       el.querySelector('[data-ta-start-translation]')?.addEventListener('click', () => workspace.startBookTranslation());
       el.querySelector('[data-ta-create-pdf]')?.addEventListener('click', () => workspace.exportPdf());
-      el.querySelector('[data-ta-download-translation]')?.addEventListener('click', () => workspace.downloadTranslation());
     } catch (e) {
       const status = el.querySelector('[data-ta-status]');
       if (status) status.textContent = labels.error;
