@@ -54,6 +54,7 @@
       </div>
       <footer class="translation-workspace-status" data-ta-status aria-live="polite">${lang === 'fr' ? 'Le livre sera traduit en arrière-plan, page par page.' : 'ستتم ترجمة الكتاب كاملًا في الخلفية صفحةً صفحة.'}</footer>
     </div>`);
+    el.classList.add('translation-workspace-modal');
     el.querySelector('.translation-action-card')?.classList.add('translation-workspace-card');
     document.body.classList.add('translation-workspace-open');
     el.querySelectorAll('[data-translation-close]').forEach((x) => x.addEventListener('click', close));

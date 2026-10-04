@@ -98,7 +98,7 @@ function researcherStandalonePage(ctx, title, content, mainClass = '') {
   return `<!doctype html><html lang="${esc(lang)}" dir="${esc(dir)}"><head>
 <meta charset="utf-8">${themeInit}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff"><title>${esc(title)} — ${esc(t(lang, 'site_name'))}</title>
-<link rel="stylesheet" href="/style.css?v=20261004-rounded-corners-v1"><link rel="manifest" href="/app-manifest.json">
+<link rel="stylesheet" href="/style.css?v=20261004-mobile-translation-v2"><link rel="manifest" href="/app-manifest.json">
 </head><body class="researcher-login-only">
 <header class="researcher-login-header"><a class="researcher-login-brand" href="/" aria-label="${esc(t(lang, 'site_name'))}"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></a><div class="researcher-login-controls" aria-label="إعدادات العرض"><button class="researcher-login-control researcher-login-language" type="button" aria-label="Français" title="Français">FR</button><button class="researcher-login-control researcher-login-theme" id="loginThemeToggle" type="button" aria-label="تبديل المظهر" title="تبديل المظهر"><span class="login-theme-moon" aria-hidden="true">☾</span><span class="login-theme-sun" aria-hidden="true">☀</span></button></div></header>
 <main class="researcher-login-main ${mainClass}">${content}</main>

@@ -111,7 +111,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-mobile-pdf-reader-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-mobile-translation-v2">
 ${head}
 </head>
 <body>
@@ -166,7 +166,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-mobile-pdf-reader-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-mobile-translation-v2">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -1368,7 +1368,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-mobile-pdf-reader-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-mobile-translation-v2">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
