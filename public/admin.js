@@ -789,6 +789,17 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) { toast(err.message, false); btn.disabled = false; }
     });
   });
+  document.querySelectorAll('[data-social-report-hide]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('إخفاء المحتوى المبلّغ عنه عن الزوار؟ يمكن مراجعة القرار من سجل العمليات.')) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/v1/admin/social-reports/${btn.dataset.socialReportHide}`, 'PATCH', { action: 'hide' });
+        toast('تم إخفاء المحتوى ومعالجة البلاغ');
+        setTimeout(() => location.reload(), 600);
+      } catch (err) { toast(err.message, false); btn.disabled = false; }
+    });
+  });
   document.querySelectorAll('[data-verify-researcher]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const type = btn.dataset.verificationType;

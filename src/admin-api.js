@@ -275,9 +275,19 @@ async function admSocialReportReview(env, user, req, id) {
   if (user.role !== 'admin') return err('صلاحية الإدارة مطلوبة', 403);
   const body = await readJson(req);
   const status = ['open', 'reviewing', 'resolved', 'dismissed'].includes(body?.status) ? body.status : null;
-  if (!status) return err('حالة البلاغ غير صالحة');
-  const report = await env.DB.prepare('SELECT id FROM social_reports WHERE id = ?').bind(id).first();
+  const report = await env.DB.prepare('SELECT id, target_type, target_id FROM social_reports WHERE id = ?').bind(id).first();
   if (!report) return err('البلاغ غير موجود', 404);
+  if (body?.action === 'hide') {
+    const table = report.target_type === 'material' ? 'materials' : report.target_type === 'discussion' ? 'discussions' : report.target_type === 'reply' ? 'discussion_replies' : null;
+    if (!table) return err('لا يمكن إخفاء هذا النوع من البلاغات', 400);
+    const column = table === 'materials' ? 'publish_status' : 'status';
+    const updatedAt = table === 'discussion_replies' ? '' : ", updated_at = datetime('now')";
+    await env.DB.prepare(`UPDATE ${table} SET ${column} = 'hidden'${updatedAt} WHERE id = ?`).bind(report.target_id).run();
+    await env.DB.prepare("UPDATE social_reports SET status = 'resolved', reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?").bind(user.id, id).run();
+    await audit(env.DB, { userId: user.id, action: 'social.report_hide', target: `${report.target_type}:${report.target_id}`, detail: String(id), ip: clientIp(req) });
+    return json({ ok: true, status: 'resolved', hidden: true });
+  }
+  if (!status) return err('حالة البلاغ غير صالحة');
   await env.DB.prepare('UPDATE social_reports SET status = ?, reviewed_by = ?, reviewed_at = datetime(\'now\') WHERE id = ?').bind(status, user.id, id).run();
   await audit(env.DB, { userId: user.id, action: 'social.report_review', target: String(id), detail: status, ip: clientIp(req) });
   return json({ ok: true, status });
