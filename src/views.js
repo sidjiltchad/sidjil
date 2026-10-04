@@ -212,7 +212,7 @@ function footer(ctx) {
 
 export function layout(ctx, { title, description, ogImage, canonical, active, content }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js?v=20261004-reader-live-v1" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js?v=20261004-reader-live-v2" defer></script>\n</body>\n</html>`;
 }
 
 // شريط سفلي يظهر فقط في وضع التطبيق (standalone)

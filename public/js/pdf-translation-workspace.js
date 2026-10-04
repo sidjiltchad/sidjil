@@ -170,7 +170,14 @@ export function mountTranslationWorkspace(root, config) {
     if (state.sourceText) return state.sourceText;
     if (state.sourcePromise) return state.sourcePromise;
     state.sourcePromise = pdfDoc.getPage(pageNumber).then((page) => page.getTextContent()).then((content) => {
-      state.sourceText = (content.items || []).map((item) => String(item.str || '')).join(' ').replace(/\s+/g, ' ').trim();
+      let previousY = null;
+      state.sourceText = (content.items || []).map((item) => {
+        const value = String(item.str || '').trim();
+        const y = Number(item.transform?.[5]);
+        const lineBreak = previousY !== null && Number.isFinite(y) && Math.abs(y - previousY) > 2;
+        previousY = Number.isFinite(y) ? y : previousY;
+        return `${lineBreak ? '\n' : ''}${value}`;
+      }).join(' ').replace(/ +\n/g, '\n').replace(/\n +/g, '\n').replace(/[ \t]+/g, ' ').trim();
       return state.sourceText;
     }).catch(() => '').finally(() => { state.sourcePromise = null; });
     return state.sourcePromise;
