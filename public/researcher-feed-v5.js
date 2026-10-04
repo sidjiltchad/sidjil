@@ -1016,6 +1016,23 @@ function initResearcherPage() {
           .finally(() => { bookmark.disabled = false; });
         return;
       }
+      const report = event.target.closest('[data-social-report]');
+      if (report && feedRoot.contains(report)) {
+        event.preventDefault();
+        if (report.disabled) return;
+        const reason = window.prompt('اذكر سبب البلاغ باختصار:');
+        if (!reason || !reason.trim()) return;
+        report.disabled = true;
+        socialRequest('/api/v1/social/report', {
+          target_type: report.dataset.targetType,
+          target_id: Number(report.dataset.targetId),
+          reason: reason.trim().slice(0, 80),
+        })
+          .then(() => { report.textContent = '✓ تم البلاغ'; report.classList.add('is-active'); })
+          .catch((error) => toast(error.message, false))
+          .finally(() => { report.disabled = false; });
+        return;
+      }
       const trigger = event.target.closest('[data-discussion-open]');
       if (trigger && feedRoot.contains(trigger)) {
         event.preventDefault();

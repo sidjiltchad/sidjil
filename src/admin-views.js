@@ -1671,7 +1671,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v6"></script>
-<script src="/researcher-feed-v5.js?v=20261004-fulltext-v1" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-fulltext-v2" defer></script>
 <script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>
 <script>
 (() => {
@@ -1790,6 +1790,7 @@ function researcherMaterialCard(m, feed, verified) {
     <div class="researcher-feed-actions">
       <button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="material" data-target-id="${esc(m.id)}" data-reaction-kind="like" aria-pressed="false">♡ أعجبني <span data-social-count>0</span></button>
       <button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="material" data-target-id="${esc(m.id)}" aria-pressed="false">🔖 حفظ</button>
+      <button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="material" data-target-id="${esc(m.id)}">⚑ بلّغ</button>
       ${discussionAction('comment', '💬 علّق')}
       ${discussionAction('text', '📝 لخّص')}
       ${discussionAction('review', '✦ راجع')}
@@ -1825,7 +1826,7 @@ function researcherDiscussionCard(d) {
     <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3><p>${esc(String(d.body || '').slice(0, 360))}</p>
     ${researcherDiscussionImagesMarkup(d)}
     ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
-    <div class="researcher-feed-actions"><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">💬 فتح والرد</a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
+    <div class="researcher-feed-actions"><button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="discussion" data-target-id="${esc(d.id)}" data-reaction-kind="like" aria-pressed="false">♡ أعجبني <span data-social-count>0</span></button><button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="discussion" data-target-id="${esc(d.id)}" aria-pressed="false">🔖 حفظ</button><button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="discussion" data-target-id="${esc(d.id)}">⚑ بلّغ</button><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">💬 فتح والرد</a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
   </article>`;
 }
 
