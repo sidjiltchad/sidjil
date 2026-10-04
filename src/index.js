@@ -118,7 +118,7 @@ export default {
     if (researcherAppHost && request.method === 'GET') {
       if (pathname === '/' || pathname === '/discussions') {
         const user = await getSessionUser(request, env);
-        if (!user) return renderPublic('/discussions', request, env);
+        if (!user) return renderPublic('/discussions', request, env, { standaloneResearcherLogin: true });
         if (user.role === 'admin') return Response.redirect('https://sidjil.org/admin', 302);
         return renderResearcher('/researcher', request, env, user);
       }
@@ -126,13 +126,20 @@ export default {
       const appDiscussionMatch = pathname.match(/^\/discussion\/(\d+)$/);
       if (appDiscussionMatch) {
         const user = await getSessionUser(request, env);
-        if (!user) return renderPublic(pathname, request, env);
+        if (!user) return renderPublic(pathname, request, env, { standaloneResearcherLogin: true });
         if (user.role === 'admin') return Response.redirect('https://sidjil.org/admin', 302);
         const mapped = new URL('/researcher/discussions', request.url);
         mapped.searchParams.set('focus', appDiscussionMatch[1]);
         const mappedRequest = new Request(mapped.toString(), request);
         return renderResearcher(mapped.pathname, mappedRequest, env, user);
       }
+    }
+
+    if (researcherAppHost && pathname === '/admin/login' && request.method === 'GET') {
+      const appHome = new URL('/', request.url);
+      const requestedLang = url.searchParams.get('lang');
+      if (requestedLang === 'ar' || requestedLang === 'fr') appHome.searchParams.set('lang', requestedLang);
+      return Response.redirect(appHome.toString(), 302);
     }
 
     // Keep existing links working while making app.sidjil.org the canonical

@@ -45,7 +45,10 @@ function isApi(url) {
 // صفحات الجلسات (مساحة الباحث والإدارة): شبكة فقط دائمًا — لا تُخزّن
 // أبدًا حتى لا تُعرض صفحة حساب بعد تسجيل الخروج
 function isPrivatePage(url) {
-  return url.pathname.startsWith('/researcher') || url.pathname.startsWith('/admin');
+  const researcherAppPath = self.location.hostname === 'app.sidjil.org' && (
+    url.pathname === '/' || url.pathname === '/discussions' || url.pathname.startsWith('/discussion/')
+  );
+  return researcherAppPath || url.pathname.startsWith('/researcher') || url.pathname.startsWith('/admin');
 }
 
 self.addEventListener('fetch', (event) => {

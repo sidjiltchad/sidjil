@@ -3267,6 +3267,7 @@ blockquote {
 .social-auth-card { width: min(100%, 470px); padding: 2.1rem 2rem; background: var(--card); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-lg); text-align: center; }
 .social-auth-brand { display: flex; align-items: center; justify-content: center; gap: .7rem; margin: 0 auto 1rem; color: var(--ink); font-size: 1.15rem; font-weight: 800; }
 .social-auth-brand img { display: block; width: 52px; height: 52px; flex: none; object-fit: contain; }
+.social-auth-welcome { margin: -.25rem 0 .65rem; color: var(--muted); font-size: .88rem; }
 .social-auth-card h1 { margin: .35rem 0 .55rem; font-size: clamp(1.3rem, 4vw, 1.8rem); }
 .social-auth-intro { color: var(--muted); line-height: 1.9; margin: 0 auto 1.25rem; }
 .social-auth-form { display: grid; gap: .75rem; text-align: start; }

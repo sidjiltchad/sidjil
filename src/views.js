@@ -1,7 +1,7 @@
 // SIDJIL — الواجهة العامة (صفحات الزوار)
 // renderPublic(pathname, req, env) → Response (HTML, server-side)
 import { SUPPORTED_LANGS, t, htmlDir } from './i18n.js';
-import { discussionsPage, discussionPage, registerPage, discussionSectionHTML } from './discussion-views.js';
+import { discussionsPage, discussionPage, registerPage, discussionSectionHTML, researcherLoginPage } from './discussion-views.js';
 import { searchMaterials } from './lib/search.js';
 import { getMaterialFull } from './lib/db.js';
 import { buildCitation } from './lib/citation.js';
@@ -1633,7 +1633,7 @@ function offlinePage(ctx) {
 
 /* ---------- الموجّه ---------- */
 
-export async function renderPublic(pathname, req, env) {
+export async function renderPublic(pathname, req, env, options = {}) {
   const url = new URL(req.url);
 
   // اللغة: ?lang= ثم كوكي archifouna_lang ثم الافتراضي ar
@@ -1647,6 +1647,12 @@ export async function renderPublic(pathname, req, env) {
     lang = mm ? mm[1] : 'ar';
   }
   const ctx = { lang, url, env, req, dir: htmlDir(lang) };
+
+  if (options.standaloneResearcherLogin) {
+    const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' };
+    if (setCookie) headers['Set-Cookie'] = setCookie;
+    return new Response(researcherLoginPage(ctx), { status: 200, headers });
+  }
 
   let result;
   try {

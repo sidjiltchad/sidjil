@@ -428,7 +428,7 @@ function initResearcherPage() {
         await Promise.all(keys.filter((k) => /sidjil/i.test(k)).map((k) => caches.delete(k)));
       }
     } catch (_) { /* تجاهل */ }
-    location.replace('/admin/login');
+    location.replace('/');
   };
   if (btnLogout) btnLogout.addEventListener('click', logout);
   document.querySelectorAll('[data-account-logout]').forEach((btn) => btn.addEventListener('click', logout));

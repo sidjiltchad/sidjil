@@ -1403,7 +1403,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261003-rpdf1"></script>
-<script src="/researcher-feed-v5.js?v=20261003-ux2" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-app-login" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
 (() => {

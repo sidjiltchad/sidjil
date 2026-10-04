@@ -88,7 +88,7 @@ function authErrorText(lang, code) {
     ? t(lang, 'discussion_auth_error_' + code) : '';
 }
 
-function discussionAuthGate(ctx) {
+function discussionAuthGate(ctx, standalone = false) {
   const { lang } = ctx;
   const url = new URL(ctx.url);
   const error = authErrorText(lang, url.searchParams.get('auth_error'));
@@ -100,6 +100,7 @@ function discussionAuthGate(ctx) {
   return `<div class="wrap social-auth-page">
     <div class="social-auth-card">
       <div class="social-auth-brand"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></div>
+      ${standalone ? `<p class="social-auth-welcome">${lang === 'fr' ? 'Bienvenue dans votre espace chercheur.' : 'مرحبًا بك في مساحة الباحثين.'}</p>` : ''}
       <h1>${esc(t(lang, 'discussion_login_title'))}</h1>
       <p class="social-auth-intro">${esc(t(lang, 'discussion_login_intro'))}</p>
       ${error ? `<div class="notice notice-error" role="alert">${esc(error)}</div>` : ''}
@@ -117,6 +118,19 @@ function discussionAuthGate(ctx) {
       <div class="social-auth-register"><span>${esc(t(lang, 'discussion_login_hint'))}</span> <a href="${langPath(ctx, '/researcher/register')}">${esc(t(lang, 'register_researcher'))}</a></div>
     </div>
   </div><script src="/js/discussions.js" defer></script>`;
+}
+
+export function researcherLoginPage(ctx) {
+  const { lang, dir } = ctx;
+  const title = t(lang, 'discussion_login_title');
+  const themeInit = `<script>try{var __st=localStorage.getItem('sidjil-theme');if(__st!=='dark'&&__st!=='light'){__st=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',__st);}catch(e){document.documentElement.setAttribute('data-theme','light');}</script>`;
+  return `<!doctype html><html lang="${esc(lang)}" dir="${esc(dir)}"><head>
+<meta charset="utf-8">${themeInit}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff"><title>${esc(title)} — ${esc(t(lang, 'site_name'))}</title>
+<link rel="stylesheet" href="/style.css?v=20261004-researcher-login-brand"><link rel="manifest" href="/app-manifest.json">
+</head><body class="researcher-login-only">
+<main class="researcher-login-main">${discussionAuthGate(ctx, true)}</main>
+</body></html>`;
 }
 
 function materialPostCard(ctx, material) {
