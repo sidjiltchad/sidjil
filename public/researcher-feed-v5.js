@@ -323,7 +323,7 @@ function closeImageLightbox() {
 
 function initResearcherInfiniteFeed() {
   const feed = document.getElementById('researcherPublishedFeed');
-  if (!feed || feed.dataset.feed === 'following' || feed.dataset.hasMore !== 'true' || feed.dataset.infiniteBound) return;
+  if (!feed || feed.dataset.hasMore !== 'true' || feed.dataset.infiniteBound) return;
   feed.dataset.infiniteBound = '1';
   let loading = false;
   const loader = document.querySelector('[data-researcher-feed-loader]') || (() => {

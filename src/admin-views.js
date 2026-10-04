@@ -1744,7 +1744,12 @@ function researcherFeedJson(data, status = 200) {
 async function researcherFeedPartial(env, user, req) {
   const url = new URL(req.url);
   const feed = url.searchParams.get('feed') || 'discover';
-  if (feed === 'following') return researcherFeedJson({ error: 'هذا الموجز لا يدعم التحميل التدريجي بعد.' }, 400);
+  if (feed === 'following') {
+    return researcherFeedJson(await loadResearcherFollowingFeed(env, user, {
+      offset: url.searchParams.get('offset'),
+      limit: url.searchParams.get('limit'),
+    }));
+  }
   const section = url.searchParams.get('section');
   const sectionId = section && /^\d+$/.test(section) ? Number(section) : null;
   const result = await loadResearcherPublishedFeed(env, user, {
@@ -1754,6 +1759,55 @@ async function researcherFeedPartial(env, user, req) {
     limit: url.searchParams.get('limit'),
   });
   return researcherFeedJson(result);
+}
+
+async function loadResearcherFollowingFeed(env, user, { offset = 0, limit = 18 } = {}) {
+  const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
+  const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
+  const [fMats, fDiscs] = await Promise.all([
+    env.DB.prepare(
+      `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
+              m.author, m.photographer, m.archive_ref, m.updated_at,
+              m.updated_at AS sort_date,
+              COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+              u.id AS creator_id, u.display_name AS creator_name, u.avatar_url AS creator_avatar_url, u.avatar_r2_key AS creator_avatar_r2_key,
+              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.kind IN ('thumbnail', 'cover') OR f2.mime LIKE 'image/%') ORDER BY CASE WHEN f2.kind = 'cover' THEN 0 WHEN f2.kind = 'thumbnail' THEN 1 ELSE 2 END, f2.id LIMIT 1) AS thumb_id,
+              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.mime = 'application/pdf' OR lower(f2.filename) LIKE '%.pdf') ORDER BY f2.id LIMIT 1) AS pdf_id,
+              (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
+       FROM materials m
+       JOIN researcher_follows fl ON fl.followed_id = m.created_by
+       LEFT JOIN admin_users u ON u.id = m.created_by AND u.role = 'researcher'
+       WHERE fl.follower_id = ? AND m.publish_status = 'published'
+       ORDER BY m.updated_at DESC, m.id DESC LIMIT 500`
+    ).bind(user.id).all(),
+    env.DB.prepare(
+      `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
+              d.created_at AS sort_date,
+              COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+              m.title_ar AS material_title, m.ark AS material_ark,
+              (SELECT COUNT(*) FROM discussion_replies r WHERE r.discussion_id = d.id AND r.status = 'published') AS replies_count
+       FROM discussions d
+       JOIN researcher_follows fl ON fl.followed_id = d.author_id
+       JOIN admin_users u ON u.id = d.author_id
+       LEFT JOIN materials m ON m.id = d.material_id
+       WHERE fl.follower_id = ? AND d.status = 'published'
+       ORDER BY d.created_at DESC, d.id DESC LIMIT 500`
+    ).bind(user.id).all(),
+  ]);
+  await attachDiscussionImages(env.DB, fDiscs.results || []);
+  const verified = Number(user.is_verified) === 1;
+  const merged = [
+    ...((fMats.results || []).map(m => ({ sort: String(m.sort_date || ''), html: researcherMaterialCard(m, 'following', verified) }))),
+    ...((fDiscs.results || []).map(d => ({ sort: String(d.sort_date || ''), html: researcherDiscussionCard(d) }))),
+  ].sort((a, b) => (b.sort < a.sort ? -1 : b.sort > a.sort ? 1 : 0));
+  const page = merged.slice(safeOffset, safeOffset + safeLimit);
+  return {
+    html: page.map(x => x.html).join(''),
+    offset: safeOffset,
+    nextOffset: safeOffset + page.length,
+    hasMore: merged.length > safeOffset + page.length,
+    count: page.length,
+  };
 }
 
 async function researcherDashPage(env, user, req) {
@@ -1810,43 +1864,10 @@ async function researcherDashPage(env, user, req) {
   const verified = Number(user.is_verified) === 1;
 
   /* تبويب «المتابَعون»: مواد ونقاشات الباحثين الذين يتابعهم المستخدم — تُبنى خادوميًا */
-  let followingFeed = '';
-  if (feed === 'following') {
-    const fMats = await env.DB.prepare(
-      `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
-              m.author, m.photographer, m.archive_ref, m.updated_at,
-              m.updated_at AS sort_date,
-              COALESCE(u.display_name, u.username, 'باحث') AS author_name,
-              u.id AS creator_id, u.display_name AS creator_name, u.avatar_url AS creator_avatar_url, u.avatar_r2_key AS creator_avatar_r2_key,
-              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.kind IN ('thumbnail', 'cover') OR f2.mime LIKE 'image/%') ORDER BY CASE WHEN f2.kind = 'cover' THEN 0 WHEN f2.kind = 'thumbnail' THEN 1 ELSE 2 END, f2.id LIMIT 1) AS thumb_id,
-              (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.mime = 'application/pdf' OR lower(f2.filename) LIKE '%.pdf') ORDER BY f2.id LIMIT 1) AS pdf_id,
-              (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
-       FROM materials m
-       JOIN researcher_follows fl ON fl.followed_id = m.created_by
-       LEFT JOIN admin_users u ON u.id = m.created_by AND u.role = 'researcher'
-       WHERE fl.follower_id = ? AND m.publish_status = 'published'
-       ORDER BY m.updated_at DESC, m.id DESC LIMIT 30`
-    ).bind(user.id).all();
-    const fDiscs = await env.DB.prepare(
-      `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
-              d.created_at AS sort_date,
-              COALESCE(u.display_name, u.username, 'باحث') AS author_name,
-              m.title_ar AS material_title, m.ark AS material_ark,
-              (SELECT COUNT(*) FROM discussion_replies r WHERE r.discussion_id = d.id AND r.status = 'published') AS replies_count
-       FROM discussions d
-       JOIN researcher_follows fl ON fl.followed_id = d.author_id
-       JOIN admin_users u ON u.id = d.author_id
-       LEFT JOIN materials m ON m.id = d.material_id
-       WHERE fl.follower_id = ? AND d.status = 'published'
-       ORDER BY d.created_at DESC, d.id DESC LIMIT 30`
-    ).bind(user.id).all();
-    await attachDiscussionImages(env.DB, fDiscs.results || []);
-    const merged = [
-      ...((fMats.results || []).map(m => ({ sort: String(m.sort_date || ''), html: researcherMaterialCard(m, 'following', verified) }))),
-      ...((fDiscs.results || []).map(d => ({ sort: String(d.sort_date || ''), html: researcherDiscussionCard(d) }))),
-    ].sort((a, b) => (b.sort < a.sort ? -1 : b.sort > a.sort ? 1 : 0));
-    followingFeed = merged.map(x => x.html).join('');
-  }
+  const followingPage = feed === 'following'
+    ? await loadResearcherFollowingFeed(env, user, { offset: 0, limit: 18 })
+    : { html: '', nextOffset: 0, hasMore: false, count: 0 };
+  const followingFeed = followingPage.html;
   const communityRows = feed === 'discover' ? await env.DB.prepare(
     `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
             u.id AS author_id, COALESCE(u.display_name, u.username, 'باحث') AS author_name,
@@ -1929,14 +1950,15 @@ async function researcherDashPage(env, user, req) {
     : feed === 'following'
       ? 'تابع باحثين لترى جديد موادهم ونقاشاتهم هنا.'
       : `لا توجد مواد في تصفية «${feedLabels[feed]}».`;
+  const activeFeedPage = feed === 'following' ? followingPage : publishedPage;
   const body = `
   <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?feed=discover#feed">اكتشف</a><a class="researcher-feed-tab${feed === 'following' ? ' active' : ''}" href="/researcher?feed=following#feed">المتابَعون</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?feed=latest#feed">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?feed=official#feed">اعتمادات الإدارة</a></section>
   ${feed === 'discover' ? `<section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions?view=researchers">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين مسجلة بعد.</p>'}</section>` : ''}
   ${dashboardComposer}
   ${feed === 'following' ? '' : `<nav class="researcher-category-filter" aria-label="تصفية المواد بحسب القسم"><span>القسم</span><div class="researcher-category-tabs">${categoryTabs}</div></nav>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
-  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-offset="${feed === 'following' ? 0 : publishedPage.nextOffset}" data-limit="18" data-has-more="${feed !== 'following' && publishedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
-  ${feed !== 'following' && publishedPage.hasMore ? '<div class="researcher-feed-loader" data-researcher-feed-loader role="status" aria-live="polite"><span class="researcher-feed-loader-spinner" aria-hidden="true"></span><span>جارٍ تحميل المزيد عند الاقتراب من نهاية الصفحة…</span></div>' : ''}
+  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-offset="${activeFeedPage.nextOffset}" data-limit="18" data-has-more="${activeFeedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
+  ${activeFeedPage.hasMore ? '<div class="researcher-feed-loader" data-researcher-feed-loader role="status" aria-live="polite"><span class="researcher-feed-loader-spinner" aria-hidden="true"></span><span>جارٍ تحميل المزيد عند الاقتراب من نهاية الصفحة…</span></div>' : ''}
   ${feed === 'discover' ? `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
   <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>` : ''}
   <section class="social-section-head researcher-own-head"><div><h2>منشوراتي وموادي</h2><p>مسوداتك وحالات الاعتماد والملاحظات الإدارية.</p></div><a class="btn btn-ghost" href="/researcher/new">إنشاء مادة</a></section>
