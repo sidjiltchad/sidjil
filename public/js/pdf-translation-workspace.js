@@ -141,11 +141,13 @@ export function mountTranslationWorkspace(root, config) {
       text.textContent = '';
       const token = (state.animationToken || 0) + 1;
       state.animationToken = token;
-      const delay = Math.max(2, Math.min(12, Math.floor(9000 / Math.max(1, value.length))));
+      // Keep the typewriter effect visible without adding several seconds after
+      // the model has already returned the page.
+      const delay = Math.max(1, Math.min(4, Math.floor(2400 / Math.max(1, value.length))));
       for (let index = 0; index < value.length; index += 1) {
         if (destroyed || state.animationToken !== token) return;
         text.textContent += value[index];
-        if (index % 2 === 0) await wait(delay);
+        if (index % 4 === 0) await wait(delay);
       }
       if (destroyed || state.animationToken !== token) return;
       text.innerHTML = formatTranslationText(value, target);
@@ -241,6 +243,15 @@ export function mountTranslationWorkspace(root, config) {
         state.translatedRendered = false;
         await renderTranslated(pageNumber);
         setStatus(`${config.language === 'fr' ? 'Page traduite' : 'تمت ترجمة الصفحة'} ${pageTextLabel(pageNumber)}`);
+        // Warm the next page in the background after the visible page is
+        // ready. The service remains bounded by its AI semaphore, while the
+        // next page is usually cached before the reader reaches it.
+        if (pageNumber === activePage && pageNumber < (pdfDoc?.numPages || 0)) {
+          const next = pageNumber + 1;
+          window.setTimeout(() => {
+            if (!destroyed && liveTranslationStarted && pageState.has(next)) translatePage(next);
+          }, 250);
+        }
         return true;
       } catch (error) {
         if (text) { text.classList.remove('is-loading'); text.textContent = error.message || unavailableLabel; }
@@ -337,7 +348,7 @@ export function mountTranslationWorkspace(root, config) {
         if (!entry.isIntersecting) return;
         const page = Number(entry.target.dataset.page); activePage = page; updatePageStatus(page);
         renderOriginal(page); syncTranslation(page);
-      }), { root: originalScroll, rootMargin: '260px 0px', threshold: [0.25, 0.6] });
+      }), { root: originalScroll, rootMargin: '120px 0px', threshold: [0.25, 0.6] });
       pageState.forEach((state) => observer.observe(state.original));
       renderOriginal(1);
       setStatus(config.language === 'fr' ? 'Lisez le fichier original ou lancez la traduction quand vous le souhaitez.' : 'يمكنك قراءة الملف الأصلي، أو بدء الترجمة عند الحاجة.');

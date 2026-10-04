@@ -32,10 +32,12 @@ MAX_BYTES = int(os.getenv('MAX_PDF_BYTES', str(50 * 1024 * 1024)))
 OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434').rstrip('/')
 OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen3:8b')
 OLLAMA_TEMPERATURE = float(os.getenv('OLLAMA_TEMPERATURE', '0.1'))
-OLLAMA_KEEP_ALIVE = os.getenv('OLLAMA_KEEP_ALIVE', '10m')
+OLLAMA_KEEP_ALIVE = os.getenv('OLLAMA_KEEP_ALIVE', '30m')
 OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '8192'))
 OLLAMA_REQUEST_TIMEOUT = float(os.getenv('OLLAMA_REQUEST_TIMEOUT', '600'))
 OLLAMA_MAX_RETRIES = max(1, int(os.getenv('OLLAMA_MAX_RETRIES', '3')))
+OLLAMA_CHUNK_CHARS = max(800, min(2400, int(os.getenv('OLLAMA_CHUNK_CHARS', '1800'))))
+OLLAMA_PREWARM = os.getenv('OLLAMA_PREWARM', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
 MAX_AI_TRANSLATION_JOBS = max(1, int(os.getenv('MAX_AI_TRANSLATION_JOBS', '1')))
 AI_SEMAPHORE = asyncio.Semaphore(MAX_AI_TRANSLATION_JOBS)
 AI_WAITING = 0
@@ -43,10 +45,18 @@ AI_ACTIVE = 0
 AI_COMPLETED = 0
 AI_FAILED = 0
 AI_TOTAL_SECONDS = 0.0
+OLLAMA_WARM = False
 # Keep a strong reference to background jobs until they finish.  asyncio tasks
 # are otherwise weakly referenced by the event loop and can be collected while
 # an OCR or translation job is still running, leaving D1 at an intermediate stage.
 BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def keep_background_task(task: asyncio.Task) -> asyncio.Task:
+    """Keep a startup or processing task alive until it completes."""
+    BACKGROUND_TASKS.add(task)
+    task.add_done_callback(BACKGROUND_TASKS.discard)
+    return task
 
 
 class Job(BaseModel):
@@ -159,6 +169,41 @@ async def ollama_probe() -> dict:
         return {'available': False, 'modelAvailable': False, 'models': [], 'error': str(exc)[:160]}
 
 
+async def warm_ollama() -> None:
+    """Load the configured model once so the first reader page is not cold-started."""
+    global OLLAMA_WARM
+    if not OLLAMA_PREWARM:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            response = await client.post(
+                f'{OLLAMA_BASE_URL}/api/chat',
+                json={
+                    'model': OLLAMA_MODEL,
+                    'stream': False,
+                    'think': False,
+                    'keep_alive': OLLAMA_KEEP_ALIVE,
+                    'options': {'temperature': 0, 'num_ctx': min(2048, OLLAMA_NUM_CTX), 'num_predict': 1},
+                    'messages': [
+                        {'role': 'system', 'content': 'Reply with one short readiness token.'},
+                        {'role': 'user', 'content': '/no_think\nready'},
+                    ],
+                },
+            )
+            response.raise_for_status()
+        OLLAMA_WARM = True
+    except Exception:
+        # A failed warmup must never prevent the API from starting. The first
+        # real request will still perform the normal provider health check.
+        OLLAMA_WARM = False
+
+
+@app.on_event('startup')
+async def startup_warmup() -> None:
+    if OLLAMA_PREWARM:
+        keep_background_task(asyncio.create_task(warm_ollama()))
+
+
 async def ollama_translate(text: str, source: str, target: str) -> str:
     global AI_WAITING, AI_ACTIVE, AI_COMPLETED, AI_FAILED, AI_TOTAL_SECONDS
     if not text.strip():
@@ -251,7 +296,7 @@ async def translate_layout(text: str, source: str, target: str) -> str:
     normalized = (text or '').replace('\r\n', '\n').replace('\r', '\n')
     if not normalized.strip():
         return ''
-    # Keep blank-line boundaries and use chunks that fit the configured context window.
+    # Keep blank-line boundaries and use larger chunks to reduce model round trips.
     pieces = re.split(r'(\n\s*\n)', normalized)
     output: list[str] = []
     for piece in pieces:
@@ -264,22 +309,22 @@ async def translate_layout(text: str, source: str, target: str) -> str:
         chunks: list[str] = []
         current = ''
         for line in lines:
-            if len(line) > 1000:
+            if len(line) > OLLAMA_CHUNK_CHARS:
                 if current:
                     chunks.append(current)
                     current = ''
                 remainder = line
-                while len(remainder) > 1000:
-                    cut = remainder.rfind(' ', 0, 1000)
-                    if cut < 500:
-                        cut = 1000
+                while len(remainder) > OLLAMA_CHUNK_CHARS:
+                    cut = remainder.rfind(' ', 0, OLLAMA_CHUNK_CHARS)
+                    if cut < OLLAMA_CHUNK_CHARS // 2:
+                        cut = OLLAMA_CHUNK_CHARS
                     chunks.append(remainder[:cut].rstrip())
                     remainder = remainder[cut:].lstrip()
                 if remainder:
                     chunks.append(remainder)
                 continue
             candidate = line if not current else current + '\n' + line
-            if current and len(candidate) > 1000:
+            if current and len(candidate) > OLLAMA_CHUNK_CHARS:
                 chunks.append(current)
                 current = line
             else:
@@ -300,6 +345,7 @@ async def engine_status() -> dict:
         'provider': 'ollama', 'model': OLLAMA_MODEL, 'languages': ['ar', 'fr', 'en'],
         'ollama': probe, 'ocrEnabled': True, 'queueLength': AI_WAITING,
         'activeAiJobs': AI_ACTIVE, 'maxAiJobs': MAX_AI_TRANSLATION_JOBS,
+        'modelWarm': OLLAMA_WARM, 'chunkChars': OLLAMA_CHUNK_CHARS,
         'completedJobs': AI_COMPLETED, 'failedJobs': AI_FAILED,
         'averageTranslationTimeSeconds': round(average, 2),
     }
@@ -329,9 +375,7 @@ async def engine(x_sidjil_service_token: str | None = Header(default=None)):
 @app.post('/jobs', status_code=202)
 async def create_job(job: Job, x_sidjil_service_token: str | None = Header(default=None)):
     auth(x_sidjil_service_token)
-    task = asyncio.create_task(process(job))
-    BACKGROUND_TASKS.add(task)
-    task.add_done_callback(BACKGROUND_TASKS.discard)
+    keep_background_task(asyncio.create_task(process(job)))
     return {'accepted': True, 'jobId': job.jobId}
 
 
