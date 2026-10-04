@@ -105,7 +105,7 @@ ${ogUrl}
 <meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=20261004-mobile-translation-v2">
+<link rel="stylesheet" href="/style.css?v=20261004-translation-head-v1">
 </head>`;
 }
 
@@ -212,7 +212,7 @@ function footer(ctx) {
 
 export function layout(ctx, { title, description, ogImage, canonical, active, content }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js?v=20261004-mobile-translation-v1" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>\n</body>\n</html>`;
 }
 
 // شريط سفلي يظهر فقط في وضع التطبيق (standalone)

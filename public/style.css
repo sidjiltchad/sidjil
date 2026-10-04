@@ -3602,11 +3602,11 @@ body.translation-workspace-open { overflow: hidden; }
   .translation-action-modal { align-items:stretch; padding:0; }
   .translation-workspace-card { width:100vw; height:100dvh; max-height:100dvh; border-radius:0; border:0; }
   .translation-workspace { min-height:0; }
-  .translation-workspace-head { flex:0 0 auto; gap:.45rem; padding:calc(.45rem + env(safe-area-inset-top, 0px)) .65rem .55rem; }
-  .translation-workspace-heading { width:100%; gap:.45rem; padding-inline-end:2rem; }
-  .translation-workspace-heading h2 { flex:1; min-width:0; font-size:.88rem; }
-  .translation-workspace-kicker { font-size:.68rem; white-space:nowrap; }
-  .translation-workspace-page { font-size:.68rem; }
+  .translation-workspace-head { position:relative; flex:0 0 auto; gap:.55rem; padding:calc(.65rem + env(safe-area-inset-top, 0px)) .75rem .7rem; }
+  .translation-workspace-heading { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"kicker page" "title title"; align-items:center; width:100%; gap:.2rem .55rem; min-height:3.9rem; padding-inline-end:2.7rem; }
+  .translation-workspace-heading h2 { grid-area:title; min-width:0; max-width:100%; margin:0; font-size:1rem; font-weight:750; line-height:1.55; white-space:normal; overflow:visible; overflow-wrap:anywhere; text-overflow:clip; }
+  .translation-workspace-kicker { grid-area:kicker; min-width:0; font-size:.72rem; line-height:1.35; white-space:normal; }
+  .translation-workspace-page { grid-area:page; font-size:.72rem; line-height:1.35; white-space:nowrap; }
   .translation-workspace-actions { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); width:100%; gap:.35rem; align-items:center; justify-content:stretch; }
   .translation-language { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; gap:.15rem; font-size:.66rem; }
   .translation-language > span { line-height:1.1; }
@@ -3616,7 +3616,7 @@ body.translation-workspace-open { overflow: hidden; }
   .translation-workspace-actions [data-ta-download-original] { grid-column:1; }
   .translation-workspace-actions [data-ta-download-translation] { grid-column:2; }
   .translation-workspace-actions [data-ta-create-pdf] { grid-column:3; }
-  .translation-workspace .translation-action-close { position:absolute; top:calc(.35rem + env(safe-area-inset-top, 0px)); inset-inline-end:.5rem; width:2rem; height:2rem; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--paper); font-size:1.35rem; }
+  .translation-workspace .translation-action-close { position:absolute; top:calc(.6rem + env(safe-area-inset-top, 0px)); inset-inline-end:.55rem; z-index:2; display:grid; place-items:center; width:2.25rem; height:2.25rem; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--paper); font-size:1.35rem; line-height:1; }
   .translation-progress-wrap { flex:0 0 auto; gap:.45rem; padding:.35rem .65rem; }
   .translation-progress-track { height:.3rem; }
   .translation-progress-label { min-width:2.5rem; font-size:.68rem; }
