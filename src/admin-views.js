@@ -1362,7 +1362,6 @@ function researcherMaterialData(material, thumbId = '') {
     date: material?.date_text,
     description: material?.description,
     summary: material?.summary,
-    transcription: material?.transcription_preview,
     image: thumbId ? `/file/${thumbId}` : '',
     pdf: material?.pdf_id ? `/file/${material.pdf_id}` : '',
     pdfDownload: material?.pdf_id ? `/file/${material.pdf_id}?download=1` : '',
@@ -1541,7 +1540,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-mobile-pdf-reader-v1"></script>
-<script src="/researcher-feed-v5.js?v=20261004-text-preview-v1" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-fulltext-v1" defer></script>
 <script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>
 <script>
 (() => {
@@ -1598,13 +1597,9 @@ function researcherMaterialCard(m, feed, verified) {
   const title = m.title_ar || m.title_orig || m.ark;
   const inlineId = `researcherInlineDiscussion${m.id}`;
   const materialData = researcherMaterialData(m, m.thumb_id);
-  const transcriptionPreview = String(m.transcription_preview || '').trim();
-  const textPreview = transcriptionPreview
-    ? `<div class="researcher-feed-text-preview" data-material-details ${materialData} role="button" tabindex="0" aria-label="عرض النص المفرغ ${esc(title)}"><span class="researcher-feed-text-label">نص مفرغ موثق</span><p>${esc(transcriptionPreview)}</p><small>اضغط لعرض التفاصيل</small></div>`
-    : '';
   const image = m.thumb_id
     ? `<button class="researcher-media-trigger" type="button" data-material-lightbox="/file/${m.thumb_id}" aria-label="عرض الصورة ${esc(title)}"><img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="${esc(title)}" loading="lazy"></button>`
-    : textPreview || `<button class="researcher-media-trigger researcher-feed-placeholder" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}">${esc(TYPE_LABELS[m.type] || m.type)}</button>`;
+    : `<button class="researcher-media-trigger researcher-feed-placeholder" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}">${esc(TYPE_LABELS[m.type] || m.type)}</button>`;
   const detailsButton = `<button class="researcher-details-btn" type="button" data-material-details ${materialData}>عرض التفاصيل</button>`;
   const excerpt = m.summary || m.description || '';
   const sourceDetails = [
@@ -1757,7 +1752,6 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
     : 'ORDER BY m.updated_at DESC, m.id DESC';
   const query = `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
             m.author, m.photographer, m.archive_ref, m.updated_at,
-            substr(COALESCE(NULLIF(m.full_text, ''), NULLIF((SELECT t.text FROM transcriptions t WHERE t.material_id = m.id ORDER BY CASE WHEN t.layer = 'manual' THEN 0 ELSE 1 END, t.id DESC LIMIT 1), '')), 1, 640) AS transcription_preview,
             creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
             ${approvedAtSelect}
             s.name_ar AS source_name_ar, s.name AS source_name,
@@ -1845,7 +1839,6 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
               m.author, m.photographer, m.archive_ref, m.updated_at,
-              substr(COALESCE(NULLIF(m.full_text, ''), NULLIF((SELECT t.text FROM transcriptions t WHERE t.material_id = m.id ORDER BY CASE WHEN t.layer = 'manual' THEN 0 ELSE 1 END, t.id DESC LIMIT 1), '')), 1, 640) AS transcription_preview,
               m.updated_at AS sort_date,
               COALESCE(u.display_name, u.username, 'باحث') AS author_name,
               u.id AS creator_id, u.display_name AS creator_name, u.avatar_url AS creator_avatar_url, u.avatar_r2_key AS creator_avatar_r2_key,
@@ -2625,11 +2618,47 @@ async function researcherJournalPage(env, user) {
   return researcherLayout({ title: 'المجلة', active: 'journal', user, body });
 }
 
+function researcherJson(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'private, no-store' },
+  });
+}
+
+async function researcherMaterialTextApi(env, user, req) {
+  const id = Number(new URL(req.url).searchParams.get('material_id'));
+  if (!Number.isInteger(id) || id < 1) return researcherJson({ error: 'مادة غير صالحة' }, 400);
+  const material = await env.DB.prepare(
+    `SELECT id, ark, title_ar, title_orig, language, full_text
+     FROM materials WHERE id = ? AND publish_status = 'published'`
+  ).bind(id).first();
+  if (!material) return researcherJson({ error: 'المادة غير موجودة' }, 404);
+  const transcription = await env.DB.prepare(
+    `SELECT layer, lang, text FROM transcriptions
+     WHERE material_id = ? AND length(text) > 0
+     ORDER BY CASE WHEN layer = 'manual' THEN 0 ELSE 1 END, id DESC LIMIT 1`
+  ).bind(id).first();
+  const text = String(material.full_text || '').trim() || String(transcription?.text || '').trim();
+  const arabicLetters = (text.match(/[\u0600-\u06FF]/g) || []).length;
+  const latinLetters = (text.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+  const isArabic = arabicLetters >= 3 && arabicLetters >= Math.ceil(latinLetters * 0.12);
+  const language = isArabic ? 'ar' : (latinLetters ? 'fr' : String(transcription?.lang || material.language || 'ar').toLowerCase());
+  return researcherJson({
+    id: material.id,
+    ark: material.ark,
+    title: material.title_ar || material.title_orig || material.ark,
+    text,
+    language,
+    direction: language === 'ar' ? 'rtl' : 'ltr',
+  });
+}
+
 export async function renderResearcher(pathname, req, env, user) {
   if (!user) return redirect('/admin/login');
   if (user.role === 'admin') return redirect('/admin');
 
   const clean = pathname.replace(/\/+$/, '') || '/researcher';
+  if (clean === '/researcher/material-text' && req.method === 'GET') return researcherMaterialTextApi(env, user, req);
   if (clean === '/researcher/feed' && req.method === 'GET') return researcherFeedPartial(env, user, req);
   if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user, req));
   if (clean === '/researcher/materials') return htmlRes(await researcherMaterialsPage(env, user));

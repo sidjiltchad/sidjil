@@ -134,7 +134,7 @@ function initResearcherPickers() {
 }
 
 let activePdfReader = null;
-function openResearcherMaterialModal(trigger) {
+async function openResearcherMaterialModal(trigger) {
   const modal = document.getElementById('researcherMaterialModal');
   if (!modal || !trigger) return;
   const d = trigger.dataset;
@@ -200,11 +200,31 @@ function openResearcherMaterialModal(trigger) {
     meta.appendChild(item);
   });
   const summary = d.materialSummary || d.materialDescription || '';
-  const transcription = d.materialTranscription || '';
-  text.textContent = transcription
-    ? `${summary ? `${summary}\n\n` : ''}النص المفرغ الموثق:\n${transcription}`
-    : summary;
+  text.textContent = summary;
+  text.dir = 'auto';
+  text.lang = '';
+  text.classList.remove('researcher-material-fulltext');
+  const textRequest = String(Number(modal.dataset.textRequest || 0) + 1);
+  modal.dataset.textRequest = textRequest;
+  modal.hidden = false;
+  document.body.classList.add('researcher-modal-open');
   const materialId = d.materialId || '';
+  if (materialId) {
+    try {
+      const response = await fetch(`/researcher/material-text?material_id=${encodeURIComponent(materialId)}`, {
+        credentials: 'same-origin', headers: { Accept: 'application/json' },
+      });
+      if (response.ok && modal.dataset.textRequest === textRequest) {
+        const payload = await response.json();
+        if (payload.text) {
+          text.textContent = payload.text;
+          text.dir = payload.direction === 'rtl' ? 'rtl' : 'ltr';
+          text.lang = payload.language || '';
+          text.classList.add('researcher-material-fulltext');
+        }
+      }
+    } catch { /* يبقى الملخص إذا تعذر تحميل النص الكامل */ }
+  }
   if (translate) {
     translate.hidden = !d.materialPdf;
     if (d.materialPdf) {
@@ -243,8 +263,6 @@ function openResearcherMaterialModal(trigger) {
     const defaultKind = discussionForm.querySelector('input[name="kind"][value="comment"]');
     if (defaultKind) defaultKind.checked = true;
   }
-  modal.hidden = false;
-  document.body.classList.add('researcher-modal-open');
   const close = modal.querySelector('[data-researcher-modal-close]');
   if (close) close.focus();
 }
