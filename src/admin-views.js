@@ -2676,6 +2676,9 @@ export async function renderResearcher(pathname, req, env, user) {
   if (user.role === 'admin') return redirect('/admin');
 
   const clean = pathname.replace(/\/+$/, '') || '/researcher';
+  if (Number(user.must_change_password) === 1 && clean !== '/researcher/account') {
+    return redirect('/researcher/account?force_password=1');
+  }
   if (clean === '/researcher/material-text' && req.method === 'GET') return researcherMaterialTextApi(env, user, req);
   if (clean === '/researcher/feed' && req.method === 'GET') return researcherFeedPartial(env, user, req);
   if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user, req));

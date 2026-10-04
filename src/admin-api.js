@@ -1003,7 +1003,7 @@ async function admProfileAvatarDelete(env, user, req) {
 
 async function admUsersList(env) {
   const res = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.display_name, u.affiliation,
+    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.is_super_admin, u.verification_type, u.display_name, u.affiliation,
             u.created_at,
             (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
      FROM admin_users u ORDER BY u.id ASC`
@@ -1034,9 +1034,9 @@ async function admUserCreate(env, user, req, body) {
 
 async function admUserUpdate(env, user, req, id, body) {
   const db = env.DB;
-  const target = await db.prepare('SELECT id, username, role FROM admin_users WHERE id = ?').bind(id).first();
+  const target = await db.prepare('SELECT id, username, role, is_super_admin FROM admin_users WHERE id = ?').bind(id).first();
   if (!target) return err('المستخدم غير موجود', 404);
-  const sensitiveChange = body.role !== undefined || body.is_active !== undefined || (body.password !== undefined && body.password !== '');
+  const sensitiveChange = body.role !== undefined || body.is_active !== undefined || body.is_super_admin !== undefined || (body.password !== undefined && body.password !== '');
   if (sensitiveChange) {
     const blocked = requireSuperAdmin(user);
     if (blocked) return blocked;
@@ -1048,8 +1048,19 @@ async function admUserUpdate(env, user, req, id, body) {
   if (body.role !== undefined) {
     const role = body.role === 'admin' ? 'admin' : 'researcher';
     if (selfEdit && role !== 'admin') return err('لا يمكنك تغيير دور حسابك', 400);
+    if (role === 'researcher' && Number(target.is_super_admin) === 1 && body.is_super_admin !== false) return err('أزل صلاحية Super Admin أولًا قبل تغيير الدور', 400);
     sets.push('role = ?');
     binds.push(role);
+  }
+  if (body.is_super_admin !== undefined) {
+    const nextSuper = body.is_super_admin ? 1 : 0;
+    if (selfEdit && !nextSuper) return err('لا يمكنك إزالة صلاحية Super Admin من حسابك', 400);
+    if (!nextSuper && Number(target.is_super_admin) === 1) {
+      const remaining = await db.prepare("SELECT COUNT(*) AS c FROM admin_users WHERE is_super_admin = 1 AND is_active = 1 AND id <> ?").bind(id).first();
+      if (Number(remaining?.c || 0) === 0) return err('يجب إبقاء Super Admin نشط واحد على الأقل', 400);
+    }
+    sets.push('is_super_admin = ?');
+    binds.push(nextSuper);
   }
   if (body.is_active !== undefined) {
     const active = body.is_active ? 1 : 0;
@@ -1068,6 +1079,12 @@ async function admUserUpdate(env, user, req, id, body) {
   }
   if (!sets.length) return err('لا تغييرات', 400);
   await db.prepare(`UPDATE admin_users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, id).run();
+  if (body.password !== undefined && body.password !== '') {
+    try {
+      await db.prepare('INSERT INTO notifications (user_id, kind, title, body, link) VALUES (?, ?, ?, ?, ?)')
+        .bind(id, 'password_reset', 'أعادت الإدارة تعيين كلمة المرور', 'يجب تغيير كلمة المرور عند تسجيل الدخول القادم.', target.role === 'researcher' ? '/researcher/account' : '/admin').run();
+    } catch { /* لا يفشل تغيير كلمة المرور بسبب الإشعار */ }
+  }
   await audit(db, { userId: user.id, action: 'user.update', target: target.username, detail: sets.join(', '), ip: clientIp(req) });
   return json({ ok: true });
 }
