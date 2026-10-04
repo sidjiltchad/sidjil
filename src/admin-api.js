@@ -181,6 +181,7 @@ async function admMaterialEditRequest(env, user, req, id) {
   await db.prepare(
     "INSERT INTO material_edit_requests (material_id, researcher_id, status) VALUES (?, ?, 'pending')"
   ).bind(material.id, user.id).run();
+  await notifyAdmins(db, 'material_edit_request', 'طلب تعديل مادة منشورة', `طلب الباحث تعديل المادة: ${material.title_ar || material.ark}`, '/admin/materials/review');
   await audit(db, { userId: user.id, action: 'material.edit_request', target: material.ark, ip: clientIp(req) });
   return json({ ok: true, status: 'pending' }, 201);
 }
@@ -205,13 +206,14 @@ async function admMaterialEditRequestReview(env, user, req, id, body) {
   const decision = body.decision;
   if (!['approve', 'reject'].includes(decision)) return err('قرار غير صالح', 400);
   const request = await db.prepare(
-    "SELECT r.id, r.material_id, m.ark FROM material_edit_requests r JOIN materials m ON m.id = r.material_id WHERE r.id = ? AND r.status = 'pending' AND m.publish_status = 'published'"
+    "SELECT r.id, r.material_id, r.researcher_id, m.ark, m.title_ar FROM material_edit_requests r JOIN materials m ON m.id = r.material_id WHERE r.id = ? AND r.status = 'pending' AND m.publish_status = 'published'"
   ).bind(id).first();
   if (!request) return err('طلب التعديل غير موجود أو سبق البت فيه', 404);
   const note = String(body.note || '').trim().slice(0, 1000) || null;
   await db.prepare(
     "UPDATE material_edit_requests SET status = ?, note = ?, reviewed_at = datetime('now'), reviewed_by = ? WHERE id = ?"
   ).bind(decision === 'approve' ? 'approved' : 'rejected', note, user.id, id).run();
+  await notifyMaterialOwner(db, { created_by: request.researcher_id }, decision === 'approve' ? 'material_edit_approved' : 'material_edit_rejected', decision === 'approve' ? 'وافقت الإدارة على تعديل المادة' : 'رفضت الإدارة طلب تعديل المادة', note || `المادة: ${request.title_ar || request.ark}`, `/researcher/${request.material_id}`);
   await audit(db, { userId: user.id, action: `material.edit_request_${decision}`, target: request.ark, detail: note || '', ip: clientIp(req) });
   return json({ ok: true, status: decision === 'approve' ? 'approved' : 'rejected' });
 }
@@ -783,7 +785,7 @@ async function admMaterialDelete(env, user, req, idOrArk) {
 
 async function admMaterialPublish(env, user, req, idOrArk, body) {
   // دفاع إضافي: النشر المباشر للإدارة فقط (القائمة البيضاء تمنعه أصلًا)
-  if (user.role !== 'admin') return err('النشر المباشر من صلاحيات الإدارة فقط', 403);
+  if (user.role !== 'admin' && Number(user.is_super_admin) !== 1) return err('النشر المباشر من صلاحيات الإدارة فقط', 403);
   const db = env.DB;
   const m = await findMaterial(db, idOrArk);
   if (!m) return err('المادة غير موجودة', 404);
@@ -793,6 +795,9 @@ async function admMaterialPublish(env, user, req, idOrArk, body) {
     .prepare("UPDATE materials SET publish_status = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(status, m.id)
     .run();
+  const workflowEvent = status === 'published' ? 'published' : status === 'hidden' ? 'hidden' : status === 'draft' ? 'restored' : null;
+  if (workflowEvent) await recordMaterialWorkflow(db, { materialId: m.id, actorId: user.id, event: workflowEvent, fromStatus: m.publish_status, toStatus: status });
+  if (status === 'published') await notifyMaterialOwner(db, m, 'material_published', 'نُشرت مادتك في الأرشيف', `أصبحت المادة متاحة في سِجِل: ${m.title_ar || m.ark}`, `/researcher?feed=official&material=${m.id}`);
   await audit(db, {
     userId: user.id,
     action: 'material.publish',
