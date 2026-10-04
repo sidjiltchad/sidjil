@@ -257,6 +257,12 @@ export default {
     }
 
     // 4) صفحات الزوار العامة
-    return renderPublic(pathname, request, env);
+    // Public material pages can still expose translation controls to an
+    // authenticated researcher. Pass the session-bound CSRF token into the
+    // rendered HTML so requests from sidjil.org carry the same protection as
+    // requests from app.sidjil.org. The token is never added to cached home
+    // responses above.
+    const publicUser = await getSessionUser(request, env);
+    return renderPublic(pathname, request, env, { csrfToken: publicUser?.csrfToken || '' });
   },
 };

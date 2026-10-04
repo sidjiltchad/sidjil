@@ -79,6 +79,9 @@ function head(ctx, { title, description, ogImage, canonical }) {
     catch (_) { og = `<meta property="og:image" content="${esc(ogImage)}">`; }
   }
   const ogUrl = canonical ? `<meta property="og:url" content="${esc(canonical)}">` : '';
+  const csrfMeta = ctx.csrfToken
+    ? `<meta name="csrf-token" content="${esc(ctx.csrfToken)}">`
+    : '';
   const themeInit = `<script>try{var __st=localStorage.getItem('sidjil-theme');if(__st!=='dark'&&__st!=='light'){__st=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',__st);}catch(e){document.documentElement.setAttribute('data-theme','light');}</script>`;
   return `<!DOCTYPE html>
 <html lang="${lang}" dir="${dir}">
@@ -88,6 +91,7 @@ ${themeInit}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(fullTitle)}</title>
 <meta name="description" content="${esc(desc)}">
+${csrfMeta}
 ${canon}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${esc(site)}">
@@ -1657,7 +1661,7 @@ export async function renderPublic(pathname, req, env, options = {}) {
     const mm = cookie.match(/(?:^|;\s*)archifouna_lang=(ar|fr)/);
     lang = mm ? mm[1] : 'ar';
   }
-  const ctx = { lang, url, env, req, dir: htmlDir(lang) };
+  const ctx = { lang, url, env, req, dir: htmlDir(lang), csrfToken: options.csrfToken || '' };
 
   if (options.standaloneResearcherLogin) {
     const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store' };
