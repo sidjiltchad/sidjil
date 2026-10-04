@@ -1570,14 +1570,31 @@ body.translation-workspace-open { overflow: hidden; }
 .rpdf-toolbar { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; padding: .45rem; background: var(--card); border-bottom: 1px solid var(--line); }
 .rpdf-toolbar button, .rpdf-selection-actions button { min-height: 40px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: .35rem .75rem; cursor: pointer; font: inherit; font-size: .88rem; touch-action: manipulation; }
 .rpdf-toolbar button:hover { border-color: var(--gold); }
+.rpdf-toolbar [data-rpdf-live-translation][aria-pressed="true"] { background: var(--teal); border-color: var(--teal); color: #fff; }
+.rpdf-target-label { display: inline-flex; align-items: center; gap: .25rem; min-height: 40px; padding-inline: .35rem; color: var(--muted); font-size: .78rem; white-space: nowrap; }
+.rpdf-target-label select { min-height: 32px; border: 1px solid var(--line); border-radius: 999px; padding: .2rem .45rem; background: var(--card); color: var(--ink); font: inherit; }
+.rpdf-translation-progress { min-width: 3rem; color: var(--teal); font-size: .78rem; font-variant-numeric: tabular-nums; text-align: center; }
 .rpdf-num { font-size: .85rem; color: var(--muted); padding: 0 .3rem; }
 .rpdf-num b { color: inherit; }
 .rpdf-sep { flex: 1; }
 .rpdf-stage { position: relative; overflow: auto; height: min(68vh, 780px); min-height: 300px; border: 1px solid var(--line); border-radius: var(--radius); background: #343a43; padding: .65rem; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .rpdf-pages { display: flex; flex-direction: column; align-items: stretch; gap: .75rem; width: max-content; min-width: 100%; direction: ltr; }
-.rpdf-page { position: relative; flex: none; margin-inline: auto; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.35); background: #fff; direction: ltr !important; unicode-bidi: isolate; scroll-margin-top: .5rem; }
+.rpdf-page { position: relative; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 1px; flex: none; margin-inline: auto; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.35); background: var(--line); direction: ltr !important; unicode-bidi: isolate; scroll-margin-top: .5rem; }
+.rpdf-source-pane, .rpdf-translation-pane { position: relative; min-width: 0; background: #fff; }
+.rpdf-source-pane { overflow: hidden; }
+.rpdf-pane-label { position: absolute; inset: 0 0 auto; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: .5rem; height: 32px; padding: 0 .6rem; background: rgba(255,255,255,.94); border-bottom: 1px solid #e5e7eb; color: #667085; font: 700 .72rem/1 var(--font-body, sans-serif); direction: rtl; }
+.rpdf-source-pane canvas { margin-top: 32px; }
+.rpdf-translation-pane { overflow: auto; direction: rtl; }
+.rpdf-translation-pane[hidden] { display: none; }
+.rpdf-translation-pane .rpdf-pane-label { position: sticky; top: 0; }
+.rpdf-translation-body { min-height: calc(100% - 32px); padding: 2.7rem 1.15rem 1.4rem; color: #1c2735; font: 1rem/2 var(--font-body, sans-serif); text-align: justify; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rpdf-translation-body[dir="ltr"] { direction: ltr; text-align: justify; }
+.rpdf-translation-body.is-loading { opacity: .6; }
+.rpdf-translation-placeholder { display: block; padding: 2.5rem 1rem; color: #7b8492; text-align: center; line-height: 1.8; }
+.rpdf-translation-placeholder.is-error { color: #b42318; }
+.rpdf-translation-placeholder button { margin-inline-start: .35rem; border: 0; background: transparent; color: var(--teal); text-decoration: underline; cursor: pointer; font: inherit; }
 .rpdf-page canvas { display: block; max-width: none; background: #fff; direction: ltr !important; unicode-bidi: isolate; }
-.rpdf-textlayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; direction: ltr !important; unicode-bidi: isolate; }
+.rpdf-textlayer { position: absolute; inset: 32px 0 0; overflow: hidden; line-height: 1; direction: ltr !important; unicode-bidi: isolate; }
 .rpdf-textlayer span { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0% 0%; }
 .rpdf-textlayer ::selection { background: rgba(31, 66, 118, .28); }
 .rpdf-selection-actions { position: sticky; bottom: max(.5rem, env(safe-area-inset-bottom, 0px)); z-index: 6; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .4rem; padding: .5rem; margin: -.25rem auto 0; width: fit-content; max-width: 100%; border: 1px solid var(--line); border-radius: 999px; background: var(--card); box-shadow: 0 8px 28px rgba(0,0,0,.22); }
@@ -1601,9 +1618,13 @@ body.translation-workspace-open { overflow: hidden; }
   .rpdf-toolbar button { min-width: 40px; min-height: 42px; padding: .3rem .6rem; }
   .rpdf-toolbar [data-rpdf-fit] { flex: 1 1 auto; }
   .rpdf-toolbar [data-rpdf-full] { flex: 1 1 auto; }
+  .rpdf-target-label { flex: 1 1 auto; min-width: 130px; justify-content: center; }
   .rpdf-sep { display: none; }
   .rpdf-stage { width: 100%; height: min(64dvh, 620px); min-height: 260px; padding: .35rem; border-radius: .65rem; }
   .rpdf-pages { gap: .45rem; }
+  .rpdf-page { grid-template-columns: minmax(0,1fr); width: 100% !important; }
+  .rpdf-source-pane { width: 100% !important; }
+  .rpdf-translation-pane { min-height: 260px; }
   .rpdf-selection-actions { position: sticky; bottom: max(.25rem, env(safe-area-inset-bottom, 0px)); border-radius: 1rem; width: 100%; }
   .rpdf-selection-actions span { flex-basis: 100%; text-align: center; }
   .rpdf-selection-actions button { flex: 1 1 28%; min-width: 0; padding-inline: .35rem; font-size: .82rem; }
