@@ -1153,7 +1153,8 @@ input[type="checkbox"], input[type="radio"] {
 /* --- عارض الصور بملء الشاشة (أسلوب فيسبوك) --- */
 .researcher-image-lightbox { position: fixed; inset: 0; z-index: 999; background: rgba(4, 6, 12, .94); display: grid; place-items: center; padding: 1rem; cursor: zoom-out; animation: veilIn 200ms ease; }
 .researcher-image-lightbox[hidden] { display: none; }
-.researcher-image-lightbox img { max-width: 100%; max-height: 92vh; max-height: 92dvh; object-fit: contain; border-radius: .5rem; box-shadow: 0 8px 40px rgba(0,0,0,.5); cursor: default; }
+.researcher-image-lightbox img { max-width: 100%; max-height: 92vh; max-height: 92dvh; object-fit: contain; border-radius: .5rem; box-shadow: 0 8px 40px rgba(0,0,0,.5); cursor: zoom-in; touch-action: none; user-select: none; -webkit-user-drag: none; transition: transform .22s ease; transform: scale(1); will-change: transform; }
+.researcher-image-lightbox img.is-zoomed { transform: scale(2); cursor: zoom-out; }
 .researcher-lightbox-close { position: absolute; top: calc(.9rem + env(safe-area-inset-top, 0px)); inset-inline-end: 1rem; width: 42px; height: 42px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; }
 .researcher-lightbox-close:hover { background: rgba(255,255,255,.28); }
 /* --- زر عرض التفاصيل أسفل الصورة --- */
@@ -1167,6 +1168,15 @@ input[type="checkbox"], input[type="radio"] {
 .rpdf-action:hover { background: var(--teal-soft); border-color: var(--teal); }
 .rpdf-action:active { transform: scale(.95); }
 .rpdf-action[hidden] { display: none; }
+.researcher-modal-discussion { display: grid; gap: .7rem; margin-top: .2rem; padding-top: .9rem; border-top: 1px solid var(--line-soft); }
+.researcher-modal-discussion[hidden] { display: none; }
+.researcher-modal-discussion-form { display: grid; gap: .65rem; }
+.researcher-modal-discussion-form > input,
+.researcher-modal-discussion-form > textarea { width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: .65rem .8rem; background: var(--surface-2); color: var(--ink); font: inherit; }
+.researcher-modal-discussion-form > textarea { resize: vertical; min-height: 5rem; }
+.researcher-modal-discussion-form .composer-footer { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.researcher-modal-discussion-locked { display: grid; gap: .3rem; padding: .8rem; border-radius: 14px; background: var(--surface-2); color: var(--muted); font-size: .84rem; }
+.researcher-modal-discussion-locked strong { color: var(--ink); }
 .researcher-modal-close { position: absolute; inset-block-start: .75rem; inset-inline-end: .75rem; z-index: 2; width: 2.25rem; height: 2.25rem; border: 1px solid rgba(255, 255, 255, .7); border-radius: 50%; background: rgba(7, 14, 27, .62); color: #fff; font-size: 1.45rem; line-height: 1; cursor: pointer; }
 .researcher-modal-close:hover { background: rgba(7, 14, 27, .86); }
 .researcher-material-modal-media { display: grid; place-items: center; min-height: 300px; padding: 1.25rem; background: var(--surface-2); }

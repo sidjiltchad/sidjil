@@ -111,7 +111,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-rounded-corners-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-image-discussion-actions">
 ${head}
 </head>
 <body>
@@ -166,7 +166,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-rounded-corners-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-image-discussion-actions">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -1294,6 +1294,7 @@ const SJ_ICONS = {
 };
 
 function researcherLayout({ title, active, user, body }) {
+  const canCreateDiscussion = Number(user?.is_verified) === 1;
   const nav = RESEARCHER_NAV.map(([key, href, label]) =>
     `<a href="${href}" class="nav-item${active === key ? ' active' : ''}">${esc(label)}</a>`
   ).join('');
@@ -1320,7 +1321,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-rounded-corners-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-image-discussion-actions">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1392,8 +1393,22 @@ ${csrfMeta}
       <div class="researcher-material-modal-actions researcher-pdf-actions">
         <button class="rpdf-action" id="researcherMaterialModalTranslate" type="button" data-translate-document hidden><span class="rpdf-action-icon" aria-hidden="true">🌐</span><span class="rpdf-action-label">ترجمة الكتاب</span></button>
         <a class="rpdf-action" id="researcherMaterialModalDownload" href="#" hidden><span class="rpdf-action-icon" aria-hidden="true">⬇️</span><span class="rpdf-action-label">تنزيل PDF الأصلي</span></a>
-        <a class="rpdf-action" id="researcherMaterialModalDiscussion" href="/researcher/discussions"><span class="rpdf-action-icon" aria-hidden="true">💬</span><span class="rpdf-action-label">فتح النقاش</span></a>
+        <button class="rpdf-action" id="researcherMaterialModalDiscussion" type="button" aria-expanded="false" aria-controls="researcherMaterialModalDiscussionPanel"><span class="rpdf-action-icon" aria-hidden="true">💬</span><span class="rpdf-action-label">فتح النقاش</span></button>
       </div>
+      <section class="researcher-modal-discussion" id="researcherMaterialModalDiscussionPanel" hidden>
+        ${canCreateDiscussion ? `<form class="researcher-modal-discussion-form" id="researcherMaterialModalDiscussionForm" data-inline-discussion data-material="">
+          <div class="fb-kind-chips" role="group" aria-label="نوع المشاركة">
+            <label class="fb-kind-chip"><input type="radio" name="kind" value="comment" checked><span>💬 تعليق</span></label>
+            <label class="fb-kind-chip"><input type="radio" name="kind" value="text"><span>📝 تلخيص</span></label>
+            <label class="fb-kind-chip"><input type="radio" name="kind" value="review"><span>✦ مراجعة</span></label>
+            <label class="fb-kind-chip"><input type="radio" name="kind" value="critique"><span>⚖ نقد</span></label>
+            <label class="fb-kind-chip"><input type="radio" name="kind" value="idea"><span>💡 فكرة</span></label>
+          </div>
+          <input name="title" required maxlength="200" placeholder="عنوان المشاركة" aria-label="عنوان المشاركة">
+          <textarea name="body" rows="3" required maxlength="20000" placeholder="اكتب تعليقك أو تلخيصك أو مراجعتك..." aria-label="نص المشاركة"></textarea>
+          <div class="composer-footer"><span class="muted small">ستُنشر المشاركة مرتبطة بهذه المادة.</span><button class="btn btn-primary btn-sm" type="submit">نشر</button></div>
+        </form>` : `<div class="researcher-modal-discussion-locked"><strong>المشاركة متاحة بعد توثيق الحساب.</strong><span>يمكنك اختيار تعليق أو تلخيص أو مراجعة بعد اعتماد حسابك.</span></div>`}
+      </section>
     </div>
   </div>
 </div>
@@ -1403,7 +1418,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261003-rpdf1"></script>
-<script src="/researcher-feed-v5.js?v=20261004-app-login" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-image-discussion-actions" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
 (() => {

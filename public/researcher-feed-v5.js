@@ -145,7 +145,20 @@ function openResearcherMaterialModal(trigger) {
       download.removeAttribute('href');
     }
   }
-  discussion.href = materialId ? `/researcher/discussions?material_id=${encodeURIComponent(materialId)}` : '/researcher/discussions';
+  discussion.dataset.materialId = materialId;
+  discussion.setAttribute('aria-expanded', 'false');
+  const discussionPanel = document.getElementById('researcherMaterialModalDiscussionPanel');
+  const discussionForm = document.getElementById('researcherMaterialModalDiscussionForm');
+  if (discussionPanel) discussionPanel.hidden = true;
+  if (discussionForm) {
+    discussionForm.dataset.material = materialId;
+    const titleField = discussionForm.querySelector('[name="title"]');
+    const bodyField = discussionForm.querySelector('[name="body"]');
+    if (titleField) titleField.value = d.materialTitle || '';
+    if (bodyField) bodyField.value = '';
+    const defaultKind = discussionForm.querySelector('input[name="kind"][value="comment"]');
+    if (defaultKind) defaultKind.checked = true;
+  }
   modal.hidden = false;
   document.body.classList.add('researcher-modal-open');
   const close = modal.querySelector('[data-researcher-modal-close]');
@@ -170,6 +183,43 @@ function openImageLightbox(src, alt) {
     box.className = 'researcher-image-lightbox';
     box.hidden = true;
     box.innerHTML = '<button class="researcher-lightbox-close" type="button" aria-label="إغلاق">×</button><img alt="">';
+    const lightboxImage = box.querySelector('img');
+    let pointerStart = null;
+    let suppressLightboxClick = false;
+    lightboxImage.tabIndex = 0;
+    lightboxImage.setAttribute('role', 'button');
+    lightboxImage.setAttribute('aria-label', 'اضغط لتكبير الصورة أو تصغيرها');
+    lightboxImage.title = 'اضغط لتكبير الصورة';
+    lightboxImage.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (suppressLightboxClick) { suppressLightboxClick = false; return; }
+      lightboxImage.classList.toggle('is-zoomed');
+      lightboxImage.title = lightboxImage.classList.contains('is-zoomed') ? 'اضغط لإعادة حجم الصورة' : 'اضغط لتكبير الصورة';
+    });
+    lightboxImage.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        lightboxImage.click();
+      }
+    });
+    box.addEventListener('pointerdown', (event) => {
+      if (event.target === lightboxImage) {
+        pointerStart = { x: event.clientX, y: event.clientY };
+        try { lightboxImage.setPointerCapture(event.pointerId); } catch (_) { /* قد لا يدعم المتصفح التقاط المؤشر */ }
+      }
+    });
+    box.addEventListener('pointerup', (event) => {
+      if (!pointerStart) return;
+      const deltaX = event.clientX - pointerStart.x;
+      const deltaY = event.clientY - pointerStart.y;
+      pointerStart = null;
+      if (Math.abs(deltaY) > 76 && Math.abs(deltaY) > Math.abs(deltaX) * 1.2) {
+        suppressLightboxClick = true;
+        setTimeout(() => { suppressLightboxClick = false; }, 500);
+        closeImageLightbox();
+      }
+    });
+    box.addEventListener('pointercancel', () => { pointerStart = null; });
     box.addEventListener('click', (e) => {
       if (e.target === box || e.target.closest('.researcher-lightbox-close')) closeImageLightbox();
     });
@@ -178,6 +228,8 @@ function openImageLightbox(src, alt) {
   const img = box.querySelector('img');
   img.src = src;
   img.alt = alt || '';
+  img.classList.remove('is-zoomed');
+  img.title = 'اضغط لتكبير الصورة';
   box.hidden = false;
   document.body.style.overflow = 'hidden';
 }
@@ -210,6 +262,17 @@ function initResearcherPage() {
     if (event.target.closest('[data-researcher-modal-close]')) {
       event.preventDefault();
       closeResearcherMaterialModal();
+      return;
+    }
+    if (event.target.closest('#researcherMaterialModalDiscussion')) {
+      event.preventDefault();
+      const button = document.getElementById('researcherMaterialModalDiscussion');
+      const panel = document.getElementById('researcherMaterialModalDiscussionPanel');
+      if (button && panel) {
+        panel.hidden = !panel.hidden;
+        button.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+        if (!panel.hidden) panel.querySelector('textarea[name="body"]')?.focus();
+      }
       return;
     }
     const modal = document.getElementById('researcherMaterialModal');
