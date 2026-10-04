@@ -717,14 +717,18 @@ async function admMaterialsList(env, url, user) {
   }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const fromSql = 'FROM materials m LEFT JOIN admin_users u ON u.id = m.created_by';
+  // Use validated integer literals for the look-ahead limit. This keeps the
+  // extra row available on D1 edge runtimes so cursor pagination is reliable.
+  const limitSql = `LIMIT ${perPage + 1}`;
+  const offsetSql = cursor ? '' : ` OFFSET ${offset}`;
   const [itemsRes, countRow] = await Promise.all([
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.year, m.date_text, m.language,
               m.publish_status, m.review_note, m.translation_status, m.transcription_status,
               m.updated_at, u.username AS creator
-       ${fromSql}${whereSql} ORDER BY m.updated_at DESC, m.id DESC LIMIT ? OFFSET ?`
+       ${fromSql}${whereSql} ORDER BY m.updated_at DESC, m.id DESC ${limitSql}${offsetSql}`
     )
-      .bind(...binds, perPage + 1, offset)
+      .bind(...binds)
       .all(),
     env.DB.prepare(`SELECT COUNT(*) AS c ${fromSql}${countWhereSql}`).bind(...countBinds).first(),
   ]);
