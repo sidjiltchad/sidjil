@@ -2762,6 +2762,54 @@ async function researcherMaterialTextApi(env, user, req) {
   });
 }
 
+async function researcherSearchApi(env, user, req) {
+  const url = new URL(req.url);
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 120);
+  if (q.length < 2) return researcherJson({ html: '', groups: [], hasMore: false });
+  const limit = Math.min(12, Math.max(4, Number(url.searchParams.get('limit')) || 8));
+  const fts = buildResearcherFtsQuery(q);
+  const materialJoin = fts ? ' JOIN materials_fts ON materials_fts.ark = m.ark' : '';
+  const materialWhere = fts ? ' WHERE materials_fts MATCH ? AND m.publish_status = \'published\'' : ' WHERE m.publish_status = \'published\' AND (m.ark LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.description LIKE ?)';
+  const materialParams = fts ? [fts, limit] : [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, limit];
+  const [materials, researchers, discussions, replies] = await Promise.all([
+    env.DB.prepare(`SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text, m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
+      creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
+      s.name_ar AS source_name_ar, s.name AS source_name, p.name_ar AS place_name, mai.cover_file_id AS thumb_id, mai.pdf_file_id AS pdf_id, 0 AS discussions_count
+      FROM materials m${materialJoin}
+      LEFT JOIN material_assets_index mai ON mai.material_id = m.id
+      LEFT JOIN sources s ON s.id = m.source_id LEFT JOIN places p ON p.id = m.place_id
+      LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
+      ${materialWhere}
+      ORDER BY m.updated_at DESC, m.id DESC LIMIT ?`).bind(...materialParams).all(),
+    env.DB.prepare(`SELECT id, username, display_name, avatar_url, avatar_r2_key, job_title, specialty, bio, updated_at
+      FROM admin_users WHERE role = 'researcher' AND is_active = 1 AND is_public_profile = 1
+      AND (display_name LIKE ? OR username LIKE ? OR job_title LIKE ? OR specialty LIKE ? OR bio LIKE ?)
+      ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT ?`)
+      .bind(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, limit).all(),
+    env.DB.prepare(`SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at, COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+      m.title_ar AS material_title, m.ark AS material_ark, 0 AS replies_count
+      FROM discussions d JOIN admin_users u ON u.id = d.author_id LEFT JOIN materials m ON m.id = d.material_id
+      WHERE d.status = 'published' AND (d.title LIKE ? OR d.body LIKE ? OR m.title_ar LIKE ?)
+      ORDER BY d.created_at DESC, d.id DESC LIMIT ?`).bind(`%${q}%`, `%${q}%`, `%${q}%`, limit).all(),
+    env.DB.prepare(`SELECT r.id, r.author_id, r.body, r.created_at, COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+      d.title AS discussion_title, d.id AS discussion_id
+      FROM discussion_replies r JOIN discussions d ON d.id = r.discussion_id AND d.status = 'published'
+      JOIN admin_users u ON u.id = r.author_id
+      WHERE r.status = 'published' AND r.body LIKE ?
+      ORDER BY r.created_at DESC, r.id DESC LIMIT ?`).bind(`%${q}%`, limit).all(),
+  ]);
+  const groups = [];
+  const materialRows = materials.results || [];
+  if (materialRows.length) groups.push(`<section class="researcher-search-group"><h2>المواد <small>${materialRows.length}</small></h2><div class="researcher-published-feed">${materialRows.map(m => researcherMaterialCard(m, 'discover', Number(user.is_verified) === 1)).join('')}</div></section>`);
+  const researcherRows = researchers.results || [];
+  if (researcherRows.length) groups.push(`<section class="researcher-search-group"><h2>الباحثون <small>${researcherRows.length}</small></h2><div class="researcher-search-people">${researcherRows.map(r => { const name = r.display_name || r.username || 'باحث'; const initial = name.trim().slice(0, 1) || 'ب'; const src = r.avatar_r2_key ? `/researcher/avatar/${encodeURIComponent(r.id)}` : String(r.avatar_url || '').trim(); const avatar = src ? `<img class="researcher-avatar small" src="${esc(src)}" alt="${esc(name)}">` : `<span class="researcher-avatar small" aria-hidden="true">${esc(initial)}</span>`; return `<a class="social-card researcher-search-person" href="/researcher/profile/${r.id}">${avatar}<span><strong>${esc(name)}</strong><small>${esc(r.job_title || r.specialty || 'باحث')}</small></span></a>`; }).join('')}</div></section>`);
+  const discussionRows = discussions.results || [];
+  if (discussionRows.length) groups.push(`<section class="researcher-search-group"><h2>النقاشات <small>${discussionRows.length}</small></h2><div class="researcher-community-feed">${discussionRows.map(d => researcherDiscussionCard(d)).join('')}</div></section>`);
+  const replyRows = replies.results || [];
+  if (replyRows.length) groups.push(`<section class="researcher-search-group"><h2>الردود <small>${replyRows.length}</small></h2><div class="researcher-search-replies">${replyRows.map(r => `<a class="social-card researcher-search-reply" href="/researcher/discussions?discussion_id=${encodeURIComponent(r.discussion_id)}"><strong>${esc(r.author_name)}</strong><small>رد على: ${esc(r.discussion_title || 'نقاش')}</small><p>${esc(String(r.body || '').slice(0, 300))}</p></a>`).join('')}</div></section>`);
+  return researcherJson({ html: groups.join('') || `<div class="social-card empty-state">لا توجد نتائج للبحث عن «${esc(q)}».</div>`, groups: ['materials', 'researchers', 'discussions', 'replies'], hasMore: false });
+}
+
 export async function renderResearcher(pathname, req, env, user) {
   if (!user) return redirect('/admin/login');
   if (user.role === 'admin') return redirect('/admin');
@@ -2771,6 +2819,7 @@ export async function renderResearcher(pathname, req, env, user) {
     return redirect('/researcher/account?force_password=1');
   }
   if (clean === '/researcher/material-text' && req.method === 'GET') return researcherMaterialTextApi(env, user, req);
+  if (clean === '/researcher/search' && req.method === 'GET') return researcherSearchApi(env, user, req);
   if (clean === '/researcher/feed' && req.method === 'GET') return researcherFeedPartial(env, user, req);
   if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user, req));
   if (clean === '/researcher/materials') return htmlRes(await researcherMaterialsPage(env, user, req));

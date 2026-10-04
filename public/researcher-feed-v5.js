@@ -449,14 +449,9 @@ function initResearcherLiveSearch() {
     if (controller) controller.abort();
     controller = new AbortController();
     const currentRequest = ++requestId;
-    const params = new URLSearchParams({
-      feed: feed?.dataset.feed || 'discover',
-      limit: '18',
-      search: term,
-    });
-    if (feed?.dataset.section) params.set('section', feed.dataset.section);
+    const params = new URLSearchParams({ q: term, limit: '8' });
     try {
-      const response = await fetch(`/researcher/feed?${params.toString()}`, {
+      const response = await fetch(`/researcher/search?${params.toString()}`, {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
         signal: controller.signal,

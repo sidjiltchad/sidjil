@@ -928,6 +928,17 @@ input[type="checkbox"], input[type="radio"] {
 .researcher-feed-image, .researcher-feed-placeholder { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 12px; object-fit: cover; background: var(--surface-2); }
 .researcher-feed-placeholder { display: grid; place-items: center; color: var(--muted); }
 .researcher-feed-excerpt { margin: .7rem 0 0; color: var(--muted); font-size: .86rem; line-height: 1.8; }
+.researcher-search-group { margin: 0 0 1.1rem; }
+.researcher-search-group h2 { display: flex; align-items: baseline; gap: .45rem; margin: 0 0 .65rem; font-size: 1rem; }
+.researcher-search-group h2 small { color: var(--muted); font-size: .72rem; font-weight: 600; }
+.researcher-search-people, .researcher-search-replies { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.researcher-search-person { display: flex; align-items: center; gap: .7rem; padding: .8rem; color: var(--ink); text-decoration: none; }
+.researcher-search-person:hover, .researcher-search-reply:hover { border-color: var(--teal); }
+.researcher-search-person > span { display: grid; min-width: 0; gap: .18rem; }
+.researcher-search-person small, .researcher-search-reply small { color: var(--muted); font-size: .76rem; }
+.researcher-search-reply { display: grid; gap: .25rem; padding: .85rem; color: var(--ink); text-decoration: none; }
+.researcher-search-reply p { margin: .3rem 0 0; color: var(--muted); line-height: 1.7; }
+@media (max-width: 680px) { .researcher-search-people, .researcher-search-replies { grid-template-columns: 1fr; } }
 .researcher-feed-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .25rem; margin-top: .85rem; padding-top: .7rem; border-top: 1px solid var(--line-soft); }
 .researcher-feed-actions a { padding: .3rem .4rem; color: var(--teal); font-size: .78rem; text-decoration: none; }
 .researcher-feed-actions a:hover { color: var(--gold-deep); }
