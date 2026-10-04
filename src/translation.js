@@ -231,6 +231,9 @@ async function downloadJob(req, env, jobId) {
 
 async function internalUpdate(req, env, jobId) {
   if (!env.TRANSLATION_SERVICE_TOKEN || !constantTime(req.headers.get('X-Sidjil-Service-Token'), env.TRANSLATION_SERVICE_TOKEN)) return fail('غير مصرح', 401);
+  const existing = await env.DB.prepare('SELECT status FROM translation_jobs WHERE id = ?').bind(jobId).first();
+  if (!existing) return fail('الطلب غير موجود', 404);
+  if (existing.status === 'CANCELLED') return json({ success: true, ignored: true });
   let body; try { body = await req.json(); } catch (_) { return fail('بيانات غير صالحة'); }
   const status = String(body.status || ''); const progress = Math.max(0, Math.min(100, Number(body.progress) || 0)); const stage = JOB_STAGES.has(body.currentStage) ? body.currentStage : status;
   if (!JOB_STAGES.has(status)) return fail('حالة غير صالحة');
@@ -256,8 +259,9 @@ async function internalInput(req, env, jobId) {
 
 async function internalOutput(req, env, jobId) {
   if (!env.TRANSLATION_SERVICE_TOKEN || !constantTime(req.headers.get('X-Sidjil-Service-Token'), env.TRANSLATION_SERVICE_TOKEN)) return fail('غير مصرح', 401);
-  const job = await env.DB.prepare('SELECT fingerprint FROM translation_jobs WHERE id = ?').bind(jobId).first();
+  const job = await env.DB.prepare('SELECT fingerprint, status FROM translation_jobs WHERE id = ?').bind(jobId).first();
   if (!job?.fingerprint) return fail('الطلب غير موجود', 404);
+  if (job.status === 'CANCELLED') return fail('وظيفة الترجمة أُلغيت', 410, 'JOB_CANCELLED');
   const len = Number(req.headers.get('content-length') || 0);
   const max = Number((await settings(env.DB)).max_pdf_bytes || 52428800) * 2;
   if (len && len > max) return fail('ملف الإخراج يتجاوز الحد المسموح', 413, 'OUTPUT_TOO_LARGE');
@@ -272,6 +276,31 @@ async function internalOutput(req, env, jobId) {
 
 export async function routeTranslationApi(req, env) {
   const path = pathNorm(new URL(req.url).pathname);
+  let manualMatch = path.match(/^\/api\/v1\/manual-translations\/([0-9a-f-]+)\/file$/i);
+  if (manualMatch && req.method === 'GET') {
+    const format = new URL(req.url).searchParams.get('format') === 'docx' ? 'docx' : 'pdf';
+    const row = await env.DB.prepare(`SELECT mt.* FROM manual_translations mt
+      JOIN materials m ON m.id = mt.material_id
+      WHERE mt.id = ? AND m.publish_status = 'published'`).bind(manualMatch[1]).first();
+    if (!row) return fail('الترجمة غير موجودة', 404);
+    const key = format === 'docx' ? row.docx_key : row.pdf_key;
+    const filename = format === 'docx' ? row.docx_filename : row.pdf_filename;
+    const object = await env.FILES.get(key, req.headers.has('range') && format === 'pdf' ? { range: req.headers } : undefined);
+    if (!object) return fail('ملف الترجمة غير موجود', 404);
+    const disposition = format === 'pdf' && !new URL(req.url).searchParams.has('download') ? 'inline' : 'attachment';
+    const headers = new Headers({ 'content-type': format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'content-disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(filename)}`, 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' });
+    if (object.size != null) headers.set('content-length', String(object.size));
+    if (object.range) { headers.set('content-range', `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${format === 'pdf' ? row.pdf_size : row.docx_size}`); headers.set('accept-ranges', 'bytes'); return new Response(object.body, { status: 206, headers }); }
+    return new Response(object.body, { headers });
+  }
+  manualMatch = path.match(/^\/api\/v1\/documents\/([^/]+)\/manual-translations$/);
+  if (manualMatch && req.method === 'GET') {
+    const material = await materialById(env.DB, decodeURIComponent(manualMatch[1]));
+    if (!material) return fail('المادة غير موجودة', 404);
+    const rows = await env.DB.prepare(`SELECT id, source_language, target_language, note, created_at
+      FROM manual_translations WHERE material_id = ? ORDER BY created_at DESC`).bind(material.id).all();
+    return json({ translations: rows.results || [] });
+  }
   if (path === '/api/v1/translate/settings' && req.method === 'GET') return translationSettings(req, env);
   if (path === '/api/v1/translate/text' && req.method === 'POST') return translateText(req, env);
   if (path === '/api/v1/translate/ocr-page' && req.method === 'POST') return ocrPage(req, env);

@@ -812,6 +812,8 @@ async function documentPage(ctx, ark) {
     m = null;
   }
   if (!m || m.publish_status !== 'published') return notFoundPage(ctx);
+  const manualTranslations = await db.prepare(`SELECT id, source_language, target_language, note, created_at
+    FROM manual_translations WHERE material_id = ? ORDER BY created_at DESC`).bind(m.id).all().catch(() => ({ results: [] }));
 
   // عدّاد المشاهدات (§views.js)
   try { await db.prepare(`UPDATE materials SET views = views + 1 WHERE id = ?`).bind(m.id).run(); } catch (e) {}
@@ -964,6 +966,15 @@ async function documentPage(ctx, ark) {
       <h2 class="doc-section-title">${esc(t(lang, 'translation_label'))}
         <span class="status-badge status-${esc(m.translation_status)}">${esc(translationStatusLabel(lang, m.translation_status))}</span>
       </h2><p class="empty">${esc(t(lang, 'no_translation'))}</p></section>`;
+  }
+  if (manualTranslations.results?.length) {
+    const cards = manualTranslations.results.map((tr) => `<article class="manual-translation-card">
+      <h3>${esc(tr.source_language.toUpperCase())} → ${esc(tr.target_language.toUpperCase())}</h3>
+      ${tr.note ? `<p>${esc(tr.note)}</p>` : ''}
+      <div class="manual-translation-actions"><a class="btn btn-primary" href="/api/v1/manual-translations/${esc(tr.id)}/file?format=pdf" target="_blank" rel="noopener">قراءة الترجمة PDF</a><a class="btn btn-ghost" href="/api/v1/manual-translations/${esc(tr.id)}/file?format=pdf&download=1">تنزيل PDF المنسق</a><a class="btn btn-ghost" href="/api/v1/manual-translations/${esc(tr.id)}/file?format=docx">تنزيل Word</a></div>
+      <iframe class="manual-translation-pdf" src="/api/v1/manual-translations/${esc(tr.id)}/file?format=pdf" title="ترجمة ${esc(title)}" loading="lazy"></iframe>
+    </article>`).join('');
+    translationHTML = `<section class="doc-section" id="translation"><h2 class="doc-section-title">الترجمات المنسقة</h2><p class="hint">نسخ بشرية مرفوعة من الإدارة، متاحة للقراءة والتنزيل إلى جانب المادة الأصلية.</p><div class="manual-translation-list">${cards}</div></section>` + translationHTML;
   }
 
   /* --- مواد ذات صلة --- */

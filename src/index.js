@@ -85,7 +85,7 @@ export default {
     }
 
     // ترجمة المحتوى: API خفيف داخل العامل، ومعالجة PDF/OCR في خدمة منفصلة.
-    if (pathname.startsWith('/api/v1/translate/') || pathname.startsWith('/api/v1/documents/')) {
+    if (pathname.startsWith('/api/v1/translate/') || pathname.startsWith('/api/v1/documents/') || pathname.startsWith('/api/v1/manual-translations/')) {
       const res = await routeTranslationApi(request, env);
       if (res) return res;
     }

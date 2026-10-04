@@ -282,9 +282,10 @@ async function dashboardPage(env, user) {
 }
 
 // ---------- الترجمة: مؤشرات الكاش والـJobs ----------
-async function translationPage(env, user) {
+async function translationPage(env, user, req) {
   const db = env.DB;
-  const [today, hits, misses, active, failed, pages, settings, pdfMaterials, recentJobs] = await Promise.all([
+  const search = String(new URL(req.url).searchParams.get('q') || '').trim();
+  const [today, hits, misses, active, failed, pages, settings, pdfMaterials, recentJobs, manualRows] = await Promise.all([
     db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE created_at >= date('now')").first(),
     db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE event = 'cache_hit'").first(),
     db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE event = 'cache_miss'").first(),
@@ -302,6 +303,9 @@ async function translationPage(env, user) {
       m.ark, m.title_ar, m.title_orig
       FROM translation_jobs j LEFT JOIN materials m ON m.id = j.material_id
       ORDER BY j.created_at DESC LIMIT 100`).all(),
+    db.prepare(`SELECT mt.id, mt.material_id, mt.source_language, mt.target_language, mt.created_at,
+      m.ark, m.title_ar, m.title_orig FROM manual_translations mt
+      JOIN materials m ON m.id = mt.material_id ORDER BY mt.created_at DESC LIMIT 100`).all(),
   ]);
   let engine = null;
   if (env.TRANSLATION_SERVICE_URL && env.TRANSLATION_SERVICE_TOKEN) {
@@ -323,8 +327,22 @@ async function translationPage(env, user) {
     const percent = Math.max(0, Math.min(100, Number(j.progress || 0)));
     return `<tr data-translation-job-row="${esc(j.id)}"><td class="check-cell"><input type="checkbox" data-translation-job-check value="${esc(j.id)}" aria-label="تحديد وظيفة ${esc(j.id)}"></td><td><strong>${esc(title)}</strong><br><span class="mono small">${esc(j.ark || '')}</span></td><td dir="ltr">${esc(j.source_language)} → ${esc(j.target_language)}</td><td>${esc(j.output_mode)}</td><td><span class="translation-job-status status-${esc(String(j.status).toLowerCase())}">${esc(state)}</span><div class="admin-translation-progress"><i style="width:${percent}%"></i></div><span class="muted tiny">${percent}% · ${esc(j.current_stage || '')}</span></td><td class="muted small">${fmtDate(j.updated_at || j.created_at)}</td><td><button class="btn btn-sm btn-danger" type="button" data-translation-job-delete="${esc(j.id)}">حذف</button></td></tr>`;
   }).join('');
+  const matches = search ? await db.prepare(`SELECT id, ark, title_ar, title_orig FROM materials
+    WHERE publish_status = 'published' AND (title_ar LIKE ? OR title_orig LIKE ? OR ark LIKE ?)
+    ORDER BY updated_at DESC LIMIT 20`).bind(`%${search}%`, `%${search}%`, `%${search}%`).all() : { results: [] };
+  const manualMaterialRows = (matches.results || []).map((m) => `<article class="card"><strong>${esc(m.title_ar || m.title_orig || m.ark)}</strong> <span class="mono small">${esc(m.ark)}</span>
+    <form data-manual-translation-form data-material-id="${m.id}" enctype="multipart/form-data"><input type="hidden" name="material_id" value="${m.id}">
+      <label class="field"><span>من</span><select name="source_language" required><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option><option value="ar">العربية</option></select></label>
+      <label class="field"><span>إلى</span><select name="target_language" required><option value="ar">العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option></select></label>
+      <label class="field"><span>ملف Word المنسق (.docx)</span><input type="file" name="docx" accept=".docx" required></label>
+      <label class="field"><span>نسخة PDF المنسقة المطابقة</span><input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
+      <label class="field"><span>وصف اختياري</span><input name="note" maxlength="500"></label>
+      <button class="btn btn-primary" type="submit">رفع الترجمة</button><span data-upload-status aria-live="polite"></span>
+    </form></article>`).join('');
+  const manualList = (manualRows.results || []).map((r) => `<tr><td>${esc(r.title_ar || r.title_orig || r.ark)}<br><span class="mono small">${esc(r.ark)}</span></td><td dir="ltr">${esc(r.source_language)} → ${esc(r.target_language)}</td><td><a href="/api/v1/manual-translations/${esc(r.id)}/file?format=pdf" target="_blank" rel="noopener">PDF</a> · <a href="/api/v1/manual-translations/${esc(r.id)}/file?format=docx">Word</a></td><td>${esc(fmtDate(r.created_at))}</td></tr>`).join('');
   const body = `${pageHead('الترجمة', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div>
   <section class="card"><h2>محرك الترجمة المحلي</h2><dl class="meta-grid"><div><dt>المحرك</dt><dd>Ollama</dd></div><div><dt>النموذج</dt><dd>${esc(engine?.model || 'qwen3:8b')}</dd></div><div><dt>حالة Ollama</dt><dd>${esc(engineStatus)}</dd></div><div><dt>الطابور</dt><dd>${esc(engine?.queueLength ?? '—')} · النشط ${esc(engine?.activeAiJobs ?? '—')} / الحد ${esc(engine?.maxAiJobs ?? 1)}</dd></div><div><dt>الترجمات المكتملة</dt><dd>${esc(engine?.completedJobs ?? '—')}</dd></div><div><dt>المتوسط</dt><dd>${engine?.averageTranslationTimeSeconds != null ? `${esc(engine.averageTranslationTimeSeconds)} ثانية` : '—'}</dd></div><div><dt>ترجمة النصوص</dt><dd>${settings?.text_enabled ? 'مفعّلة' : 'معطلة'}</dd></div><div><dt>ترجمة المستندات</dt><dd>${settings?.document_enabled && env.TRANSLATION_SERVICE_URL ? 'مفعّلة' : 'بانتظار خدمة PDF'}</dd></div><div><dt>OCR</dt><dd>${settings?.ocr_enabled && env.TRANSLATION_SERVICE_URL ? 'مفعّل' : 'بانتظار خدمة المعالجة'}</dd></div><div><dt>سياسة الكاش</dt><dd>${esc(settings?.cache_retention_policy || 'PERSISTENT')}</dd></div></dl><p class="muted">تُترجم الكتب في الخلفية كاملة مع حفظ التقدم، ويستطيع الباحث متابعة النسبة وتنزيل الملف عند اكتماله. لا يُعرض Ollama للعامة.</p></section>
+  <section class="card"><h2>ترجمة الملفات يدويًا</h2><p class="muted">ارفع ملف Word منسقًا ونسخة PDF مطابقة له؛ تظهر ملفات الاتجاه اللغوي بجانب المادة ويُتاح PDF للقراءة والتنزيل. الترجمة الآلية باقية للمواد القادمة.</p><form method="get" action="/admin/translation" class="translation-admin-options"><label class="field"><span>ابحث عن المادة المنشورة بعنوانها أو رمزها</span><input name="q" value="${esc(search)}" required></label><button class="btn" type="submit">بحث</button></form>${search ? (manualMaterialRows || '<p class="empty">لا توجد مواد منشورة مطابقة.</p>') : '<p class="hint">ابحث عن عنوان الكتاب أو رمز المادة لبدء رفع ترجمتها.</p>'}<h3>الترجمات المرفوعة</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>المادة</th><th>الاتجاه</th><th>الملفات</th><th>تاريخ الرفع</th></tr></thead><tbody>${manualList || '<tr><td colspan="4" class="muted">لا توجد ملفات يدوية بعد.</td></tr>'}</tbody></table></div></section><script type="module" src="/js/admin-manual-translations.js?v=1"></script>
   <section class="card translation-management" data-translation-manage><div class="section-head"><div><h2>ترجمة ملفات جديدة</h2><p class="muted">اختر ملفًا أو عدة كتب، ولغة هدف واحدة أو عدة لغات، وابدأ وظائف مستقلة. يمكن اختيار لغة المصدر تلقائيًا أو تحديدها.</p></div></div><div class="translation-admin-grid"><label class="field"><span>الملفات (PDF)</span><select id="translationBatchMaterials" multiple size="7">${materialOptions || '<option disabled>لا توجد ملفات PDF</option>'}</select></label><div class="translation-admin-options"><label class="field"><span>لغة المصدر</span><select id="translationBatchSource">${langOptions}</select></label><label class="field"><span>لغات الهدف (متعدد)</span><select id="translationBatchTargets" multiple size="3">${targetOptions}</select></label><label class="field"><span>صيغة الإخراج</span><select id="translationBatchMode"><option value="translated">PDF مترجم</option><option value="bilingual">PDF ثنائي اللغة</option><option value="text">نص مترجم</option></select></label><label class="field"><span>OCR</span><select id="translationBatchOcr"><option value="auto">تلقائي</option><option value="advanced">متقدم</option><option value="off">معطل</option></select></label><button class="btn btn-primary" type="button" data-translation-batch-start>بدء الترجمة المحددة</button></div></div><p class="muted tiny">تُرسل الوظائف بالتتابع من الواجهة مع بقاء كل نتيجة قابلة للمراجعة والحذف من هذا القسم.</p></section>
   <section class="card translation-management"><div class="section-head"><div><h2>وظائف الترجمة</h2><p class="muted">الحالة والتقدم والملفات المولدة في مكان واحد.</p></div><div class="translation-cleanup"><label>حذف المكتمل الأقدم من <input id="translationCleanupDays" type="number" min="1" max="3650" value="30"> يومًا</label><button class="btn btn-sm btn-danger" type="button" data-translation-cleanup>تنظيف الوظائف القديمة</button></div></div><section class="card" data-glossary-manage><div class="section-head"><div><h2>مسرد المصطلحات</h2><p class="muted">تثبيت ترجمة الأسماء والمصطلحات (أسماء تشاد، الأماكن، الشخصيات) قبل الترجمة الآلية — تُطبق تلقائيًا على ترجمة النصوص.</p></div></div>
   <form class="translation-admin-options" data-glossary-form style="margin-bottom:1rem">
@@ -1267,7 +1285,7 @@ export async function renderAdmin(pathname, req, env, user) {
 
   const clean = pathname.replace(/\/+$/, '') || '/admin';
   if (clean === '/admin') return htmlRes(await dashboardPage(env, user));
-  if (clean === '/admin/translation') return htmlRes(await translationPage(env, user));
+  if (clean === '/admin/translation') return htmlRes(await translationPage(env, user, req));
   if (clean === '/admin/journal') return htmlRes(await journalAdminPage(env, user));
   if (clean === '/admin/materials') return htmlRes(await materialsListPage(env, user, req));
   if (clean === '/admin/materials/new') return htmlRes(await materialFormPage(env, user, 'new'));

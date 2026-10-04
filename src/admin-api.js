@@ -396,6 +396,7 @@ export async function routeAdminApi(req, env) {
   if (m && method === 'DELETE') return admTranslationDelete(env, user, req, parseInt(m[1], 10));
 
   // إدارة ترجمات المستندات الكاملة (وظائف الخلفية)
+  if (rest === 'manual-translations' && method === 'POST') return admManualTranslationUpload(env, user, req);
   if (rest === 'translation-jobs' && method === 'GET') return admTranslationJobsList(env, url);
   if (rest === 'translation-jobs/cleanup' && method === 'POST')
     return withJsonBody(req, (body) => admTranslationJobsCleanup(env, user, req, body));
@@ -1574,6 +1575,50 @@ async function admTranslationDelete(env, user, req, translationId) {
 }
 
 // ---------- إدارة وظائف ترجمة الملفات الكاملة ----------
+
+async function admManualTranslationUpload(env, user, req) {
+  let form;
+  try { form = await req.formData(); } catch { return err('تعذر قراءة الملفات المرفوعة'); }
+  const materialId = asInt(form.get('material_id'));
+  const source = String(form.get('source_language') || '').trim();
+  const target = String(form.get('target_language') || '').trim();
+  const docx = form.get('docx');
+  const pdf = form.get('pdf');
+  const note = String(form.get('note') || '').trim().slice(0, 500);
+  const langs = new Set(['ar', 'fr', 'en']);
+  if (!materialId || !langs.has(source) || !langs.has(target) || source === target) return err('تحقق من المادة واتجاه الترجمة');
+  if (!(docx instanceof File) || !(pdf instanceof File) || !docx.size || !pdf.size) return err('ملفا Word وPDF مطلوبان');
+  if (docx.size > 25 * 1024 * 1024 || pdf.size > 25 * 1024 * 1024) return err('الحد الأقصى لكل ملف 25 ميغابايت', 413);
+  if (!/\.docx$/i.test(docx.name) || !/\.pdf$/i.test(pdf.name)) return err('ارفع ملف DOCX وملف PDF فقط');
+  const [docxBytes, pdfBytes] = await Promise.all([docx.arrayBuffer(), pdf.arrayBuffer()]);
+  const docxHead = new Uint8Array(docxBytes, 0, Math.min(4, docxBytes.byteLength));
+  const pdfHead = new Uint8Array(pdfBytes, 0, Math.min(5, pdfBytes.byteLength));
+  if (docxHead[0] !== 0x50 || docxHead[1] !== 0x4b) return err('ملف Word غير صالح');
+  if (new TextDecoder().decode(pdfHead) !== '%PDF-') return err('ملف PDF غير صالح');
+  const material = await env.DB.prepare("SELECT id FROM materials WHERE id = ? AND publish_status = 'published'").bind(materialId).first();
+  if (!material) return err('المادة المنشورة غير موجودة', 404);
+  const translationId = crypto.randomUUID();
+  const prefix = `manual-translations/${materialId}/${translationId}`;
+  const docxKey = `${prefix}/translation.docx`;
+  const pdfKey = `${prefix}/translation.pdf`;
+  const docxName = safeName(docx.name) || 'translation.docx';
+  const pdfName = safeName(pdf.name) || 'translation.pdf';
+  try {
+    await Promise.all([
+      env.FILES.put(docxKey, docxBytes, { httpMetadata: { contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } }),
+      env.FILES.put(pdfKey, pdfBytes, { httpMetadata: { contentType: 'application/pdf' } }),
+    ]);
+    await env.DB.prepare(`INSERT INTO manual_translations
+      (id, material_id, source_language, target_language, docx_key, pdf_key, docx_filename, pdf_filename, docx_size, pdf_size, note, uploaded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(translationId, materialId, source, target, docxKey, pdfKey, docxName, pdfName, docx.size, pdf.size, note || null, user.id).run();
+  } catch (e) {
+    await Promise.all([env.FILES.delete(docxKey).catch(() => {}), env.FILES.delete(pdfKey).catch(() => {})]);
+    return err('تعذر حفظ الترجمة؛ لم يُسجل أي ملف', 500);
+  }
+  await audit(env.DB, { userId: user.id, action: 'manual_translation.upload', target: String(materialId), detail: `${source} → ${target}`, ip: clientIp(req) });
+  return json({ ok: true, id: translationId });
+}
 
 async function admTranslationJobsList(env, url) {
   const db = env.DB;

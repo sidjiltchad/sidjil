@@ -3679,3 +3679,10 @@ textarea { border-radius: var(--shape-control); }
 .notice,
 .table-wrap,
 .table-container { border-radius: var(--shape-card); }
+/* Uploaded, manually formatted document translations */
+.manual-translation-list { display: grid; gap: 1rem; }
+.manual-translation-card { border: 1px solid var(--border, #ddd); border-radius: 1rem; padding: 1rem; background: var(--surface, #fff); }
+.manual-translation-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+.manual-translation-pdf { display: block; width: 100%; height: min(78vh, 900px); border: 0; border-radius: .75rem; background: #f5f3ed; }
+.manual-translation-material form { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); align-items: end; gap: .75rem; margin-top: 1rem; }
+@media (max-width: 640px) { .manual-translation-pdf { height: 68vh; } .manual-translation-actions .btn { flex: 1 1 100%; } }
