@@ -2,7 +2,14 @@
 import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
-const PDF_RENDER_OPTIONS = { disableFontFace: false, useSystemFonts: true, isEvalSupported: true };
+const PDF_RENDER_OPTIONS = {
+  cMapUrl: '/vendor/pdfjs/cmaps/',
+  cMapPacked: true,
+  standardFontDataUrl: '/vendor/pdfjs/standard_fonts/',
+  disableFontFace: false,
+  useSystemFonts: true,
+  isEvalSupported: true
+};
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function mountTranslationWorkspace(root, config) {

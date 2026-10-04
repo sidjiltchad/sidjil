@@ -4,6 +4,13 @@
 import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+const PDF_RENDER_OPTIONS = {
+  cMapUrl: '/vendor/pdfjs/cmaps/',
+  cMapPacked: true,
+  standardFontDataUrl: '/vendor/pdfjs/standard_fonts/',
+  disableFontFace: false,
+  useSystemFonts: true
+};
 
 const api = (...a) => window.api(...a);
 const toast = (...a) => (window.toast ? window.toast(...a) : alert(a[0]));
@@ -178,7 +185,7 @@ export async function mount(container, { url, materialId, materialTitle }) {
 
   // ---------- التحميل ----------
   try {
-    state.doc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
+    state.doc = await pdfjsLib.getDocument({ url, withCredentials: true, ...PDF_RENDER_OPTIONS }).promise;
     if (state.cancelled) return;
     countEl.textContent = String(state.doc.numPages);
     render();

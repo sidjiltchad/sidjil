@@ -9,7 +9,14 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   if (!box) return;
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
-  var pdfRenderOptions = { disableFontFace: false, useSystemFonts: true, isEvalSupported: true };
+  var pdfRenderOptions = {
+    cMapUrl: '/vendor/pdfjs/cmaps/',
+    cMapPacked: true,
+    standardFontDataUrl: '/vendor/pdfjs/standard_fonts/',
+    disableFontFace: false,
+    useSystemFonts: true,
+    isEvalSupported: true
+  };
 
   var url = box.getAttribute('data-pdf');
   var canvas = box.querySelector('[data-pdf-canvas]');
