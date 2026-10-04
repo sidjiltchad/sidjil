@@ -1601,7 +1601,8 @@ function researcherMaterialCard(m, feed, verified) {
     ? `<button class="researcher-media-trigger" type="button" data-material-lightbox="/file/${m.thumb_id}" aria-label="عرض الصورة ${esc(title)}"><img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="${esc(title)}" loading="lazy"></button>`
     : `<button class="researcher-media-trigger researcher-feed-placeholder" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}">${esc(TYPE_LABELS[m.type] || m.type)}</button>`;
   const detailsButton = `<button class="researcher-details-btn" type="button" data-material-details ${materialData}>عرض التفاصيل</button>`;
-  const excerpt = m.summary || m.description || '';
+  const excerpt = (m.type === 'document' && ['auto', 'corrected'].includes(String(m.transcription_status || '')))
+    ? '' : (m.summary || m.description || '');
   const sourceDetails = [
     `المعرف الأرشيفي: ${m.ark}`,
     `نوع المادة: ${TYPE_LABELS[m.type] || m.type}`,
@@ -1751,7 +1752,7 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
     ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
     : 'ORDER BY m.updated_at DESC, m.id DESC';
   const query = `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
-            m.author, m.photographer, m.archive_ref, m.updated_at,
+            m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
             creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
             ${approvedAtSelect}
             s.name_ar AS source_name_ar, s.name AS source_name,
@@ -1838,7 +1839,7 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
   const [fMats, fDiscs] = await Promise.all([
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
-              m.author, m.photographer, m.archive_ref, m.updated_at,
+              m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
               m.updated_at AS sort_date,
               COALESCE(u.display_name, u.username, 'باحث') AS author_name,
               u.id AS creator_id, u.display_name AS creator_name, u.avatar_url AS creator_avatar_url, u.avatar_r2_key AS creator_avatar_r2_key,
