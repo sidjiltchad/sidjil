@@ -76,6 +76,28 @@ function restoreGlossaryTerms(text, map) {
   });
   return out;
 }
+
+// Preserve data that must survive translation byte-for-byte. Translation
+// models sometimes omit years, page numbers, archive references or URLs when
+// they are embedded in prose. Private-use markers keep those tokens out of
+// the model's linguistic decisions and are restored after the response.
+function protectImmutableTokens(text) {
+  const map = [];
+  const pattern = /(https?:\/\/[^\s]+|[\p{N}]+(?:[\s./:–—-]+[\p{N}]+)*)/gu;
+  const protectedText = String(text).replace(pattern, (token) => {
+    const index = map.push(token) - 1;
+    return `\uE100${index}\uE101`;
+  });
+  return { text: protectedText, map };
+}
+
+function restoreImmutableTokens(text, map) {
+  let out = String(text);
+  map.forEach((token, index) => {
+    out = out.split(`\uE100${index}\uE101`).join(token);
+  });
+  return out;
+}
 async function glossaryFingerprint(db, source, target) {
   const terms = await loadGlossary(db, source, target);
   if (!terms.length) return 'noglossary';
@@ -259,10 +281,12 @@ async function pageTranslation(req, env, value, pageNumber) {
       updated_at = datetime('now'), completed_at = NULL WHERE id = ?`).bind(sourceHash, sourceText, row.id).run();
   }
   try {
+    const immutable = protectImmutableTokens(sourceText);
     const glossaryTerms = await loadGlossary(env.DB, source, target);
-    const protected_ = protectGlossaryTerms(sourceText, glossaryTerms);
+    const protected_ = protectGlossaryTerms(immutable.text, glossaryTerms);
     const result = await new OllamaTranslationProvider(env).translate({ text: protected_.text, source, target });
-    const translatedText = restoreGlossaryTerms(result.translatedText, protected_.map);
+    const withGlossary = restoreGlossaryTerms(result.translatedText, protected_.map);
+    const translatedText = restoreImmutableTokens(withGlossary, immutable.map);
     const latest = await env.DB.prepare('SELECT id FROM translation_pages WHERE document_id = ? AND page_number = ?').bind(document.id, page).first();
     if (!latest) return fail('تعذر حفظ صفحة الترجمة', 500, 'PAGE_NOT_FOUND');
     await env.DB.prepare(`UPDATE translation_pages SET translated_text = ?, direction = ?, status = 'completed', progress = 100,

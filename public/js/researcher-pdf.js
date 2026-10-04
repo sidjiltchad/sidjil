@@ -107,16 +107,67 @@ export async function mount(container, { url, materialId, materialTitle }) {
   }
 
   function pageSourceText(textContent) {
-    const parts = [];
+    const rows = [];
     (textContent?.items || []).forEach((item) => {
       const value = String(item.str || '').replace(/\s+/g, ' ').trim();
       if (!value) return;
-      const previous = parts.length ? parts[parts.length - 1] : null;
-      if (previous && (item.hasEOL || /[.!؟:؛]$/.test(previous))) parts.push('\n');
-      else if (previous) parts.push(' ');
-      parts.push(value);
+      const y = Number(item.transform?.[5]);
+      const row = Number.isFinite(y) ? rows.find((candidate) => Math.abs(candidate.y - y) <= 3) : null;
+      if (row) row.items.push(value);
+      else rows.push({ y: Number.isFinite(y) ? y : rows.length, items: [value] });
     });
-    return parts.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (!rows.length) return '';
+    // PDF coordinates grow upward. Sorting by baseline makes extracted text
+    // follow the visible page instead of the internal glyph stream order.
+    rows.sort((a, b) => b.y - a.y);
+    return rows.map((row) => row.items.join(' ').trim()).filter(Boolean).join('\n')
+      .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function appendFormattedInline(parent, value) {
+    const parts = String(value).split(/(\*\*[^*]+\*\*)/g);
+    parts.forEach((part) => {
+      if (!part) return;
+      if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+        const strong = document.createElement('strong');
+        strong.textContent = part.slice(2, -2);
+        parent.appendChild(strong);
+      } else parent.appendChild(document.createTextNode(part));
+    });
+  }
+
+  function renderTranslatedBody(body, value) {
+    body.replaceChildren();
+    const lines = String(value || '').replace(/\r\n?/g, '\n').split('\n');
+    let paragraph = [];
+    const flush = () => {
+      const text = paragraph.join(' ').replace(/\s+/g, ' ').trim();
+      paragraph = [];
+      if (!text) return;
+      const node = document.createElement('p');
+      appendFormattedInline(node, text);
+      body.appendChild(node);
+    };
+    lines.forEach((raw, index) => {
+      const line = raw.trim();
+      if (!line) { flush(); return; }
+      const isQuote = /^(?:[«“\"]|>\s)/.test(line);
+      const isHeading = paragraph.length === 0 && line.length <= 120 &&
+        !/[.!؟:؛]$/.test(line) && (index === 0 || !lines[index - 1].trim());
+      if (isHeading) {
+        flush();
+        const heading = document.createElement('h3');
+        appendFormattedInline(heading, line);
+        body.appendChild(heading);
+      } else if (isQuote) {
+        flush();
+        const quote = document.createElement('blockquote');
+        appendFormattedInline(quote, line);
+        body.appendChild(quote);
+      } else paragraph.push(line);
+    });
+    flush();
+    if (!body.childNodes.length) body.textContent = String(value || '');
   }
 
   function updateTranslationProgress() {
@@ -151,7 +202,7 @@ export async function mount(container, { url, materialId, materialTitle }) {
         const translated = result?.page?.translated_text || '';
         if (!translated) throw new Error('لم يصل نص مترجم لهذه الصفحة');
         if (state.target !== target) return;
-        body.textContent = translated;
+        renderTranslatedBody(body, translated);
         body.dir = result?.page?.direction === 'ltr' || target === 'en' || target === 'fr' ? 'ltr' : 'rtl';
         body.lang = target;
         body.classList.remove('is-loading');
