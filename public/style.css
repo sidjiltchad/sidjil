@@ -3593,18 +3593,47 @@ body.translation-workspace-open { overflow: hidden; }
 [data-theme="dark"] .translation-workspace-head { background:#1c2330; }
 [data-theme="dark"] .translation-page-card, [data-theme="dark"] .translation-pane { background:#1a202b; }
 [data-theme="dark"] .translation-progress-wrap { background:#1c2330; }
+.translation-workspace-mobile-tabs { display:none; }
 @media (max-width:900px) {
   .translation-workspace-head { align-items:flex-start; flex-direction:column; }
   .translation-workspace-actions { width:100%; justify-content:flex-start; }
 }
 @media (max-width:700px) {
-  .translation-workspace-card { width:100vw; height:100dvh; max-height:100dvh; border-radius:0; }
-  .translation-workspace-panels { grid-template-columns:1fr; overflow:auto; }
-  .translation-pane { min-height:42dvh; }
-  .translation-pane-scroll { max-height:42dvh; }
-  .translation-workspace-heading { width:100%; }
-  .translation-workspace-actions { gap:.35rem; }
-  .translation-language select { max-width:8.5rem; }
+  .translation-action-modal { align-items:stretch; padding:0; }
+  .translation-workspace-card { width:100vw; height:100dvh; max-height:100dvh; border-radius:0; border:0; }
+  .translation-workspace { min-height:0; }
+  .translation-workspace-head { flex:0 0 auto; gap:.45rem; padding:calc(.45rem + env(safe-area-inset-top, 0px)) .65rem .55rem; }
+  .translation-workspace-heading { width:100%; gap:.45rem; padding-inline-end:2rem; }
+  .translation-workspace-heading h2 { flex:1; min-width:0; font-size:.88rem; }
+  .translation-workspace-kicker { font-size:.68rem; white-space:nowrap; }
+  .translation-workspace-page { font-size:.68rem; }
+  .translation-workspace-actions { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); width:100%; gap:.35rem; align-items:center; justify-content:stretch; }
+  .translation-language { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; gap:.15rem; font-size:.66rem; }
+  .translation-language > span { line-height:1.1; }
+  .translation-language select { width:100% !important; max-width:none; min-width:0; min-height:2rem !important; padding:.25rem .35rem !important; font-size:.76rem; }
+  .translation-arrow { padding-inline:.1rem; font-size:.82rem; }
+  .translation-workspace-actions .btn { min-height:2rem; padding:.3rem .45rem; border-radius:999px; font-size:.68rem; line-height:1.2; white-space:normal; }
+  .translation-workspace-actions [data-ta-download-original] { grid-column:1; }
+  .translation-workspace-actions [data-ta-download-translation] { grid-column:2; }
+  .translation-workspace-actions [data-ta-create-pdf] { grid-column:3; }
+  .translation-workspace .translation-action-close { position:absolute; top:calc(.35rem + env(safe-area-inset-top, 0px)); inset-inline-end:.5rem; width:2rem; height:2rem; padding:0; border:1px solid var(--line); border-radius:50%; background:var(--paper); font-size:1.35rem; }
+  .translation-progress-wrap { flex:0 0 auto; gap:.45rem; padding:.35rem .65rem; }
+  .translation-progress-track { height:.3rem; }
+  .translation-progress-label { min-width:2.5rem; font-size:.68rem; }
+  .translation-workspace-mobile-tabs { display:grid; grid-template-columns:1fr 1fr; gap:.25rem; flex:0 0 auto; padding:.35rem .65rem; border-bottom:1px solid var(--line); background:var(--paper); }
+  .translation-workspace-mobile-tabs button { min-height:2rem; border:1px solid transparent; border-radius:999px; background:transparent; color:var(--muted); font:inherit; font-size:.76rem; font-weight:700; }
+  .translation-workspace-mobile-tabs button[aria-selected="true"] { border-color:color-mix(in srgb, var(--gold) 50%, var(--line)); background:color-mix(in srgb, var(--gold) 13%, var(--paper)); color:var(--gold-deep); }
+  .translation-workspace-panels { display:flex; flex:1 1 auto; min-height:0; overflow:hidden; }
+  .translation-pane { display:none; width:100%; min-height:0; }
+  .translation-pane.is-mobile-active { display:flex; }
+  .translation-pane-head { flex:0 0 auto; gap:.4rem; padding:.45rem .65rem; font-size:.78rem; }
+  .translation-pane-head span { font-size:.67rem; }
+  .translation-pane-scroll { flex:1 1 auto; min-height:0; max-height:none; padding:.5rem; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+  .translation-page-card { width:100%; margin-bottom:.6rem; border-radius:10px; }
+  .translation-page-label { gap:.35rem; padding:.35rem .5rem; font-size:.68rem; }
+  .translation-page-label strong { font-size:.7rem; }
+  .translation-page-text { min-height:100px; padding:.7rem .75rem .85rem; font-size:.9rem; line-height:1.8; text-align:start; }
+  .translation-workspace-status { flex:0 0 auto; min-height:2rem; padding:.35rem .65rem max(.35rem, env(safe-area-inset-bottom, 0px)); font-size:.7rem; line-height:1.45; }
 }
 
 /* شريط سفلي للتطبيق (وضع standalone) */

@@ -44,15 +44,26 @@
         </div>
       </header>
       <div class="translation-progress-wrap" aria-live="polite"><div class="translation-progress-track"><div class="translation-progress-bar" data-ta-progress></div></div><span class="translation-progress-label" data-ta-progress-label>0%</span></div>
+      <div class="translation-workspace-mobile-tabs" role="tablist" aria-label="${lang === 'fr' ? 'Panneau de lecture' : 'لوحة القراءة'}">
+        <button type="button" role="tab" data-ta-mobile-tab="original" aria-controls="taOriginalPane" aria-selected="true">${lang === 'fr' ? 'Original' : 'الأصل'}</button>
+        <button type="button" role="tab" data-ta-mobile-tab="translated" aria-controls="taTranslatedPane" aria-selected="false">${lang === 'fr' ? 'Traduction' : 'الترجمة'}</button>
+      </div>
       <div class="translation-workspace-panels">
-        <section class="translation-pane translation-pane-original"><div class="translation-pane-head"><strong>${lang === 'fr' ? 'Fichier original' : 'الملف الأصلي'}</strong><span>${lang === 'fr' ? 'Défilement synchronisé' : 'التمرير متزامن'}</span></div><div class="translation-pane-scroll" data-ta-original-scroll></div></section>
-        <section class="translation-pane translation-pane-result"><div class="translation-pane-head"><strong>${lang === 'fr' ? 'Traduction en direct' : 'الترجمة الحية'}</strong><span data-ta-target-label>العربية</span></div><div class="translation-pane-scroll" data-ta-translated-scroll></div></section>
+        <section class="translation-pane translation-pane-original is-mobile-active" id="taOriginalPane" role="tabpanel"><div class="translation-pane-head"><strong>${lang === 'fr' ? 'Fichier original' : 'الملف الأصلي'}</strong><span>${lang === 'fr' ? 'Défilement synchronisé' : 'التمرير متزامن'}</span></div><div class="translation-pane-scroll" data-ta-original-scroll></div></section>
+        <section class="translation-pane translation-pane-result" id="taTranslatedPane" role="tabpanel"><div class="translation-pane-head"><strong>${lang === 'fr' ? 'Traduction en direct' : 'الترجمة الحية'}</strong><span data-ta-target-label>العربية</span></div><div class="translation-pane-scroll" data-ta-translated-scroll></div></section>
       </div>
       <footer class="translation-workspace-status" data-ta-status aria-live="polite">${lang === 'fr' ? 'Le livre sera traduit en arrière-plan, page par page.' : 'ستتم ترجمة الكتاب كاملًا في الخلفية صفحةً صفحة.'}</footer>
     </div>`);
     el.querySelector('.translation-action-card')?.classList.add('translation-workspace-card');
     document.body.classList.add('translation-workspace-open');
     el.querySelectorAll('[data-translation-close]').forEach((x) => x.addEventListener('click', close));
+    const mobileTabs = [...el.querySelectorAll('[data-ta-mobile-tab]')];
+    mobileTabs.forEach((tab) => tab.addEventListener('click', () => {
+      const selected = tab.dataset.taMobileTab;
+      mobileTabs.forEach((item) => item.setAttribute('aria-selected', String(item === tab)));
+      el.querySelector('.translation-pane-original')?.classList.toggle('is-mobile-active', selected === 'original');
+      el.querySelector('.translation-pane-result')?.classList.toggle('is-mobile-active', selected === 'translated');
+    }));
     try {
       const mod = await import('/js/pdf-translation-workspace.js?v=20261004-pdf-rtl-canvas');
       const workspace = mod.mountTranslationWorkspace(el.querySelector('[data-translation-workspace]'), { pdf, material, language: lang, labels, title, originalDownload, target: el.querySelector('[data-ta-target]')?.value || 'ar' });
