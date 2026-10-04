@@ -96,7 +96,7 @@
       el.querySelector('.translation-pane-result')?.classList.toggle('is-mobile-active', selected === 'translated');
     }));
     try {
-      const mod = await import('/js/pdf-translation-workspace.js?v=20261004-reader-live-v2');
+      const mod = await import('/js/pdf-translation-workspace.js?v=20261005-translation-speed-v1');
       const workspace = mod.mountTranslationWorkspace(el.querySelector('[data-translation-workspace]'), { pdf, material, language: lang, labels, title, originalDownload, target: el.querySelector('[data-ta-target]')?.value || 'ar' });
       el.querySelector('[data-ta-start-translation]')?.addEventListener('click', () => workspace.startBookTranslation());
       el.querySelector('[data-ta-create-pdf]')?.addEventListener('click', () => workspace.exportPdf());
