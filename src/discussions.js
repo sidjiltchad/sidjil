@@ -90,9 +90,10 @@ async function reactionCounts(db, discussionId) {
   return out;
 }
 
-export async function fetchDiscussions(db, { kind, materialId, page = 1, perPage = 15 } = {}) {
+export async function fetchDiscussions(db, { kind, materialId, page = 1, perPage = 15, cursor: cursorToken } = {}) {
   page = Math.max(1, parseInt(page, 10) || 1);
   perPage = Math.min(50, Math.max(1, parseInt(perPage, 10) || 15));
+  const cursor = decodeDiscussionCursor(cursorToken);
   const where = [`d.status = 'published'`];
   const binds = [];
   if (kind && DISCUSSION_KINDS.includes(kind)) {
@@ -103,10 +104,13 @@ export async function fetchDiscussions(db, { kind, materialId, page = 1, perPage
     where.push('d.material_id = ?');
     binds.push(parseInt(materialId, 10));
   }
+  const countWhereSql = 'WHERE ' + where.join(' AND ');
+  const countBinds = binds.slice();
+  if (cursor && Number.isInteger(Number(cursor.id))) { where.push('d.id < ?'); binds.push(Number(cursor.id)); }
   const whereSql = 'WHERE ' + where.join(' AND ');
   const total = await db
-    .prepare(`SELECT COUNT(*) AS c FROM discussions d ${whereSql}`)
-    .bind(...binds)
+    .prepare(`SELECT COUNT(*) AS c FROM discussions d ${countWhereSql}`)
+    .bind(...countBinds)
     .first();
   const rows = await db
     .prepare(
@@ -118,9 +122,12 @@ export async function fetchDiscussions(db, { kind, materialId, page = 1, perPage
        LEFT JOIN materials m ON m.id = d.material_id
        ${whereSql} ORDER BY d.id DESC LIMIT ? OFFSET ?`
     )
-    .bind(...binds, perPage, (page - 1) * perPage)
+    .bind(...binds, perPage + 1, cursor ? 0 : (page - 1) * perPage)
     .all();
-  return { items: rows.results, page, perPage, total: total.c, pages: Math.ceil(total.c / perPage) };
+  const rawItems = rows.results || [];
+  const items = rawItems.slice(0, perPage);
+  const nextCursor = rawItems.length > perPage && items.length ? encodeDiscussionCursor({ id: items[items.length - 1].id }) : null;
+  return { items, page, perPage, total: total.c, pages: Math.ceil(total.c / perPage), nextCursor, hasMore: Boolean(nextCursor), paginationMode: cursor ? 'cursor' : 'page' };
 }
 
 export async function apiDiscussionsList(env, url) {
@@ -130,8 +137,21 @@ export async function apiDiscussionsList(env, url) {
     materialId: sp.get('material_id'),
     page: sp.get('page'),
     perPage: sp.get('perPage'),
+    cursor: sp.get('cursor'),
   });
   return json(data);
+}
+
+function encodeDiscussionCursor(value) {
+  try { return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); } catch { return null; }
+}
+
+function decodeDiscussionCursor(value) {
+  if (!value) return null;
+  try {
+    const token = String(value); const padded = token.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((token.length + 3) % 4);
+    const row = JSON.parse(atob(padded)); return row && typeof row === 'object' ? row : null;
+  } catch { return null; }
 }
 
 export async function getDiscussionFull(db, id) {
