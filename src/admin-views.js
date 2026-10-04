@@ -325,7 +325,8 @@ async function translationPage(env, user, req) {
     const title = j.title_ar || j.title_orig || j.ark || j.material_id || '—';
     const state = { QUEUED: 'في الانتظار', ANALYZING: 'تحليل', EXTRACTING: 'استخراج', OCR_PROCESSING: 'OCR', TRANSLATING: 'ترجمة', REBUILDING: 'إعادة بناء', UPLOADING: 'رفع', COMPLETED: 'مكتملة', FAILED: 'فاشلة', CANCELLED: 'ملغاة' }[j.status] || j.status;
     const percent = Math.max(0, Math.min(100, Number(j.progress || 0)));
-    return `<tr data-translation-job-row="${esc(j.id)}"><td class="check-cell"><input type="checkbox" data-translation-job-check value="${esc(j.id)}" aria-label="تحديد وظيفة ${esc(j.id)}"></td><td><strong>${esc(title)}</strong><br><span class="mono small">${esc(j.ark || '')}</span></td><td dir="ltr">${esc(j.source_language)} → ${esc(j.target_language)}</td><td>${esc(j.output_mode)}</td><td><span class="translation-job-status status-${esc(String(j.status).toLowerCase())}">${esc(state)}</span><div class="admin-translation-progress"><i style="width:${percent}%"></i></div><span class="muted tiny">${percent}% · ${esc(j.current_stage || '')}</span></td><td class="muted small">${fmtDate(j.updated_at || j.created_at)}</td><td><button class="btn btn-sm btn-danger" type="button" data-translation-job-delete="${esc(j.id)}">حذف</button></td></tr>`;
+    const canCancel = !['COMPLETED', 'FAILED', 'CANCELLED'].includes(String(j.status));
+    return `<tr data-translation-job-row="${esc(j.id)}"><td class="check-cell"><input type="checkbox" data-translation-job-check value="${esc(j.id)}" aria-label="تحديد وظيفة ${esc(j.id)}"></td><td><strong>${esc(title)}</strong><br><span class="mono small">${esc(j.ark || '')}</span></td><td dir="ltr">${esc(j.source_language)} → ${esc(j.target_language)}</td><td>${esc(j.output_mode)}</td><td><span class="translation-job-status status-${esc(String(j.status).toLowerCase())}">${esc(state)}</span><div class="admin-translation-progress"><i style="width:${percent}%"></i></div><span class="muted tiny">${percent}% · ${esc(j.current_stage || '')}</span></td><td class="muted small">${fmtDate(j.updated_at || j.created_at)}</td><td>${canCancel ? `<button class="btn btn-sm btn-ghost" type="button" data-translation-job-cancel="${esc(j.id)}">إيقاف</button>` : ''}<button class="btn btn-sm btn-danger" type="button" data-translation-job-delete="${esc(j.id)}">حذف</button></td></tr>`;
   }).join('');
   const matches = search ? await db.prepare(`SELECT id, ark, title_ar, title_orig FROM materials
     WHERE publish_status = 'published' AND (title_ar LIKE ? OR title_orig LIKE ? OR ark LIKE ?)
@@ -2282,15 +2283,21 @@ async function researcherDirectoryPage(env, user, req) {
   return researcherLayout({ title: 'الباحثون المسجلون', active: 'discussions', user, body });
 }
 
-async function researcherMaterialsPage(env, user) {
-  const result = await env.DB.prepare(
+async function researcherMaterialsPage(env, user, req) {
+  const url = new URL(req.url);
+  const page = Math.max(1, parseInt(url.searchParams.get('page'), 10) || 1);
+  const perPage = 40;
+  const [count, result] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS total FROM materials WHERE created_by = ? AND publish_status IN ('draft', 'in_review', 'changes_requested', 'published')").bind(user.id).first(),
+    env.DB.prepare(
     `SELECT m.id, m.title_ar, m.title_orig, m.type, m.publish_status,
             m.review_note, m.updated_at,
             (SELECT COUNT(*) FROM files f WHERE f.material_id = m.id) AS files_count
      FROM materials m
      WHERE m.created_by = ? AND m.publish_status IN ('draft', 'in_review', 'changes_requested', 'published')
-     ORDER BY m.updated_at DESC, m.id DESC LIMIT 200`
-  ).bind(user.id).all();
+     ORDER BY m.updated_at DESC, m.id DESC LIMIT ? OFFSET ?`
+    ).bind(user.id, perPage, (page - 1) * perPage).all(),
+  ]);
   const materials = result.results || [];
   const cards = materials.map(m => `
     <article class="researcher-activity-material social-card">
@@ -2303,12 +2310,15 @@ async function researcherMaterialsPage(env, user) {
       ${['draft', 'changes_requested'].includes(m.publish_status) && m.review_note ? `<div class="review-note">${esc(m.review_note)}</div>` : ''}
       <div class="post-actions"><a class="post-action" href="/researcher/${m.id}">${m.publish_status === 'draft' ? 'متابعة تحرير المسودة' : 'عرض المادة'}</a></div>
     </article>`).join('');
+  const total = Number(count?.total || 0);
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const pager = pages > 1 ? `<nav class="researcher-directory-pager" aria-label="صفحات موادي">${page > 1 ? `<a class="btn btn-ghost btn-sm" href="/researcher/materials?page=${page - 1}">السابق</a>` : ''}<span>صفحة ${page} من ${pages}</span>${page < pages ? `<a class="btn btn-ghost btn-sm" href="/researcher/materials?page=${page + 1}">التالي</a>` : ''}</nav>` : '';
   const body = `
     <section class="social-section-head researcher-own-head">
       <div><h2>منشوراتي</h2><p>مسوداتك والمواد المنشورة أو التي تنتظر مراجعة الإدارة.</p></div>
       <a class="btn btn-primary" href="/researcher/new">＋ إضافة مادة</a>
     </section>
-    <div class="researcher-activity-feed">${cards || '<div class="social-card empty-state">لا توجد مسودات أو مواد منشورة أو قيد المراجعة بعد.</div>'}</div>`;
+    <div class="researcher-activity-feed">${cards || '<div class="social-card empty-state">لا توجد مسودات أو مواد منشورة أو قيد المراجعة بعد.</div>'}</div>${pager}`;
   return researcherLayout({ title: 'منشوراتي', active: 'mine', user, body });
 }
 
@@ -2682,7 +2692,7 @@ export async function renderResearcher(pathname, req, env, user) {
   if (clean === '/researcher/material-text' && req.method === 'GET') return researcherMaterialTextApi(env, user, req);
   if (clean === '/researcher/feed' && req.method === 'GET') return researcherFeedPartial(env, user, req);
   if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user, req));
-  if (clean === '/researcher/materials') return htmlRes(await researcherMaterialsPage(env, user));
+  if (clean === '/researcher/materials') return htmlRes(await researcherMaterialsPage(env, user, req));
   if (clean === '/researcher/account') return htmlRes(await researcherAccountPage(user));
   const mProfile = clean.match(/^\/researcher\/profile\/(\d+)$/);
   if (mProfile) return htmlRes(await researcherProfilePage(env, user, parseInt(mProfile[1], 10)));

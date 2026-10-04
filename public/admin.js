@@ -865,6 +865,19 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) { toast(error.message, false); setLoading(btn, false); }
       });
     });
+    translationScope.querySelectorAll('[data-translation-job-cancel]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`إيقاف وظيفة الترجمة ${btn.dataset.translationJobCancel}؟`)) return;
+        setLoading(btn, true);
+        try {
+          await api(`/api/v1/admin/translation-jobs/${encodeURIComponent(btn.dataset.translationJobCancel)}/cancel`, 'POST');
+          btn.remove();
+          const status = btn.closest('tr')?.querySelector('.translation-job-status');
+          if (status) status.textContent = 'ملغاة';
+          toast('أُوقفت وظيفة الترجمة');
+        } catch (error) { toast(error.message, false); setLoading(btn, false); }
+      });
+    });
     translationScope.querySelector('[data-translation-cleanup]')?.addEventListener('click', async (e) => {
       const days = Math.max(1, Math.min(3650, Number(document.getElementById('translationCleanupDays')?.value || 30)));
       if (!confirm(`حذف وظائف الترجمة المكتملة أو الفاشلة الأقدم من ${days} يومًا؟`)) return;

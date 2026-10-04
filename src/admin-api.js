@@ -439,6 +439,8 @@ export async function routeAdminApi(req, env) {
   if (rest === 'translation-jobs' && method === 'GET') return admTranslationJobsList(env, url);
   if (rest === 'translation-jobs/cleanup' && method === 'POST')
     return withJsonBody(req, (body) => admTranslationJobsCleanup(env, user, req, body));
+  m = rest.match(/^translation-jobs\/([^/]+)\/cancel$/);
+  if (m && method === 'POST') return admTranslationJobCancel(env, user, req, decodeURIComponent(m[1]));
   m = rest.match(/^translation-jobs\/([^/]+)$/);
   if (m && method === 'DELETE') return admTranslationJobDelete(env, user, req, decodeURIComponent(m[1]));
 
@@ -1782,6 +1784,24 @@ async function admTranslationJobDelete(env, user, req, jobId) {
     ip: clientIp(req),
   });
   return json({ ok: true, id: job.id });
+}
+
+async function admTranslationJobCancel(env, user, req, jobId) {
+  const db = env.DB;
+  const job = await db.prepare('SELECT id, status, material_id, output_key FROM translation_jobs WHERE id = ?').bind(jobId).first();
+  if (!job) return json({ ok: true, id: jobId, missing: true });
+  const active = new Set(['QUEUED', 'ANALYZING', 'EXTRACTING', 'OCR_PROCESSING', 'TRANSLATING', 'REBUILDING', 'UPLOADING']);
+  if (!active.has(String(job.status))) return json({ ok: true, id: job.id, status: job.status, unchanged: true });
+  await db.prepare("UPDATE translation_jobs SET status = 'CANCELLED', current_stage = 'CANCELLED', error_code = 'CANCELLED_BY_ADMIN', error_message = 'ألغتها الإدارة', updated_at = datetime('now') WHERE id = ?").bind(job.id).run();
+  if (env.TRANSLATION_SERVICE_URL) {
+    try {
+      const headers = {};
+      if (env.TRANSLATION_SERVICE_TOKEN) headers['X-Sidjil-Service-Token'] = env.TRANSLATION_SERVICE_TOKEN;
+      await fetch(`${String(env.TRANSLATION_SERVICE_URL).replace(/\/$/, '')}/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST', headers });
+    } catch { /* يبقى الإلغاء المحلي نافذًا حتى لو تعذر الوصول للخدمة */ }
+  }
+  await audit(db, { userId: user.id, action: 'translation_job.cancel', target: String(job.id), detail: 'إلغاء وظيفة ترجمة', ip: clientIp(req) });
+  return json({ ok: true, id: job.id, status: 'CANCELLED' });
 }
 
 async function admTranslationJobsCleanup(env, user, req, body) {
