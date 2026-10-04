@@ -1463,7 +1463,7 @@ ${csrfMeta}
         <section class="social-card researcher-rail-card"><h2>دليل المشاركة</h2><p>شارك مصادر موثقة، واربط كل مراجعة بالمادة التي تناقشها. تمر موادك على اعتماد الإدارة قبل ظهورها للزوار.</p></section>
       </aside>
     </div>
-    <footer class="researcher-footer"><span>سِجِل · مجتمع الباحثين والذاكرة الرقمية لتشاد</span><nav><a class="researcher-exit-link" href="/">الخروج إلى الموقع العام</a></nav></footer>
+    <footer class="researcher-footer"><span>سِجِل · مجتمع الباحثين والذاكرة الرقمية لتشاد</span></footer>
   </main>
 </div>
 <nav class="researcher-bottom-nav" aria-label="تنقل الهاتف">
@@ -1695,7 +1695,7 @@ function diversifyResearcherMaterials(rows, count = 18) {
   return selected;
 }
 
-async function loadResearcherPublishedFeed(env, user, { feed = 'discover', sectionId = null, offset = 0, limit = 18 } = {}) {
+async function loadResearcherPublishedFeed(env, user, { feed = 'discover', sectionId = null, search = '', offset = 0, limit = 18 } = {}) {
   const safeFeed = ['discover', 'latest', 'official'].includes(feed) ? feed : 'discover';
   const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
   const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
@@ -1707,6 +1707,10 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
     : `m.updated_at AS approved_at,`;
   const sectionFilter = Number.isInteger(Number(sectionId)) && Number(sectionId) > 0
     ? ` AND EXISTS (SELECT 1 FROM material_collections mc_filter WHERE mc_filter.material_id = m.id AND mc_filter.collection_id = ?)`
+    : '';
+  const searchTerm = String(search || '').trim().slice(0, 120);
+  const searchFilter = searchTerm
+    ? ` AND (m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ? OR m.author LIKE ? OR m.description LIKE ? OR m.summary LIKE ?)`
     : '';
   const feedOrder = safeFeed === 'discover'
     ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
@@ -1726,11 +1730,12 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
      LEFT JOIN sources s ON s.id = m.source_id
      LEFT JOIN places p ON p.id = m.place_id
      LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
-     WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}
+     WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}${searchFilter}
      ${feedOrder} LIMIT 500`;
   const params = [];
   if (safeFeed === 'official') params.push(user.id);
   if (sectionFilter) params.push(Number(sectionId));
+  if (searchFilter) params.push(...Array(6).fill(`%${searchTerm}%`));
   const result = params.length ? await env.DB.prepare(query).bind(...params).all() : await env.DB.prepare(query).all();
   const ordered = diversifyResearcherMaterials(result.results || [], safeOffset + safeLimit);
   const pageRows = ordered.slice(safeOffset, safeOffset + safeLimit);
@@ -1756,6 +1761,7 @@ async function researcherFeedPartial(env, user, req) {
   const feed = url.searchParams.get('feed') || 'discover';
   if (feed === 'following') {
     return researcherFeedJson(await loadResearcherFollowingFeed(env, user, {
+      search: url.searchParams.get('search'),
       offset: url.searchParams.get('offset'),
       limit: url.searchParams.get('limit'),
     }));
@@ -1765,15 +1771,19 @@ async function researcherFeedPartial(env, user, req) {
   const result = await loadResearcherPublishedFeed(env, user, {
     feed,
     sectionId,
+    search: url.searchParams.get('search'),
     offset: url.searchParams.get('offset'),
     limit: url.searchParams.get('limit'),
   });
   return researcherFeedJson(result);
 }
 
-async function loadResearcherFollowingFeed(env, user, { offset = 0, limit = 18 } = {}) {
+async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0, limit = 18 } = {}) {
   const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
   const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
+  const searchTerm = String(search || '').trim().slice(0, 120);
+  const materialSearch = searchTerm ? ` AND (m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ? OR m.author LIKE ? OR m.description LIKE ? OR m.summary LIKE ?)` : '';
+  const discussionSearch = searchTerm ? ` AND (d.title LIKE ? OR d.body LIKE ? OR m.title_ar LIKE ?)` : '';
   const [fMats, fDiscs] = await Promise.all([
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
@@ -1787,9 +1797,9 @@ async function loadResearcherFollowingFeed(env, user, { offset = 0, limit = 18 }
        FROM materials m
        JOIN researcher_follows fl ON fl.followed_id = m.created_by
        LEFT JOIN admin_users u ON u.id = m.created_by AND u.role = 'researcher'
-       WHERE fl.follower_id = ? AND m.publish_status = 'published'
+       WHERE fl.follower_id = ? AND m.publish_status = 'published'${materialSearch}
        ORDER BY m.updated_at DESC, m.id DESC LIMIT 500`
-    ).bind(user.id).all(),
+    ).bind(user.id, ...Array(materialSearch ? 6 : 0).fill(`%${searchTerm}%`)).all(),
     env.DB.prepare(
       `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
               d.created_at AS sort_date,
@@ -1800,9 +1810,9 @@ async function loadResearcherFollowingFeed(env, user, { offset = 0, limit = 18 }
        JOIN researcher_follows fl ON fl.followed_id = d.author_id
        JOIN admin_users u ON u.id = d.author_id
        LEFT JOIN materials m ON m.id = d.material_id
-       WHERE fl.follower_id = ? AND d.status = 'published'
+       WHERE fl.follower_id = ? AND d.status = 'published'${discussionSearch}
        ORDER BY d.created_at DESC, d.id DESC LIMIT 500`
-    ).bind(user.id).all(),
+    ).bind(user.id, ...Array(discussionSearch ? 3 : 0).fill(`%${searchTerm}%`)).all(),
   ]);
   await attachDiscussionImages(env.DB, fDiscs.results || []);
   const verified = Number(user.is_verified) === 1;
@@ -1825,6 +1835,7 @@ async function researcherDashPage(env, user, req) {
   const feed = ['discover', 'latest', 'official', 'following'].includes(url.searchParams.get('feed'))
     ? url.searchParams.get('feed')
     : 'discover';
+  const searchTerm = String(url.searchParams.get('search') || '').trim().slice(0, 120);
   const feedLabels = { discover: 'اكتشف', latest: 'الأحدث', official: 'اعتمادات الإدارة', following: 'المتابَعون' };
   const sectionScope = feed === 'official' ? ' AND m.created_by = ?' : '';
   const sectionRows = feed === 'official'
@@ -1867,6 +1878,7 @@ async function researcherDashPage(env, user, req) {
     : await loadResearcherPublishedFeed(env, user, {
       feed,
       sectionId: selectedSection?.id || null,
+      search: searchTerm,
       offset: 0,
       limit: 18,
     });
@@ -1875,7 +1887,7 @@ async function researcherDashPage(env, user, req) {
 
   /* تبويب «المتابَعون»: مواد ونقاشات الباحثين الذين يتابعهم المستخدم — تُبنى خادوميًا */
   const followingPage = feed === 'following'
-    ? await loadResearcherFollowingFeed(env, user, { offset: 0, limit: 18 })
+    ? await loadResearcherFollowingFeed(env, user, { search: searchTerm, offset: 0, limit: 18 })
     : { html: '', nextOffset: 0, hasMore: false, count: 0 };
   const followingFeed = followingPage.html;
   const communityRows = feed === 'discover' ? await env.DB.prepare(
@@ -1962,12 +1974,20 @@ async function researcherDashPage(env, user, req) {
       : `لا توجد مواد في تصفية «${feedLabels[feed]}».`;
   const activeFeedPage = feed === 'following' ? followingPage : publishedPage;
   const body = `
+  <form class="researcher-main-search" action="/researcher" method="get" role="search" aria-label="البحث في مساحة الباحث">
+    <span class="researcher-main-search-icon" aria-hidden="true">⌕</span>
+    <input type="search" name="search" value="${esc(searchTerm)}" placeholder="ابحث في الكتب والوثائق والصور والمواد…" autocomplete="off">
+    ${feed !== 'discover' ? `<input type="hidden" name="feed" value="${esc(feed)}">` : ''}
+    ${selectedSection ? `<input type="hidden" name="section" value="${esc(selectedSection.id)}">` : ''}
+    <button type="submit">بحث</button>
+    ${searchTerm ? '<a class="researcher-main-search-clear" href="/researcher#feed">مسح</a>' : ''}
+  </form>
   <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?feed=discover#feed">اكتشف</a><a class="researcher-feed-tab${feed === 'following' ? ' active' : ''}" href="/researcher?feed=following#feed">المتابَعون</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?feed=latest#feed">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?feed=official#feed">اعتمادات الإدارة</a></section>
   ${feed === 'discover' ? `<section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions?view=researchers">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين مسجلة بعد.</p>'}</section>` : ''}
   ${dashboardComposer}
   ${feed === 'following' ? '' : `<nav class="researcher-category-filter" aria-label="تصفية المواد بحسب القسم"><span>القسم</span><div class="researcher-category-tabs">${categoryTabs}</div></nav>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
-  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-offset="${activeFeedPage.nextOffset}" data-limit="18" data-has-more="${activeFeedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
+  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-search="${esc(searchTerm)}" data-offset="${activeFeedPage.nextOffset}" data-limit="18" data-has-more="${activeFeedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${searchTerm ? `لا توجد نتائج للبحث عن «${esc(searchTerm)}».` : feedEmpty}`}</div>`}</div>
   ${activeFeedPage.hasMore ? '<div class="researcher-feed-loader" data-researcher-feed-loader role="status" aria-live="polite"><span class="researcher-feed-loader-spinner" aria-hidden="true"></span><span>جارٍ تحميل المزيد عند الاقتراب من نهاية الصفحة…</span></div>' : ''}
   ${feed === 'discover' ? `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
   <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>` : ''}

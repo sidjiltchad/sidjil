@@ -1958,3 +1958,38 @@ textarea { border-radius: var(--shape-control); }
   .admin-shell:not(.researcher-shell) .form-bar, .admin-shell:not(.researcher-shell) .publish-bar { display: grid; grid-template-columns: 1fr; }
   .admin-shell:not(.researcher-shell) .form-bar .btn, .admin-shell:not(.researcher-shell) .publish-bar .btn { width: 100%; }
 }
+
+/* بحث مساحة الباحث وبطاقات مجتمع الباحثين */
+.researcher-main-search {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  width: min(100%, 760px);
+  min-height: 54px;
+  margin: 0 auto 1rem;
+  padding: .38rem .45rem .38rem .8rem;
+  border: 1px solid color-mix(in srgb, var(--teal) 20%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card) 92%, var(--teal-soft));
+  box-shadow: 0 8px 24px rgba(31,66,118,.08);
+}
+.researcher-main-search:focus-within { border-color: var(--teal); box-shadow: 0 0 0 4px color-mix(in srgb, var(--teal) 12%, transparent), 0 10px 28px rgba(31,66,118,.1); }
+.researcher-main-search-icon { display: inline-grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; color: var(--teal); font-size: 1.55rem; line-height: 1; transform: rotate(-20deg); }
+.researcher-main-search input { flex: 1; min-width: 0; height: 42px; padding: .45rem .2rem; border: 0; outline: 0; color: var(--ink); background: transparent; font: inherit; font-size: .9rem; }
+.researcher-main-search input::placeholder { color: var(--muted); opacity: .9; }
+.researcher-main-search button { flex: 0 0 auto; min-height: 40px; padding: .45rem 1.15rem; border: 0; border-radius: 999px; color: #fff; background: var(--teal); font: inherit; font-size: .82rem; font-weight: 700; cursor: pointer; }
+.researcher-main-search button:hover { background: var(--teal-dark); }
+.researcher-main-search-clear { flex: 0 0 auto; padding: .25rem .4rem; color: var(--muted); font-size: .78rem; text-decoration: none; }
+.researcher-main-search-clear:hover { color: var(--danger); }
+.researcher-story-row { gap: 1rem; }
+.researcher-story { flex-basis: 116px; width: 116px; }
+.researcher-story-name { max-width: 116px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.4; }
+.researcher-story small { max-width: 116px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 1.4; }
+.researcher-story-avatar { width: 60px; height: 60px; }
+@media (max-width: 560px) {
+  .researcher-main-search { min-height: 50px; margin-bottom: .8rem; padding-inline-start: .6rem; }
+  .researcher-main-search button { min-height: 38px; padding-inline: .9rem; }
+  .researcher-main-search input { font-size: .82rem; }
+  .researcher-story { flex-basis: 104px; width: 104px; }
+  .researcher-story-name, .researcher-story small { max-width: 104px; }
+}

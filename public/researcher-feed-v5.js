@@ -351,6 +351,7 @@ function initResearcherInfiniteFeed() {
         limit: feed.dataset.limit || '18',
       });
       if (feed.dataset.section) params.set('section', feed.dataset.section);
+      if (feed.dataset.search) params.set('search', feed.dataset.search);
       const response = await fetch(`/researcher/feed?${params.toString()}`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
