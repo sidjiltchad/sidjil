@@ -27,11 +27,15 @@ export async function searchMaterials(db, params = {}) {
     translationStatus,
     placeId,
     publishedOnly = true,
+    cursor: cursorToken,
+    metricsRoute = '/api/v1/search',
+    metricsSampleRate = 0.1,
   } = params;
 
   const page = Math.max(1, parseInt(params.page, 10) || 1);
   const perPage = Math.min(100, Math.max(1, parseInt(params.perPage, 10) || 20));
-  const offset = (page - 1) * perPage;
+  const cursor = decodeCursor(cursorToken);
+  const offset = cursor ? 0 : (page - 1) * perPage;
 
   const joins = [];
   const where = [];
@@ -110,6 +114,22 @@ export async function searchMaterials(db, params = {}) {
     }
   }
 
+  const countBinds = binds.slice();
+  const countWhere = where.slice();
+
+  // مؤشر ثابت للنتائج التالية. في البحث النصي نحتفظ بدرجة FTS ثم نكسر التعادل
+  // بالتاريخ والمعرّف، وفي القوائم العادية نستخدم التاريخ والمعرّف فقط.
+  if (cursor) {
+    if (ftsQuery && Number.isFinite(Number(cursor.relevance)) && cursor.updated_at !== undefined && cursor.id !== undefined) {
+      const rankExpr = 'bm25(materials_fts, 0.0, 8.0, 1.0)';
+      where.push(`(${rankExpr} > ? OR (${rankExpr} = ? AND (m.updated_at < ? OR (m.updated_at = ? AND m.id < ?))))`);
+      binds.push(Number(cursor.relevance), Number(cursor.relevance), cursor.updated_at || '', cursor.updated_at || '', Number(cursor.id));
+    } else if (!ftsQuery && cursor.updated_at !== undefined && cursor.id !== undefined) {
+      where.push('(m.updated_at < ? OR (m.updated_at = ? AND m.id < ?))');
+      binds.push(cursor.updated_at || '', cursor.updated_at || '', Number(cursor.id));
+    }
+  }
+
   const joinSql = joins.length ? ' ' + joins.join(' ') : '';
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
 
@@ -117,32 +137,86 @@ export async function searchMaterials(db, params = {}) {
   // و1.0 للمتن (العمود 2)؛ العمود 0 (ark) غير مفهرس فوزنه 0.0 بلا أثر.
   // (العقد كتب bm25(..., 8.0, 1.0) لكن الوزن الأول كان سيقع على ark لا على العنوان)
   const orderSql = ftsQuery
-    ? 'ORDER BY bm25(materials_fts, 0.0, 8.0, 1.0)'
+    ? 'ORDER BY bm25(materials_fts, 0.0, 8.0, 1.0), m.updated_at DESC, m.id DESC'
     : 'ORDER BY m.updated_at DESC, m.id DESC';
 
   const snippetSql = ftsQuery
-    ? `, snippet(materials_fts, 2, '<mark>', '</mark>', '…', 30) AS snippet`
+    ? `, snippet(materials_fts, 2, '<mark>', '</mark>', '…', 30) AS snippet, bm25(materials_fts, 0.0, 8.0, 1.0) AS relevance`
     : `, NULL AS snippet`;
 
+  const limit = perPage + 1;
+  const limitSql = ' LIMIT ? OFFSET ?';
+
   const itemsSql =
-    `SELECT m.*${snippetSql} FROM materials m${joinSql}${whereSql} ${orderSql} LIMIT ? OFFSET ?`;
-  const itemsRes = await db
-    .prepare(itemsSql)
-    .bind(...binds, perPage, offset)
-    .all();
+    `SELECT m.*${snippetSql} FROM materials m${joinSql}${whereSql} ${orderSql}${limitSql}`;
+  const itemsStarted = Date.now();
+  let itemsRes;
+  try {
+    itemsRes = await db.prepare(itemsSql).bind(...binds, limit, offset).all();
+    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, itemsRes.results?.length || 0, false, metricsSampleRate);
+  } catch (error) {
+    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, 0, true, metricsSampleRate);
+    throw error;
+  }
 
-  const countSql = `SELECT COUNT(DISTINCT m.id) AS c FROM materials m${joinSql}${whereSql}`;
-  const countRow = await db
-    .prepare(countSql)
-    .bind(...binds)
-    .first();
+  const countWhereSql = countWhere.length ? ' WHERE ' + countWhere.join(' AND ') : '';
+  const countSql = `SELECT COUNT(DISTINCT m.id) AS c FROM materials m${joinSql}${countWhereSql}`;
+  const countStarted = Date.now();
+  let countRow;
+  try {
+    countRow = await db.prepare(countSql).bind(...countBinds).first();
+    await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, 1, false, metricsSampleRate);
+  } catch (error) {
+    await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, 0, true, metricsSampleRate);
+    throw error;
+  }
 
+  const rawItems = itemsRes.results || [];
+  const items = rawItems.slice(0, perPage);
+  const tail = items[items.length - 1];
+  const nextCursor = rawItems.length > perPage && tail
+    ? encodeCursor({ relevance: ftsQuery ? Number(tail.relevance) : undefined, updated_at: tail.updated_at || '', id: tail.id })
+    : null;
   return {
-    items: itemsRes.results,
+    items,
     total: countRow ? countRow.c : 0,
     page,
     perPage,
+    nextCursor,
+    hasMore: Boolean(nextCursor),
+    paginationMode: cursor ? 'cursor' : 'page',
   };
+}
+
+async function recordQueryMetric(db, route, queryKey, durationMs, rows, failed, sampleRate) {
+  const rate = Number(sampleRate);
+  if (!(rate > 0) || Math.random() > Math.min(1, rate)) return;
+  const day = new Date().toISOString().slice(0, 10);
+  try {
+    await db.prepare(`INSERT INTO query_metrics_daily
+      (day, route, query_key, calls, errors, total_duration_ms, max_duration_ms, total_rows)
+      VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+      ON CONFLICT(day, route, query_key) DO UPDATE SET
+        calls = calls + 1,
+        errors = errors + excluded.errors,
+        total_duration_ms = total_duration_ms + excluded.total_duration_ms,
+        max_duration_ms = max(max_duration_ms, excluded.max_duration_ms),
+        total_rows = total_rows + excluded.total_rows`)
+      .bind(day, String(route || '/unknown').slice(0, 120), queryKey, failed ? 1 : 0, Math.max(0, Number(durationMs) || 0), Math.max(0, Number(durationMs) || 0), Math.max(0, Number(rows) || 0)).run();
+  } catch (_) { /* القياس لا يعطل البحث إذا كانت migration غير مطبقة */ }
+}
+
+function encodeCursor(value) {
+  try { return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); } catch { return null; }
+}
+
+function decodeCursor(value) {
+  if (!value) return null;
+  try {
+    const padded = String(value).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(value).length + 3) % 4);
+    const parsed = JSON.parse(atob(padded));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch { return null; }
 }
 
 /**

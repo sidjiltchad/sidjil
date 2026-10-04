@@ -129,6 +129,9 @@ async function apiSearch(req, env, url) {
     placeId: sp.get('placeId') || undefined,
     page: sp.get('page') || 1,
     perPage: sp.get('perPage') || 20,
+    cursor: sp.get('cursor') || undefined,
+    metricsRoute: '/api/v1/search',
+    metricsSampleRate: env.QUERY_METRICS_SAMPLE_RATE || 0.1,
     publishedOnly: true,
   });
 
@@ -172,6 +175,9 @@ async function apiSearch(req, env, url) {
     total: result.total,
     page: result.page,
     perPage: result.perPage,
+    nextCursor: result.nextCursor || null,
+    hasMore: Boolean(result.hasMore),
+    paginationMode: result.paginationMode || 'page',
   });
 }
 
