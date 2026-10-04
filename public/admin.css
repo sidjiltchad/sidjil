@@ -1776,37 +1776,14 @@ button[data-account-logout] .ran-icon { background: rgba(179, 38, 30, .1); color
 .journal-issue-admin-card { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .9rem 1rem; border: 1px solid var(--line-soft); border-radius: 16px; background: var(--card); }
 .journal-new-issue { margin: .8rem 0 1rem; padding: 1rem; }
 .journal-new-issue .grid-2 { margin-bottom: .6rem; }
-.journal-issue-editor { margin-top: 1rem; padding: 1.15rem; }
-.journal-editor-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
-.journal-editor-title h2, .journal-issue-editor > h2 { margin: 0 0 .25rem; font-size: 1.15rem; }
-.journal-editor-title p, .journal-issue-editor > p { margin: 0; }
-.journal-block-toolbar { display: grid; gap: .6rem; margin: 1.1rem 0 .65rem; padding-top: 1rem; border-top: 1px solid var(--line-soft); }
-.journal-block-add { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
-.journal-block-add select { min-width: min(100%, 18rem); flex: 1 1 16rem; }
-.journal-block-add label { font-weight: 700; }
-.journal-issue-blocks { display: grid; gap: .65rem; }
-.journal-block-editor { min-width: 0; padding: .85rem; border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); }
-.journal-block-editor > header { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-bottom: .6rem; }
-.journal-block-editor > header > div { display: flex; gap: .3rem; }
-.journal-block-editor > header .btn { min-width: 2rem; padding-inline: .5rem; }
-.journal-block-editor > label { display: grid; gap: .3rem; margin-top: .55rem; color: var(--muted); font-size: .78rem; font-weight: 700; }
-.journal-block-editor input, .journal-block-editor textarea { width: 100%; padding: .55rem .7rem; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: .86rem; }
-.journal-block-editor textarea { line-height: 1.75; }
 .journal-block-empty { padding: 1.5rem; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); text-align: center; }
-.journal-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line-soft); }
-.journal-editor-footer > div { display: flex; flex-wrap: wrap; gap: .45rem; }
 @media (max-width: 640px) {
   .journal-admin-tabs { position: sticky; top: .25rem; z-index: 5; }
   .journal-admin-tabs a { padding: .58rem .45rem; font-size: .76rem; }
-  .journal-inbox-card, .journal-issue-editor { padding: .85rem; }
+  .journal-inbox-card { padding: .85rem; }
   .journal-issue-admin-card { align-items: stretch; flex-direction: column; }
   .journal-inbox-actions, .journal-issue-admin-actions { display: grid; grid-template-columns: 1fr; }
   .journal-inbox-actions .btn, .journal-issue-admin-actions .btn { width: 100%; }
-  .journal-editor-title { align-items: flex-start; }
-  .journal-block-add { display: grid; grid-template-columns: 1fr 1fr; }
-  .journal-block-add label, .journal-block-add select { grid-column: 1 / -1; }
-  .journal-editor-footer > div { display: grid; grid-template-columns: 1fr; width: 100%; }
-  .journal-editor-footer .btn { width: 100%; }
 }
 .researcher-upload-card { margin-top: 1rem; padding: 1rem; border: 1px solid var(--line-soft); border-radius: 18px; background: var(--surface-2); }
 .researcher-upload-card h3 { margin: 0 0 .25rem; font-size: 1rem; }

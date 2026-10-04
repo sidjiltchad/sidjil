@@ -112,21 +112,26 @@ export default {
       return new Response(object.body, { headers });
     }
 
-    const journalAssetMatch = pathname.match(/^\/admin\/journal\/assets\/(\d+)$/);
-    if (journalAssetMatch && request.method === 'GET') {
-      const viewer = await getSessionUser(request, env);
-      if (!viewer || viewer.role !== 'admin') return new Response('غير مصرح', { status: 401 });
-      const asset = await env.DB.prepare('SELECT r2_key, filename, mime, size FROM journal_issue_assets WHERE id = ?').bind(Number(journalAssetMatch[1])).first();
-      if (!asset) return new Response('غير موجود', { status: 404 });
-      const object = await env.FILES.get(asset.r2_key);
+    const journalPdfMatch = pathname.match(/^\/journal\/issues\/(\d+)\/pdf$/);
+    if (journalPdfMatch && request.method === 'GET') {
+      const issue = await env.DB.prepare('SELECT r2_key, filename, size FROM journal_pdf_issues WHERE id = ?').bind(Number(journalPdfMatch[1])).first();
+      if (!issue) return new Response('غير موجود', { status: 404 });
+      const object = await env.FILES.get(issue.r2_key, request.headers.has('range') ? { range: request.headers } : undefined);
       if (!object) return new Response('غير موجود', { status: 404 });
-      return new Response(object.body, { headers: {
-        'Content-Type': asset.mime,
-        'Content-Length': String(asset.size),
-        'Content-Disposition': `inline; filename="${encodeURIComponent(asset.filename)}"`,
-        'Cache-Control': 'private, no-store',
+      const disposition = new URL(request.url).searchParams.has('download') ? 'attachment' : 'inline';
+      const headers = new Headers({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(issue.filename)}`,
+        'Cache-Control': 'public, max-age=3600',
         'X-Content-Type-Options': 'nosniff',
-      } });
+        'Accept-Ranges': 'bytes',
+      });
+      if (object.size != null) headers.set('Content-Length', String(object.size));
+      if (object.range) {
+        headers.set('Content-Range', `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${issue.size}`);
+        return new Response(object.body, { status: 206, headers });
+      }
+      return new Response(object.body, { headers });
     }
 
     // app.sidjil.org is the isolated researcher application. Its entry points

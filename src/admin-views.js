@@ -112,7 +112,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-journal-admin-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-journal-pdf-v2">
 ${head}
 </head>
 <body>
@@ -167,7 +167,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-journal-admin-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-journal-pdf-v2">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -1081,119 +1081,40 @@ async function reviewPage(env, user) {
   return layout({ title: 'طابور المراجعة', active: 'review', user, body });
 }
 
-// ---------- إدارة المجلة: استقبال المقالات وإخراج الأعداد ----------
-async function journalAdminPage(env, user, req) {
-  const url = new URL(req.url);
-  const selectedId = Number(url.searchParams.get('issue')) || 0;
-  const [pending, published, issues] = await Promise.all([
+// ---------- إدارة المجلة: مراجعة المقالات ورفع أعداد PDF ----------
+async function journalAdminPage(env, user) {
+  const [pending, issues] = await Promise.all([
     env.DB.prepare(`SELECT m.id, m.ark, m.title_ar, m.description, m.updated_at,
        COALESCE(u.display_name, u.username, 'باحث') AS researcher_name,
        (SELECT COUNT(*) FROM files f WHERE f.material_id = m.id) AS files_count
        FROM materials m LEFT JOIN admin_users u ON u.id = m.created_by
        WHERE m.type = 'article' AND m.publish_status = 'in_review'
        ORDER BY m.updated_at ASC, m.id ASC LIMIT 100`).all(),
-    env.DB.prepare(`SELECT m.id, m.ark, m.title_ar, m.description, m.updated_at,
-       COALESCE(u.display_name, u.username, 'سِجِل') AS researcher_name
-       FROM materials m LEFT JOIN admin_users u ON u.id = m.created_by
-       WHERE m.type = 'article' AND m.publish_status = 'published'
-       ORDER BY m.updated_at DESC, m.id DESC LIMIT 200`).all(),
-    env.DB.prepare(`SELECT id, issue_number, year, title_ar, status, updated_at
-       FROM journal_issues ORDER BY year DESC, CAST(issue_number AS INTEGER) DESC, id DESC LIMIT 100`).all(),
+    env.DB.prepare(`SELECT id, issue_number, year, title, description, comment, filename, size
+       FROM journal_pdf_issues ORDER BY year DESC, id DESC LIMIT 100`).all(),
   ]);
-  const selectedIssue = selectedId
-    ? await env.DB.prepare('SELECT * FROM journal_issues WHERE id = ?').bind(selectedId).first()
-    : null;
   const pendingRows = (pending.results || []).map(m => `
-    <article class="social-card journal-inbox-card" data-journal-article="${m.id}">
+    <article class="social-card journal-inbox-card">
       <div class="journal-inbox-meta"><span class="badge b-review">بانتظار المراجعة</span><span class="mono">${esc(m.ark)}</span><span>${esc(m.researcher_name)}</span><time>${fmtDate(m.updated_at)}</time></div>
-      <h3>${esc(m.title_ar || 'مقال بلا عنوان')}</h3>
-      <p>${esc(String(m.description || '').slice(0, 560))}${String(m.description || '').length > 560 ? '…' : ''}</p>
+      <h3>${esc(m.title_ar || 'مقال بلا عنوان')}</h3><p>${esc(String(m.description || '').slice(0, 560))}${String(m.description || '').length > 560 ? '…' : ''}</p>
       <div class="journal-inbox-actions"><a class="btn btn-ghost btn-sm" href="/admin/materials/${m.id}">مراجعة التفاصيل والملفات (${Number(m.files_count || 0)})</a><button class="btn btn-primary btn-sm" type="button" data-review-approve="${m.id}">اعتماد ونشر المقال</button><button class="btn btn-ghost btn-sm" type="button" data-review-reject="${m.id}" data-review-title="${esc(m.title_ar || '')}">إعادة للباحث بملاحظة</button></div>
     </article>`).join('');
   const issueRows = (issues.results || []).map(issue => `
-    <article class="journal-issue-admin-card">
-      <div><strong>${esc(issue.title_ar)}</strong><div class="post-meta">العدد ${esc(issue.issue_number)} · ${esc(String(issue.year))} · ${issue.status === 'ready' ? 'جاهز للإخراج' : 'مسودة'}</div></div>
-      <div class="journal-issue-admin-actions"><a class="btn btn-ghost btn-sm" href="/admin/journal?issue=${issue.id}#issue-editor">تحرير العدد</a><a class="btn btn-sm" target="_blank" rel="noopener" href="/admin/journal/print/${issue.id}">معاينة / إخراج PDF</a></div>
-    </article>`).join('');
-  const approvedOptions = (published.results || []).map(m => `<option value="${m.id}">${esc(m.title_ar || m.ark)} — ${esc(m.researcher_name)}</option>`).join('');
-  let blocks = [];
-  if (selectedIssue) {
-    try { blocks = JSON.parse(selectedIssue.blocks_json || '[]'); if (!Array.isArray(blocks)) blocks = []; } catch (_) { blocks = []; }
-  }
-  const blocksMarkup = blocks.map((block, index) => journalBlockEditor(block, index, published.results || [])).join('');
-  const editorMarkup = selectedIssue ? `
-    <section class="card journal-issue-editor" id="issue-editor" data-journal-issue-editor="${selectedIssue.id}">
-      <div class="journal-editor-title"><div><h2>تحرير العدد ${esc(selectedIssue.issue_number)} · ${esc(String(selectedIssue.year))}</h2><p class="muted small">رتّب المقالات والمواد التحريرية والإعلانات، ثم احفظ المعاينة وأخرج PDF للطباعة.</p></div><span class="badge ${selectedIssue.status === 'ready' ? 'b-pub' : 'b-draft'}">${selectedIssue.status === 'ready' ? 'جاهز للإخراج' : 'مسودة'}</span></div>
-      <div class="grid-2"><div class="field"><label for="ji-title">اسم المجلة على الغلاف</label><input id="ji-title" value="${esc(selectedIssue.title_ar)}" maxlength="180"></div><div class="field"><label for="ji-subtitle">عنوان العدد</label><input id="ji-subtitle" value="${esc(selectedIssue.subtitle_ar)}" maxlength="240"></div><div class="field"><label for="ji-number">رقم العدد</label><input id="ji-number" value="${esc(selectedIssue.issue_number)}" maxlength="32"></div><div class="field"><label for="ji-year">السنة</label><input id="ji-year" type="number" min="1800" max="2200" value="${esc(String(selectedIssue.year))}"></div><div class="field"><label for="ji-columns">أعمدة صفحات المقالات</label><select id="ji-columns"><option value="1"${Number(selectedIssue.columns_count) === 1 ? ' selected' : ''}>عمود واحد</option><option value="2"${Number(selectedIssue.columns_count) === 2 ? ' selected' : ''}>عمودان</option><option value="3"${Number(selectedIssue.columns_count) === 3 ? ' selected' : ''}>ثلاثة أعمدة</option></select></div></div>
-      <div class="field"><label for="ji-editorial">كلمة التحرير / افتتاحية العدد</label><textarea id="ji-editorial" rows="4" maxlength="12000">${esc(selectedIssue.editorial_ar || '')}</textarea></div>
-      <textarea id="ji-blocks-json" hidden>${esc(JSON.stringify(blocks))}</textarea>
-      <div class="journal-block-toolbar"><strong>ترتيب المحتوى</strong><div class="journal-block-add"><label class="small" for="ji-article-select">مقال معتمد</label><select id="ji-article-select"><option value="">اختر مقالًا منشورًا</option>${approvedOptions}</select><button class="btn btn-sm" type="button" data-journal-add-article>إضافة المقال</button><button class="btn btn-sm btn-ghost" type="button" data-journal-add-block="text">+ نص</button><button class="btn btn-sm btn-ghost" type="button" data-journal-add-block="image">+ صورة</button><button class="btn btn-sm btn-ghost" type="button" data-journal-add-block="ad">+ إعلان</button></div></div>
-      <div class="journal-issue-blocks" data-journal-blocks>${blocksMarkup || '<div class="journal-block-empty">أضف المقالات والمواد التحريرية لتكوين العدد.</div>'}</div>
-      <div class="journal-editor-footer"><span class="muted small" data-journal-save-status></span><div><button class="btn btn-ghost" type="button" data-journal-save>حفظ المسودة</button><button class="btn btn-primary" type="button" data-journal-ready>اعتماد إعداد العدد</button><a class="btn" target="_blank" rel="noopener" href="/admin/journal/print/${selectedIssue.id}">معاينة وإخراج PDF</a></div></div>
-    </section>` : `<section class="card journal-issue-editor" id="issue-editor"><h2>ابدأ إعداد عدد جديد</h2><p class="muted">أنشئ مسودة عدد، ثم أضف المقالات المعتمدة، كلمة التحرير، الصور والإعلانات ورتّبها قبل إخراج PDF.</p></section>`;
+    <article class="journal-issue-admin-card"><div><strong>${esc(issue.title)}</strong><div class="post-meta">العدد ${esc(issue.issue_number)} · ${esc(String(issue.year))} · ${esc(issue.filename)} · ${(Number(issue.size) / (1024 * 1024)).toFixed(1)} MB</div>${issue.description ? `<p>${esc(issue.description)}</p>` : ''}${issue.comment ? `<p class="muted small">تعليق: ${esc(issue.comment)}</p>` : ''}</div><div class="journal-issue-admin-actions"><a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="/journal/issues/${issue.id}/pdf">معاينة PDF</a></div></article>`).join('');
   const body = `
-  ${pageHead('إدارة المجلة', '<span class="muted">استقبال المقالات · إعداد الأعداد · إخراج PDF</span>')}
-  <nav class="journal-admin-tabs" aria-label="مسارات إدارة المجلة"><a href="#inbox">استقبال ومراجعة المقالات</a><a href="#issues">إخراج الأعداد</a></nav>
+  ${pageHead('إدارة المجلة', '<span class="muted">مراجعة مقالات الباحثين ورفع أعداد PDF</span>')}
+  <nav class="journal-admin-tabs" aria-label="مسارات إدارة المجلة"><a href="#inbox">استقبال ومراجعة المقالات</a><a href="#issues">رفع عدد PDF</a></nav>
   <section class="journal-admin-section" id="inbox"><div class="social-section-head"><div><h2>استقبال مقالات الباحثين</h2><p>راجع النص والمرفقات، ثم اعتمد المقال للنشر أو أعده للباحث مع ملاحظة تحريرية.</p></div><span class="badge b-review">${(pending.results || []).length} قيد المراجعة</span></div>
     <div class="journal-inbox-list">${pendingRows || '<div class="card empty-state">لا توجد مقالات جديدة بانتظار المراجعة.</div>'}</div>
     <div class="modal-veil" id="reviewModal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="reviewModalH"><h3 id="reviewModalH">إعادة المقال إلى الباحث</h3><p class="muted small" id="reviewModalTitle"></p><div class="field"><label for="reviewNote">ملاحظة التحرير (مطلوبة)</label><textarea id="reviewNote" rows="4" placeholder="اكتب التعديلات المطلوبة قبل النشر"></textarea></div><div class="modal-actions"><button class="btn btn-primary" id="reviewRejectConfirm" type="button">تأكيد الإعادة</button><button class="btn btn-ghost" id="reviewModalClose" type="button">إلغاء</button></div></div></div>
   </section>
-  <section class="journal-admin-section" id="issues"><div class="social-section-head"><div><h2>إخراج المجلة</h2><p>قالب طباعي بهوية سِجِل، غلاف للعدد، افتتاحية، أعمدة للمقالات، ومساحات للصور والإعلانات.</p></div></div>
-    <form class="card journal-new-issue" data-journal-create><div class="grid-2"><div class="field"><label for="ji-new-number">رقم العدد</label><input id="ji-new-number" required maxlength="32" placeholder="1"></div><div class="field"><label for="ji-new-year">السنة</label><input id="ji-new-year" type="number" min="1800" max="2200" required value="${new Date().getFullYear()}"></div><div class="field"><label for="ji-new-title">اسم المجلة</label><input id="ji-new-title" maxlength="180" value="مجلة سِجِل"></div><div class="field"><label for="ji-new-subtitle">عنوان العدد</label><input id="ji-new-subtitle" maxlength="240" placeholder="عنوان خاص بهذا العدد (اختياري)"></div></div><button class="btn btn-primary" type="submit">إنشاء مسودة العدد</button></form>
-    <div class="journal-issue-admin-list">${issueRows || '<div class="card empty-state">لم تُنشأ أعداد بعد. ابدأ بمسودة العدد الأول.</div>'}</div>
-    ${editorMarkup}
+  <section class="journal-admin-section" id="issues"><div class="social-section-head"><div><h2>رفع أعداد المجلة</h2><p>ارفع العدد كاملًا بصيغة PDF، وأضف توصيفًا وتعليقًا يظهران للباحثين.</p></div></div>
+    <form class="card journal-new-issue" data-journal-pdf-upload><div class="grid-2"><div class="field"><label for="jpi-title">عنوان العدد *</label><input id="jpi-title" name="title" required maxlength="180"></div><div class="field"><label for="jpi-number">رقم العدد *</label><input id="jpi-number" name="issue_number" required maxlength="32"></div><div class="field"><label for="jpi-year">سنة الإصدار *</label><input id="jpi-year" name="year" type="number" min="1800" max="2200" required value="${new Date().getFullYear()}"></div><div class="field"><label for="jpi-file">ملف العدد PDF *</label><input id="jpi-file" name="file" type="file" accept="application/pdf,.pdf" required><small class="muted">حتى 90 ميغابايت</small></div></div>
+      <div class="field"><label for="jpi-description">توصيف العدد</label><textarea id="jpi-description" name="description" rows="3" maxlength="4000" placeholder="نبذة موجزة عن محتويات العدد"></textarea></div><div class="field"><label for="jpi-comment">تعليق على العدد</label><textarea id="jpi-comment" name="comment" rows="2" maxlength="2000" placeholder="ملاحظة أو كلمة تقديمية للقراء"></textarea></div><div class="composer-footer"><span class="muted small" data-journal-upload-status></span><button class="btn btn-primary" type="submit">رفع ونشر العدد</button></div>
+    </form><div class="journal-issue-admin-list">${issueRows || '<div class="card empty-state">لم يُرفع أي عدد بعد.</div>'}</div>
   </section>`;
-  return layout({ title: 'إدارة المجلة', active: 'journal', user, body, head: '<script src="/journal-admin.js?v=20261004-journal-admin-v1" defer></script>' });
+  return layout({ title: 'إدارة المجلة', active: 'journal', user, body, head: '<script src="/journal-admin.js?v=20261004-journal-pdf-upload-v1" defer></script>' });
 }
-
-function journalBlockEditor(block, index, articles) {
-  const type = ['article', 'text', 'image', 'ad'].includes(block?.type) ? block.type : 'text';
-  const labels = { article: 'مقال', text: 'نص تحريري', image: 'صورة', ad: 'إعلان' };
-  const article = type === 'article' ? articles.find(m => Number(m.id) === Number(block.material_id)) : null;
-  return `<article class="journal-block-editor" data-journal-block data-type="${type}" data-material-id="${type === 'article' ? Number(block.material_id) || '' : ''}">
-    <header><strong>${index + 1}. ${labels[type]}${article ? ` · ${esc(article.title_ar || article.ark)}` : ''}</strong><div><button type="button" class="btn btn-sm btn-ghost" data-journal-move="-1" aria-label="تحريك لأعلى">↑</button><button type="button" class="btn btn-sm btn-ghost" data-journal-move="1" aria-label="تحريك لأسفل">↓</button><button type="button" class="btn btn-sm btn-danger" data-journal-remove>حذف</button></div></header>
-    ${type === 'article' ? `<p class="muted small">${article ? esc(article.description || '').slice(0, 360) : 'المقال المحدد غير متاح ضمن المقالات المنشورة.'}</p>` : ''}
-    ${type === 'text' ? `<label>عنوان الفقرة<input data-field="title" value="${esc(block.title || '')}" maxlength="180"></label><label>النص<textarea data-field="body" rows="4" maxlength="16000">${esc(block.body || '')}</textarea></label>` : ''}
-    ${type === 'image' ? `<label>رفع صورة<input data-field="image_file" type="file" accept="image/jpeg,image/png,image/webp"><input data-field="image_asset_id" type="hidden" value="${Number(block.image_asset_id) || ''}"></label><label>أو رابط صورة محفوظة<input data-field="image_url" value="${esc(block.image_url || '')}" placeholder="/file/123 أو رابط HTTPS"></label><label>تعليق الصورة<input data-field="caption" value="${esc(block.caption || '')}" maxlength="240"></label>` : ''}
-    ${type === 'ad' ? `<label>عنوان الإعلان<input data-field="title" value="${esc(block.title || '')}" maxlength="180"></label><label>النص<input data-field="body" value="${esc(block.body || '')}" maxlength="1000"></label><label>رفع صورة الإعلان<input data-field="image_file" type="file" accept="image/jpeg,image/png,image/webp"><input data-field="image_asset_id" type="hidden" value="${Number(block.image_asset_id) || ''}"></label><label>أو رابط صورة محفوظة<input data-field="image_url" value="${esc(block.image_url || '')}" placeholder="/file/123 أو رابط HTTPS"></label><label>رابط الإعلان<input data-field="link_url" value="${esc(block.link_url || '')}" placeholder="https://..."></label>` : ''}
-  </article>`;
-}
-
-async function journalPrintPage(env, issueId) {
-  const issue = await env.DB.prepare('SELECT * FROM journal_issues WHERE id = ?').bind(issueId).first();
-  if (!issue) return htmlRes(layout({ title: 'العدد غير موجود', active: 'journal', user: {}, body: '<div class="card">العدد غير موجود.</div>' }), 404);
-  let blocks = [];
-  try { blocks = JSON.parse(issue.blocks_json || '[]'); if (!Array.isArray(blocks)) blocks = []; } catch (_) { blocks = []; }
-  const materialIds = [...new Set(blocks.filter(b => b.type === 'article').map(b => Number(b.material_id)).filter(Number.isFinite))];
-  const materials = materialIds.length ? await env.DB.prepare(
-    `SELECT m.id, m.ark, m.title_ar, m.description, m.author, m.year,
-      COALESCE(u.display_name, u.username, 'سِجِل') AS researcher_name,
-      (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('cover','thumbnail') OR f.mime LIKE 'image/%') ORDER BY CASE WHEN f.kind='cover' THEN 0 WHEN f.kind='thumbnail' THEN 1 ELSE 2 END, f.id LIMIT 1) AS image_id
-     FROM materials m LEFT JOIN admin_users u ON u.id=m.created_by
-     WHERE m.id IN (${materialIds.map(() => '?').join(',')}) AND m.type='article' AND m.publish_status='published'`
-  ).bind(...materialIds).all() : { results: [] };
-  const byId = new Map((materials.results || []).map(m => [Number(m.id), m]));
-  const safeAsset = value => {
-    const url = String(value || '').trim();
-    return url.startsWith('/file/') || url.startsWith('/sidjil-logo.png') || /^https:\/\//i.test(url) ? url : '';
-  };
-  const contentBlocks = blocks.map(block => {
-    if (block.type === 'article') {
-      const m = byId.get(Number(block.material_id)); if (!m) return '';
-      const image = m.image_id ? `<img class="print-article-image" src="/file/${Number(m.image_id)}" alt="">` : '';
-      return `<article class="print-article"><h2>${esc(m.title_ar || m.ark)}</h2><div class="print-article-meta">${esc(m.researcher_name)}${m.author ? ` · ${esc(m.author)}` : ''}${m.year ? ` · ${esc(String(m.year))}` : ''}</div>${image}<div class="print-article-body">${esc(m.description || '')}</div></article>`;
-    }
-    if (block.type === 'text') return `<section class="print-editorial-block"><h2>${esc(block.title || '')}</h2><p>${esc(block.body || '')}</p></section>`;
-    if (block.type === 'image') { const src = Number(block.image_asset_id) ? `/admin/journal/assets/${Number(block.image_asset_id)}` : safeAsset(block.image_url); return src ? `<figure class="print-image-block"><img src="${esc(src)}" alt=""><figcaption>${esc(block.caption || '')}</figcaption></figure>` : ''; }
-    if (block.type === 'ad') { const src = Number(block.image_asset_id) ? `/admin/journal/assets/${Number(block.image_asset_id)}` : safeAsset(block.image_url); const href = /^https:\/\//i.test(String(block.link_url || '')) ? String(block.link_url) : ''; return `<aside class="print-ad">${src ? `<img src="${esc(src)}" alt="">` : ''}<div><strong>${esc(block.title || 'إعلان')}</strong><p>${esc(block.body || '')}</p>${href ? `<small>${esc(href)}</small>` : ''}</div></aside>`; }
-    return '';
-  }).join('');
-  const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(issue.title_ar)} — العدد ${esc(issue.issue_number)}</title><link rel="stylesheet" href="/style.css?v=20261004-journal-print-v1"><style>
-    @page{size:A4;margin:17mm 16mm 18mm}*{box-sizing:border-box}body{margin:0;background:#fff;color:#15233b;font-family:'IBM Plex Sans Arabic','Noto Kufi Arabic',sans-serif}.print-tools{position:sticky;top:0;z-index:2;display:flex;justify-content:center;gap:.75rem;padding:.75rem;background:#15233b;color:#fff}.print-tools button{padding:.6rem 1.2rem;border:0;border-radius:999px;background:#d9ae49;color:#17243a;font:inherit;font-weight:700;cursor:pointer}.print-cover{min-height:250mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:2px solid #d9ae49;padding:24mm;background:linear-gradient(160deg,#f8f4e7,#fff 65%)}.print-cover img{width:30mm;height:30mm;object-fit:contain;margin-bottom:12mm}.print-cover .eyebrow{font-size:13pt;letter-spacing:.04em;color:#806323}.print-cover h1{font-size:34pt;line-height:1.5;margin:8mm 0}.print-cover h2{font-size:20pt;font-weight:500;margin:0}.print-cover .issue-no{margin-top:20mm;padding:3mm 10mm;border:1px solid #d9ae49;border-radius:999px}.print-editorial{margin:0 0 15mm;padding:10mm;border-right:4px solid #d9ae49;background:#f8f6f0;break-inside:avoid}.print-editorial h2,.print-article h2{margin:0 0 4mm;color:#17345f;font-size:18pt}.print-editorial p,.print-article-body,.print-editorial-block p{white-space:pre-line;text-align:justify;line-height:1.9;font-size:11pt}.print-content{column-count:${Math.min(3,Math.max(1,Number(issue.columns_count)||2))};column-gap:9mm;column-rule:1px solid #ded8c7}.print-article,.print-editorial-block,.print-image-block,.print-ad{break-inside:avoid-column;margin:0 0 9mm}.print-article{padding-bottom:5mm;border-bottom:1px solid #d9ae49}.print-article-meta{color:#716a5b;font-size:9pt;margin-bottom:4mm}.print-article-image{display:block;max-width:100%;max-height:70mm;object-fit:contain;margin:0 auto 4mm}.print-article-body{font-size:10.5pt}.print-editorial-block h2{font-size:14pt;color:#17345f}.print-image-block img,.print-ad img{display:block;width:100%;max-height:80mm;object-fit:contain}.print-image-block figcaption{font-size:9pt;text-align:center;color:#716a5b}.print-ad{padding:5mm;border:1px solid #d9ae49;background:#fbf8ef;text-align:center}.print-ad p{line-height:1.7}.print-ad small{direction:ltr;display:block;overflow-wrap:anywhere}.print-footer{margin-top:12mm;border-top:1px solid #d9ae49;padding-top:4mm;text-align:center;color:#716a5b;font-size:9pt}@media print{.print-tools{display:none}.print-cover{page-break-after:always}.print-content{orphans:3;widows:3}}
-  </style></head><body><div class="print-tools"><button onclick="window.print()">إخراج / حفظ PDF</button><button onclick="window.close()">إغلاق المعاينة</button></div><main><section class="print-cover"><img src="/sidjil-logo.png" alt="سِجِل"><span class="eyebrow">مجلة سِجِل · مجلة علمية ثقافية</span><h1>${esc(issue.title_ar || 'مجلة سِجِل')}</h1><h2>${esc(issue.subtitle_ar || '')}</h2><div class="issue-no">العدد ${esc(issue.issue_number)} · ${esc(String(issue.year))}</div></section>${issue.editorial_ar ? `<section class="print-editorial"><h2>كلمة التحرير</h2><p>${esc(issue.editorial_ar)}</p></section>` : ''}<section class="print-content">${contentBlocks}</section><footer class="print-footer">سِجِل · منصة الذاكرة الرقمية لتشاد · ${esc(String(issue.year))}</footer></main><script>window.addEventListener('load',()=>{const imgs=[...document.images];Promise.all(imgs.map(i=>i.complete?Promise.resolve():new Promise(r=>{i.onload=r;i.onerror=r}))).then(()=>setTimeout(()=>window.print(),350));});</script></body></html>`;
-  return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
-}
-
 // ---------- 9) المستخدمون ----------
 async function usersPage(env, user) {
   const rows = await env.DB.prepare(
@@ -1325,9 +1246,7 @@ export async function renderAdmin(pathname, req, env, user) {
   const clean = pathname.replace(/\/+$/, '') || '/admin';
   if (clean === '/admin') return htmlRes(await dashboardPage(env, user));
   if (clean === '/admin/translation') return htmlRes(await translationPage(env, user));
-  if (clean === '/admin/journal') return htmlRes(await journalAdminPage(env, user, req));
-  const journalPrint = clean.match(/^\/admin\/journal\/print\/(\d+)$/);
-  if (journalPrint) return journalPrintPage(env, Number(journalPrint[1]));
+  if (clean === '/admin/journal') return htmlRes(await journalAdminPage(env, user));
   if (clean === '/admin/materials') return htmlRes(await materialsListPage(env, user, req));
   if (clean === '/admin/materials/new') return htmlRes(await materialFormPage(env, user, 'new'));
 
@@ -1485,7 +1404,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-journal-admin-v1">
+<link rel="stylesheet" href="/admin.css?v=20261004-journal-pdf-v2">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -2435,14 +2354,16 @@ async function researcherFormPage(env, user, mode, id) {
    ============================================================ */
 async function researcherJournalPage(env, user) {
   const verified = Number(user.is_verified) === 1;
-  const issues = await env.DB.prepare(
+  const [legacyIssues, pdfIssues] = await Promise.all([env.DB.prepare(
     `SELECT m.id, m.ark, m.title_ar, m.title_orig, m.description, m.year,
             (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf') ORDER BY f.id LIMIT 1) AS pdf_id,
             (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.kind IN ('thumbnail', 'cover') OR f.mime LIKE 'image/%') ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 ELSE 2 END, f.id LIMIT 1) AS thumb_id
      FROM materials m WHERE m.type = 'journal' AND m.publish_status = 'published'
      ORDER BY m.year DESC, m.id DESC`
-  ).all();
-  const issueCards = (issues.results || []).map(m => {
+  ).all(), env.DB.prepare(
+    `SELECT id, issue_number, year, title, description, comment FROM journal_pdf_issues ORDER BY year DESC, id DESC`
+  ).all()]);
+  const legacyCards = (legacyIssues.results || []).map(m => {
     const title = m.title_ar || m.title_orig || m.ark || 'عدد مجلة';
     const cover = m.thumb_id
       ? `<div class="journal-card-cover"><img src="/file/${m.thumb_id}" alt="${esc(title)}" loading="lazy"></div>`
@@ -2461,6 +2382,13 @@ async function researcherJournalPage(env, user) {
       </div>
     </article>`;
   }).join('');
+  const uploadedCards = (pdfIssues.results || []).map(issue => `
+    <article class="social-card journal-card"><div class="journal-card-cover placeholder" aria-hidden="true">📓</div><div class="journal-card-body">
+      <h3>${esc(issue.title)}</h3><div class="post-meta">العدد ${esc(issue.issue_number)} · ${esc(String(issue.year))}</div>
+      ${issue.description ? `<p>${esc(issue.description)}</p>` : ''}${issue.comment ? `<p class="muted small"><strong>تعليق:</strong> ${esc(issue.comment)}</p>` : ''}
+      <div class="journal-card-actions"><a class="btn btn-primary btn-sm" href="/journal/issues/${issue.id}/pdf" target="_blank" rel="noopener">📖 عرض العدد</a><a class="btn btn-ghost btn-sm" href="/journal/issues/${issue.id}/pdf?download=1">⬇ تحميل PDF</a></div>
+    </div></article>`).join('');
+  const issueCards = uploadedCards + legacyCards;
 
   const composer = verified ? `
   <section class="social-card journal-write" id="write" aria-label="كتابة مقال للمجلة">
