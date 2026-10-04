@@ -1221,7 +1221,7 @@ export async function renderAdmin(pathname, req, env, user) {
 // ============================================================
 
 const RESEARCHER_NAV = [
-  ['mine', '/researcher', 'منشوراتي'],
+  ['mine', '/researcher/materials', 'منشوراتي'],
   ['journal', '/researcher/journal', 'المجلة'],
   ['discussions', '/researcher/discussions', 'نقاشاتي ومراجعاتي'],
   ['new', '/researcher/new', '+ مادة جديدة'],
@@ -1321,7 +1321,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-image-discussion-actions">
+<link rel="stylesheet" href="/admin.css?v=20261004-researcher-materials-profile-link">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1332,10 +1332,10 @@ ${csrfMeta}
         ${researcherAvatarMarkup(user, 'small')}<span class="researcher-profile-name">${esc(displayName)}${verifiedBadge}</span><span class="researcher-account-chevron" aria-hidden="true"></span>
       </button>
       <div class="researcher-account-menu" id="researcherAccountMenu" hidden>
-        <div class="researcher-account-menu-head">
+        <a class="researcher-account-menu-head researcher-account-menu-profile-link" href="/researcher/profile/${encodeURIComponent(user?.id || '')}" aria-label="الانتقال إلى الصفحة الشخصية">
           ${researcherAvatarMarkup(user, 'small')}
           <div class="researcher-account-menu-id"><strong>${esc(displayName)}${verifiedBadge}</strong><span class="post-meta">مساحة الباحث</span></div>
-        </div>
+        </a>
         <div class="researcher-account-menu-group">
           <div class="researcher-account-menu-title">التنقل</div>
           ${accountNav}
@@ -1912,6 +1912,36 @@ async function researcherProfilePage(env, viewer, researcherId) {
   return researcherLayout({ title: profileName, active: 'profile', user: viewer, body });
 }
 
+async function researcherMaterialsPage(env, user) {
+  const result = await env.DB.prepare(
+    `SELECT m.id, m.title_ar, m.title_orig, m.type, m.publish_status,
+            m.review_note, m.updated_at,
+            (SELECT COUNT(*) FROM files f WHERE f.material_id = m.id) AS files_count
+     FROM materials m
+     WHERE m.created_by = ? AND m.publish_status IN ('draft', 'in_review', 'published')
+     ORDER BY m.updated_at DESC, m.id DESC LIMIT 200`
+  ).bind(user.id).all();
+  const materials = result.results || [];
+  const cards = materials.map(m => `
+    <article class="researcher-activity-material social-card">
+      <div class="post-head">
+        <div class="post-avatar">${esc(String(TYPE_LABELS[m.type] || m.type || 'م').slice(0, 1))}</div>
+        <div><strong>${esc(TYPE_LABELS[m.type] || m.type || 'مادة')}</strong><div class="post-meta">${fmtDate(m.updated_at)} · ${Number(m.files_count || 0)} ملف</div></div>
+        <span class="post-status">${badge(RESEARCHER_STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</span>
+      </div>
+      <h3><a href="/researcher/${m.id}">${esc(m.title_ar || m.title_orig || 'مادة بلا عنوان')}</a></h3>
+      ${m.publish_status === 'draft' && m.review_note ? `<div class="review-note">${esc(m.review_note)}</div>` : ''}
+      <div class="post-actions"><a class="post-action" href="/researcher/${m.id}">${m.publish_status === 'draft' ? 'متابعة تحرير المسودة' : 'عرض المادة'}</a></div>
+    </article>`).join('');
+  const body = `
+    <section class="social-section-head researcher-own-head">
+      <div><h2>منشوراتي</h2><p>مسوداتك والمواد المنشورة أو التي تنتظر مراجعة الإدارة.</p></div>
+      <a class="btn btn-primary" href="/researcher/new">＋ إضافة مادة</a>
+    </section>
+    <div class="researcher-activity-feed">${cards || '<div class="social-card empty-state">لا توجد مسودات أو مواد منشورة أو قيد المراجعة بعد.</div>'}</div>`;
+  return researcherLayout({ title: 'منشوراتي', active: 'mine', user, body });
+}
+
 async function researcherDiscussionsPage(env, user, req) {
   const verified = Number(user.is_verified) === 1;
   const notice = verified ? '' : `<div class="card notice-card"><strong>حسابك بانتظار التوثيق من الإدارة.</strong> يمكنك تصفح النقاشات، لكن النشر سيُتاح بعد التوثيق.</div>`;
@@ -2218,6 +2248,7 @@ export async function renderResearcher(pathname, req, env, user) {
 
   const clean = pathname.replace(/\/+$/, '') || '/researcher';
   if (clean === '/researcher') return htmlRes(await researcherDashPage(env, user, req));
+  if (clean === '/researcher/materials') return htmlRes(await researcherMaterialsPage(env, user));
   if (clean === '/researcher/account') return htmlRes(await researcherAccountPage(user));
   const mProfile = clean.match(/^\/researcher\/profile\/(\d+)$/);
   if (mProfile) return htmlRes(await researcherProfilePage(env, user, parseInt(mProfile[1], 10)));
