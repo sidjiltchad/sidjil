@@ -241,9 +241,15 @@ async function apiList(env, url, key) {
     }
   }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  // Keep LIMIT/OFFSET as validated integer literals. D1/SQLite can legally
+  // bind these values, but doing so has produced inconsistent page sizes on
+  // older edge runtimes (the look-ahead row was dropped, which hid nextCursor).
+  // All user input is normalized by pageParams before interpolation.
+  const limitSql = `LIMIT ${perPage + 1}`;
+  const offsetSql = cursor ? '' : ` OFFSET ${offset}`;
   const [itemsRes, countRow] = await Promise.all([
-    env.DB.prepare(`SELECT * FROM ${cfg.table}${whereSql} ORDER BY ${cfg.order} LIMIT ? OFFSET ?`)
-      .bind(...binds, perPage + 1, offset)
+    env.DB.prepare(`SELECT * FROM ${cfg.table}${whereSql} ORDER BY ${cfg.order} ${limitSql}${offsetSql}`)
+      .bind(...binds)
       .all(),
     env.DB.prepare(`SELECT COUNT(*) AS c FROM ${cfg.table}${countWhereSql}`).bind(...countBinds).first(),
   ]);
