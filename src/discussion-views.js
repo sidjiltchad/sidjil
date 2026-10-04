@@ -98,12 +98,18 @@ function researcherStandalonePage(ctx, title, content, mainClass = '') {
   return `<!doctype html><html lang="${esc(lang)}" dir="${esc(dir)}"><head>
 <meta charset="utf-8">${themeInit}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff"><title>${esc(title)} — ${esc(t(lang, 'site_name'))}</title>
-<link rel="stylesheet" href="/style.css?v=20261004-researcher-register-standalone"><link rel="manifest" href="/app-manifest.json">
+<link rel="stylesheet" href="/style.css?v=20261004-researcher-auth-flow"><link rel="manifest" href="/app-manifest.json">
 </head><body class="researcher-login-only">
 <header class="researcher-login-header"><a class="researcher-login-brand" href="/" aria-label="${esc(t(lang, 'site_name'))}"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></a><div class="researcher-login-controls" aria-label="إعدادات العرض"><button class="researcher-login-control researcher-login-language" type="button" aria-label="Français" title="Français">FR</button><button class="researcher-login-control researcher-login-theme" id="loginThemeToggle" type="button" aria-label="تبديل المظهر" title="تبديل المظهر"><span class="login-theme-moon" aria-hidden="true">☾</span><span class="login-theme-sun" aria-hidden="true">☀</span></button></div></header>
 <main class="researcher-login-main ${mainClass}">${content}</main>
 <script>(()=>{const root=document.documentElement,button=document.getElementById('loginThemeToggle');if(!button)return;button.addEventListener('click',()=>{const next=root.getAttribute('data-theme')==='dark'?'light':'dark';root.setAttribute('data-theme',next);try{localStorage.setItem('sidjil-theme',next)}catch(e){}})})();</script>
 </body></html>`;
+}
+
+function researcherLoginUrl(ctx) {
+  const loginUrl = new URL('/', ctx.env?.APP_URL || 'https://app.sidjil.org');
+  loginUrl.searchParams.set('lang', ctx.lang);
+  return loginUrl.toString();
 }
 
 function discussionAuthGate(ctx, standalone = false) {
@@ -119,8 +125,8 @@ function discussionAuthGate(ctx, standalone = false) {
     <div class="social-auth-card">
       ${standalone ? '' : `<div class="social-auth-brand"><img src="/sidjil-logo.png" alt=""><span>${esc(t(lang, 'site_name'))}</span></div>`}
       ${standalone ? `<p class="social-auth-welcome">${lang === 'fr' ? 'Bienvenue dans la communauté des chercheurs.' : 'أهلًا بك في مجتمع الباحثين.'}</p>` : ''}
-      <h1>${esc(t(lang, 'discussion_login_title'))}</h1>
       <p class="social-auth-intro">${esc(t(lang, 'discussion_login_intro'))}</p>
+      ${standalone && url.searchParams.get('registered') === '1' ? `<div class="notice notice-success" role="status">${esc(t(lang, 'register_done'))}</div>` : ''}
       ${error ? `<div class="notice notice-error" role="alert">${esc(error)}</div>` : ''}
       <form id="discussionLoginForm" class="social-auth-form" data-next="${esc(next)}" novalidate>
         <label class="sr-only" for="discussionLoginUsername">${esc(t(lang, 'register_username'))}</label>
@@ -135,11 +141,11 @@ function discussionAuthGate(ctx, standalone = false) {
       <p class="social-auth-note">${esc(t(lang, 'discussion_google_note'))}</p>
       <div class="social-auth-register"><span>${esc(t(lang, 'discussion_login_hint'))}</span> <a href="${langPath(ctx, '/researcher/register')}">${esc(t(lang, 'register_researcher'))}</a></div>
     </div>
-  </div><script src="/js/discussions.js" defer></script>`;
+  </div><script src="/js/discussions.js?v=20261004-researcher-auth-flow" defer></script>`;
 }
 
 export function researcherLoginPage(ctx) {
-  const title = t(ctx.lang, 'discussion_login_title');
+  const title = t(ctx.lang, 'discussion_login_button');
   return researcherStandalonePage(ctx, title, discussionAuthGate(ctx, true));
 }
 
@@ -219,7 +225,7 @@ export async function discussionsPage(ctx) {
     ${paginationHTML(ctx, page, perPage, total, base)}
     <p class="d-cta"><a class="btn btn-primary" href="${langPath(ctx, '/researcher/register')}">${esc(t(lang, 'register_researcher'))}</a></p>
   </div>
-  <script src="/js/discussions.js" defer></script>`;
+  <script src="/js/discussions.js?v=20261004-researcher-auth-flow" defer></script>`;
 
   return layout(ctx, {
     title: t(lang, 'discussions_title'),
@@ -333,13 +339,9 @@ export function registerPage(ctx) {
   const { lang } = ctx;
   const content = `
   <div class="wrap page-register">
-    <header class="page-head"><h1>${esc(t(lang, 'register_researcher'))}</h1>
+    <header class="page-head"><h1>${esc(lang === 'ar' ? 'إنشاء حساب باحث' : 'Créer un compte chercheur')}</h1>
       <p class="page-desc">${esc(t(lang, 'register_intro'))}</p></header>
-    <form id="registerForm" class="card form-card register-card" novalidate>
-      <div class="register-card-head">
-        <div class="register-card-mark" aria-hidden="true">سِ</div>
-        <div><span class="eyebrow">${esc(t(lang, 'site_name'))}</span><h2>${esc(t(lang, 'register_researcher'))}</h2></div>
-      </div>
+    <form id="registerForm" class="card form-card register-card" data-login-url="${esc(researcherLoginUrl(ctx))}" novalidate>
       <div class="register-form-section">
         <h2 class="register-section-title"><span>1</span>${esc(t(lang, 'register_profile_title'))}</h2>
         <div class="register-fields">
@@ -400,6 +402,7 @@ export function registerPage(ctx) {
       <a class="btn btn-google btn-block" href="/auth/google/start?next=${encodeURIComponent('/researcher')}">${googleMark()}<span>${esc(t(lang, 'discussion_google_button'))}</span></a>
       <p class="social-auth-note">${esc(t(lang, 'discussion_google_note'))}</p>
     </form>
+    <a class="btn btn-ghost register-login-return" href="${esc(researcherLoginUrl(ctx))}">${esc(t(lang, 'register_login'))}</a>
   </div>
   <script src="/js/discussions.js" defer></script>`;
   return researcherStandalonePage(ctx, t(lang, 'register_researcher'), content, 'researcher-register-main');

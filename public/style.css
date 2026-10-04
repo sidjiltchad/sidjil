@@ -3341,6 +3341,7 @@ blockquote {
 .password-toggle { position: absolute; inset-inline-end: .55rem; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; font-size: 1rem; }
 .password-toggle:hover, .password-toggle:focus-visible { background: var(--line-soft); color: var(--teal); outline: 0; }
 .register-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.3rem 1.6rem .5rem; }
+.register-login-return { display: flex; width: max-content; margin: .25rem auto 2rem; }
 .register-form-actions .form-msg { flex: 1; margin: 0; }
 .register-submit { min-width: 160px; }
 .register-card > .social-auth-divider, .register-card > .btn-google, .register-card > .social-auth-note { margin-inline: 1.6rem; }
@@ -3358,6 +3359,8 @@ blockquote {
   .register-card > .btn-google { width: calc(100% - 2rem); }
 }
 .notice-error { border: 1px solid #e7b9b4; border-radius: 10px; padding: .65rem .8rem; color: #9a342c; background: #fff0ee; margin: .8rem 0; font-size: .86rem; }
+.notice-success { border-color: #9bc9aa; color: #236b3d; background: #eff9f1; }
+[data-theme="dark"] .notice-success { border-color: #3d7850; color: #a8dfb6; background: #172b1d; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .social-page-head { margin-bottom: 1rem; }
 .social-feed-intro { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.2rem; margin-bottom: 1rem; }

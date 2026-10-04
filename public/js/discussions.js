@@ -144,10 +144,9 @@
       btn.disabled = true;
       postJSON('/api/v1/researcher/register', data, false)
         .then(function () {
-          msg.textContent = msg.dataset.done || 'تم إنشاء الحساب بنجاح.';
-          msg.className = 'form-msg ok';
-          regForm.reset();
-          btn.disabled = false;
+          var loginUrl = new URL(regForm.dataset.loginUrl || '/', location.href);
+          loginUrl.searchParams.set('registered', '1');
+          location.assign(loginUrl.toString());
         })
         .catch(function (err) { msg.textContent = err.message; msg.className = 'form-msg err'; btn.disabled = false; });
     });
