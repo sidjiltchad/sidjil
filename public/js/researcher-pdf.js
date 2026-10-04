@@ -74,7 +74,7 @@ export async function mount(container, { url, materialId, materialTitle }) {
   function pageScale(page) {
     if (state.fit) {
       const base = page.getViewport({ scale: 1 });
-      const available = stage.clientWidth > 900 ? (stage.clientWidth - 52) / 2 : stage.clientWidth - 28;
+      const available = stage.clientWidth > 900 && state.translation ? (stage.clientWidth - 52) / 2 : stage.clientWidth - 28;
       state.scale = Math.min(2.5, Math.max(.35, available / base.width));
     }
     return page.getViewport({ scale: state.scale });
@@ -183,13 +183,14 @@ export async function mount(container, { url, materialId, materialTitle }) {
       canvas.style.width = `${Math.floor(viewport.width)}px`; canvas.style.height = `${Math.floor(viewport.height)}px`;
       canvas.setAttribute('dir', 'ltr'); canvas.style.direction = 'ltr';
       const ctx = canvas.getContext('2d'); ctx.direction = 'ltr';
-      const desktopSplit = stage.clientWidth > 900;
+      const desktopSplit = stage.clientWidth > 900 && state.translation;
       const paneHeight = Math.floor(viewport.height) + 32;
       article.style.width = `${desktopSplit ? Math.floor(viewport.width * 2 + 1) : Math.floor(viewport.width)}px`;
       article.style.minHeight = `${paneHeight}px`;
       const sourcePane = article.querySelector('.rpdf-source-pane');
       sourcePane.style.width = `${Math.floor(viewport.width)}px`;
       sourcePane.style.minHeight = `${paneHeight}px`;
+      sourcePane.style.gridColumn = desktopSplit ? '' : '1 / -1';
       layer.style.width = `${Math.floor(viewport.width)}px`; layer.style.height = `${Math.floor(viewport.height)}px`;
       await page.render({ canvasContext: ctx, viewport, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined }).promise;
       const textContent = await page.getTextContent();
@@ -274,7 +275,7 @@ export async function mount(container, { url, materialId, materialTitle }) {
     liveTranslationButton.textContent = state.translation ? 'إيقاف الترجمة' : 'ترجمة الصفحات';
     pages.querySelectorAll('[data-rpdf-translation]').forEach((pane) => { pane.hidden = !state.translation; });
     updateTranslationProgress();
-    if (state.translation) pages.querySelectorAll('[data-rpdf-page]').forEach((article) => { if (article.dataset.sourceText && article.getBoundingClientRect().top < stage.getBoundingClientRect().bottom + 700) translatePage(article, article.dataset.sourceText); });
+    redrawAtCurrentPage();
   });
   targetSelect.addEventListener('change', () => {
     state.target = targetSelect.value || 'ar';
