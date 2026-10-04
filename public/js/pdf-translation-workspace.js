@@ -11,6 +11,7 @@ const PDF_RENDER_OPTIONS = {
   isEvalSupported: true
 };
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content || sessionStorage.getItem('csrfToken') || '';
 
 export function mountTranslationWorkspace(root, config) {
   const originalScroll = root.querySelector('[data-ta-original-scroll]');
@@ -184,8 +185,11 @@ export function mountTranslationWorkspace(root, config) {
     setStatus(`${workingLabel} · ${sourceSelect.value} → ${targetSelect.value}`);
     starting = (async () => {
       try {
+        const headers = { 'content-type': 'application/json' };
+        const csrf = csrfToken();
+        if (csrf) headers['X-CSRF-Token'] = csrf;
         const response = await fetch(`/api/v1/documents/${encodeURIComponent(config.material)}/translations`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
+          method: 'POST', headers, credentials: 'same-origin',
           body: JSON.stringify({ source: sourceSelect.value, target: targetSelect.value, mode: 'translated', ocr: 'auto' }),
         });
         const data = await response.json().catch(() => ({}));
