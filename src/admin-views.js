@@ -74,6 +74,18 @@ function esc(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+function buildResearcherFtsQuery(value) {
+  const tokens = String(value || '')
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .split(/\s+/)
+    .map(token => token.replace(/["*:()]/g, '').trim())
+    .filter(token => token.length > 0)
+    .slice(0, 8);
+  return tokens.length ? tokens.map(token => `"${token}"*`).join(' ') : '';
+}
+
 const VERIFICATION_LABELS = { research: 'توثيق بحثي', administrative: 'توثيق إداري', participation: 'توثيق مشاركة' };
 function verificationBadge(type) {
   const label = VERIFICATION_LABELS[type];
@@ -1510,7 +1522,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-mobile-pdf-reader-v1"></script>
-<script src="/researcher-feed-v5.js?v=20261004-infinite-feed-v1" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-live-search-v1" defer></script>
 <script src="/translate-inline.js?v=20261004-translation-head-v1" defer></script>
 <script>
 (() => {
@@ -1709,8 +1721,13 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
     ? ` AND EXISTS (SELECT 1 FROM material_collections mc_filter WHERE mc_filter.material_id = m.id AND mc_filter.collection_id = ?)`
     : '';
   const searchTerm = String(search || '').trim().slice(0, 120);
+  const arkSearch = /^ARC-[A-Z0-9-]+$/i.test(searchTerm);
+  const ftsQuery = arkSearch ? '' : buildResearcherFtsQuery(searchTerm);
+  const searchJoin = ftsQuery ? ' JOIN materials_fts search_fts ON search_fts.ark = m.ark' : '';
   const searchFilter = searchTerm
-    ? ` AND (m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ? OR m.author LIKE ? OR m.description LIKE ? OR m.summary LIKE ?)`
+    ? ftsQuery
+      ? ' AND materials_fts MATCH ?'
+      : ' AND m.ark LIKE ?'
     : '';
   const feedOrder = safeFeed === 'discover'
     ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
@@ -1725,17 +1742,26 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
              ORDER BY CASE WHEN f.kind = 'cover' THEN 0 WHEN f.kind = 'thumbnail' THEN 1 WHEN f.mime LIKE 'image/%' THEN 2 ELSE 3 END, f.id LIMIT 1) AS thumb_id,
             (SELECT f.id FROM files f WHERE f.material_id = m.id AND (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf')
              ORDER BY f.id LIMIT 1) AS pdf_id,
-            (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
-     FROM materials m
+            COALESCE(discussion_counts.discussions_count, 0) AS discussions_count
+     FROM materials m${searchJoin}
      LEFT JOIN sources s ON s.id = m.source_id
      LEFT JOIN places p ON p.id = m.place_id
      LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
+     LEFT JOIN (
+       SELECT d.material_id, COUNT(*) AS discussions_count
+       FROM discussions d
+       WHERE d.status = 'published'
+       GROUP BY d.material_id
+     ) discussion_counts ON discussion_counts.material_id = m.id
      WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}${searchFilter}
      ${feedOrder} LIMIT 500`;
   const params = [];
   if (safeFeed === 'official') params.push(user.id);
   if (sectionFilter) params.push(Number(sectionId));
-  if (searchFilter) params.push(...Array(6).fill(`%${searchTerm}%`));
+  if (searchFilter) {
+    if (ftsQuery) params.push(ftsQuery, `%${searchTerm}%`);
+    else params.push(`%${searchTerm}%`);
+  }
   const result = params.length ? await env.DB.prepare(query).bind(...params).all() : await env.DB.prepare(query).all();
   const ordered = diversifyResearcherMaterials(result.results || [], safeOffset + safeLimit);
   const pageRows = ordered.slice(safeOffset, safeOffset + safeLimit);
@@ -1782,7 +1808,14 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
   const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
   const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
   const searchTerm = String(search || '').trim().slice(0, 120);
-  const materialSearch = searchTerm ? ` AND (m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ? OR m.author LIKE ? OR m.description LIKE ? OR m.summary LIKE ?)` : '';
+  const arkSearch = /^ARC-[A-Z0-9-]+$/i.test(searchTerm);
+  const ftsQuery = arkSearch ? '' : buildResearcherFtsQuery(searchTerm);
+  const materialSearchJoin = ftsQuery ? ' JOIN materials_fts search_fts ON search_fts.ark = m.ark' : '';
+  const materialSearch = searchTerm
+    ? ftsQuery
+      ? ' AND materials_fts MATCH ?'
+      : ' AND m.ark LIKE ?'
+    : '';
   const discussionSearch = searchTerm ? ` AND (d.title LIKE ? OR d.body LIKE ? OR m.title_ar LIKE ?)` : '';
   const [fMats, fDiscs] = await Promise.all([
     env.DB.prepare(
@@ -1793,13 +1826,19 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
               u.id AS creator_id, u.display_name AS creator_name, u.avatar_url AS creator_avatar_url, u.avatar_r2_key AS creator_avatar_r2_key,
               (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.kind IN ('thumbnail', 'cover') OR f2.mime LIKE 'image/%') ORDER BY CASE WHEN f2.kind = 'cover' THEN 0 WHEN f2.kind = 'thumbnail' THEN 1 ELSE 2 END, f2.id LIMIT 1) AS thumb_id,
               (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.mime = 'application/pdf' OR lower(f2.filename) LIKE '%.pdf') ORDER BY f2.id LIMIT 1) AS pdf_id,
-              (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
-       FROM materials m
+              COALESCE(discussion_counts.discussions_count, 0) AS discussions_count
+       FROM materials m${materialSearchJoin}
        JOIN researcher_follows fl ON fl.followed_id = m.created_by
        LEFT JOIN admin_users u ON u.id = m.created_by AND u.role = 'researcher'
+       LEFT JOIN (
+         SELECT d.material_id, COUNT(*) AS discussions_count
+         FROM discussions d
+         WHERE d.status = 'published'
+         GROUP BY d.material_id
+       ) discussion_counts ON discussion_counts.material_id = m.id
        WHERE fl.follower_id = ? AND m.publish_status = 'published'${materialSearch}
        ORDER BY m.updated_at DESC, m.id DESC LIMIT 500`
-    ).bind(user.id, ...Array(materialSearch ? 6 : 0).fill(`%${searchTerm}%`)).all(),
+    ).bind(user.id, ...(materialSearch ? (ftsQuery ? [ftsQuery, `%${searchTerm}%`] : [`%${searchTerm}%`]) : [])).all(),
     env.DB.prepare(
       `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
               d.created_at AS sort_date,
@@ -1976,14 +2015,14 @@ async function researcherDashPage(env, user, req) {
   const emptyFeedHtml = `<div class="social-card empty-state">${searchTerm ? `لا توجد نتائج للبحث عن «${esc(searchTerm)}».` : feedEmpty}</div>`;
   const activeFeedPage = feed === 'following' ? followingPage : publishedPage;
   const body = `
-  <form class="researcher-main-search" action="/researcher" method="get" role="search" aria-label="البحث في مساحة الباحث">
+  <form class="researcher-main-search" action="/researcher" method="get" role="search" aria-label="البحث في مساحة الباحث" data-researcher-live-search>
     <span class="researcher-main-search-icon" aria-hidden="true">⌕</span>
     <input type="search" name="search" value="${esc(searchTerm)}" placeholder="ابحث في الكتب والوثائق والصور والمواد…" autocomplete="off">
     ${feed !== 'discover' ? `<input type="hidden" name="feed" value="${esc(feed)}">` : ''}
     ${selectedSection ? `<input type="hidden" name="section" value="${esc(selectedSection.id)}">` : ''}
-    <button type="submit">بحث</button>
-    ${searchTerm ? '<a class="researcher-main-search-clear" href="/researcher#feed">مسح</a>' : ''}
   </form>
+  <div id="researcherLiveSearchResults" class="researcher-live-search-results" aria-live="polite" aria-busy="false" hidden></div>
+  <div id="researcherMainDiscovery" class="researcher-main-discovery">
   <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?feed=discover#feed">اكتشف</a><a class="researcher-feed-tab${feed === 'following' ? ' active' : ''}" href="/researcher?feed=following#feed">المتابَعون</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?feed=latest#feed">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?feed=official#feed">اعتمادات الإدارة</a></section>
   ${feed === 'discover' ? `<section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions?view=researchers">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين مسجلة بعد.</p>'}</section>` : ''}
   ${dashboardComposer}
@@ -1995,7 +2034,8 @@ async function researcherDashPage(env, user, req) {
   <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>` : ''}
   <section class="social-section-head researcher-own-head"><div><h2>منشوراتي وموادي</h2><p>مسوداتك وحالات الاعتماد والملاحظات الإدارية.</p></div><a class="btn btn-ghost" href="/researcher/new">إنشاء مادة</a></section>
   <div class="researcher-material-feed">${postCards || '<div class="social-card empty-state">لا منشورات بعد — ابدأ بمادة جديدة.</div>'}</div>
-  <p class="muted small researcher-help">كل مادة يرسلها الباحث تمر على مراجعة الإدارة قبل النشر. يمكنك متابعة الملاحظات وإعادة التعديل من البطاقة.</p>`;
+  <p class="muted small researcher-help">كل مادة يرسلها الباحث تمر على مراجعة الإدارة قبل النشر. يمكنك متابعة الملاحظات وإعادة التعديل من البطاقة.</p>
+  </div>`;
   return researcherLayout({ title: 'منشوراتي', active: 'mine', user, body });
 }
 

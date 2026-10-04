@@ -1981,6 +1981,14 @@ textarea { border-radius: var(--shape-control); }
 .researcher-main-search button:hover { background: var(--teal-dark); }
 .researcher-main-search-clear { flex: 0 0 auto; padding: .25rem .4rem; color: var(--muted); font-size: .78rem; text-decoration: none; }
 .researcher-main-search-clear:hover { color: var(--danger); }
+.researcher-main-search.is-searching { margin-bottom: .55rem; }
+.researcher-main-discovery[hidden], .researcher-live-search-results[hidden] { display: none !important; }
+.researcher-live-search-results { width: min(100%, 760px); margin: 0 auto 1.15rem; min-height: 24px; }
+.researcher-live-search-results > .social-card { margin-bottom: .8rem; }
+.researcher-live-search-status { display: flex; align-items: center; justify-content: center; gap: .55rem; min-height: 48px; color: var(--muted); font-size: .84rem; }
+.researcher-live-search-spinner { width: 18px; height: 18px; border: 2px solid color-mix(in srgb, var(--teal) 20%, transparent); border-top-color: var(--teal); border-radius: 50%; animation: researcherSearchSpin .7s linear infinite; }
+.researcher-search-hit { padding: 0 .12em; border-radius: .28em; color: inherit; background: color-mix(in srgb, #f5b72f 45%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, #f5b72f 25%, transparent); }
+@keyframes researcherSearchSpin { to { transform: rotate(360deg); } }
 .researcher-story-row { gap: 1rem; }
 .researcher-story { flex-basis: 116px; width: 116px; }
 .researcher-story-name { max-width: 116px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.4; }

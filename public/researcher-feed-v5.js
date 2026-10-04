@@ -321,6 +321,136 @@ function closeImageLightbox() {
   document.body.style.overflow = '';
 }
 
+function escapeResearcherSearchRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightResearcherSearchResults(root, term) {
+  if (!root || !term) return;
+  const tokens = String(term).trim().split(/\s+/).filter(Boolean).slice(0, 8);
+  if (!tokens.length) return;
+  const pattern = tokens.map(escapeResearcherSearchRegex).join('|');
+  if (!pattern) return;
+  const regex = new RegExp(`(${pattern})`, 'giu');
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    const parent = node.parentElement;
+    if (parent && !parent.closest('script,style,mark') && regex.test(node.nodeValue || '')) {
+      regex.lastIndex = 0;
+      nodes.push(node);
+    }
+    regex.lastIndex = 0;
+  }
+  nodes.forEach((textNode) => {
+    const value = textNode.nodeValue || '';
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    regex.lastIndex = 0;
+    value.replace(regex, (match, _group, offset) => {
+      if (offset > cursor) fragment.appendChild(document.createTextNode(value.slice(cursor, offset)));
+      const mark = document.createElement('mark');
+      mark.className = 'researcher-search-hit';
+      mark.textContent = match;
+      fragment.appendChild(mark);
+      cursor = offset + match.length;
+      return match;
+    });
+    if (cursor < value.length) fragment.appendChild(document.createTextNode(value.slice(cursor)));
+    textNode.parentNode?.replaceChild(fragment, textNode);
+  });
+}
+
+function initResearcherLiveSearch() {
+  const form = document.querySelector('[data-researcher-live-search]');
+  const input = form?.querySelector('input[name="search"]');
+  const results = document.getElementById('researcherLiveSearchResults');
+  const main = document.getElementById('researcherMainDiscovery');
+  const feed = document.getElementById('researcherPublishedFeed');
+  if (!form || !input || !results || !main || form.dataset.liveSearchBound) return;
+  form.dataset.liveSearchBound = '1';
+  let timer = null;
+  let controller = null;
+  let requestId = 0;
+
+  const setSearchMode = (active) => {
+    main.hidden = active;
+    results.hidden = !active;
+    form.classList.toggle('is-searching', active);
+    if (feed) feed.dataset.searching = active ? 'true' : 'false';
+  };
+  const showEmpty = (term) => {
+    results.innerHTML = `<div class="social-card empty-state">لا توجد نتائج للبحث عن «${term.replace(/[&<>]/g, '')}».</div>`;
+    results.setAttribute('aria-busy', 'false');
+  };
+  const showHint = () => {
+    results.innerHTML = '<div class="researcher-live-search-status">اكتب حرفين على الأقل لعرض النتائج.</div>';
+    results.setAttribute('aria-busy', 'false');
+  };
+  const runSearch = async () => {
+    const term = input.value.trim().slice(0, 120);
+    if (!term) {
+      requestId += 1;
+      if (controller) controller.abort();
+      controller = null;
+      results.replaceChildren();
+      results.setAttribute('aria-busy', 'false');
+      setSearchMode(false);
+      return;
+    }
+    setSearchMode(true);
+    if (term.length < 2) {
+      requestId += 1;
+      if (controller) controller.abort();
+      controller = null;
+      showHint();
+      return;
+    }
+    results.setAttribute('aria-busy', 'true');
+    results.innerHTML = '<div class="researcher-live-search-status"><span class="researcher-live-search-spinner" aria-hidden="true"></span><span>جارٍ البحث…</span></div>';
+    if (controller) controller.abort();
+    controller = new AbortController();
+    const currentRequest = ++requestId;
+    const params = new URLSearchParams({
+      feed: feed?.dataset.feed || 'discover',
+      offset: '0',
+      limit: '18',
+      search: term,
+    });
+    if (feed?.dataset.section) params.set('section', feed.dataset.section);
+    try {
+      const response = await fetch(`/researcher/feed?${params.toString()}`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (currentRequest !== requestId || input.value.trim().slice(0, 120) !== term) return;
+      if (data.html) {
+        results.innerHTML = data.html;
+        highlightResearcherSearchResults(results, term);
+      } else showEmpty(term);
+      results.setAttribute('aria-busy', 'false');
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      if (currentRequest !== requestId) return;
+      results.innerHTML = '<div class="social-card empty-state">تعذر تنفيذ البحث الآن. حاول مرة أخرى.</div>';
+      results.setAttribute('aria-busy', 'false');
+    }
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    timer = setTimeout(runSearch, 180);
+    if (input.value.trim()) setSearchMode(true);
+    else setSearchMode(false);
+  };
+  input.addEventListener('input', schedule);
+  form.addEventListener('submit', (event) => { event.preventDefault(); runSearch(); });
+  if (input.value.trim()) runSearch();
+}
+
 function initResearcherInfiniteFeed() {
   const feed = document.getElementById('researcherPublishedFeed');
   if (!feed || feed.dataset.hasMore !== 'true' || feed.dataset.infiniteBound) return;
@@ -340,7 +470,7 @@ function initResearcherInfiniteFeed() {
     observer?.disconnect();
   };
   const loadMore = async () => {
-    if (loading || feed.dataset.hasMore !== 'true') return;
+    if (loading || feed.dataset.hasMore !== 'true' || feed.dataset.searching === 'true') return;
     loading = true;
     loader.hidden = false;
     loader.classList.add('is-loading');
@@ -380,6 +510,7 @@ function initResearcherInfiniteFeed() {
 function initResearcherPage() {
   initSocial();
   initResearcherInfiniteFeed();
+  initResearcherLiveSearch();
 
   // ---------- عارض الصور وتفاصيل المواد داخل مساحة الباحث ----------
   document.addEventListener('click', (event) => {
