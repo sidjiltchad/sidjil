@@ -434,6 +434,9 @@ export async function routeAdminApi(req, env) {
   m = rest.match(/^materials\/([^/]+)\/files$/);
   if (m && method === 'POST') return admMaterialUpload(env, user, req, m[1]);
 
+  m = rest.match(/^materials\/([^/]+)\/integrity$/);
+  if (m && method === 'POST') return admMaterialIntegrityCheck(env, user, req, m[1]);
+
   m = rest.match(/^materials\/([^/]+)\/versions$/);
   if (m && method === 'POST')
     return withJsonBody(req, (body) => admVersionCreate(env, user, req, m[1], body));
@@ -1211,6 +1214,29 @@ async function admMaterialUpload(env, user, req, idOrArk) {
     ip: clientIp(req),
   });
   return json(row, 201);
+}
+
+// فحص وجود ملفات المادة فعليًا في R2، دون تنزيل محتواها.
+async function admMaterialIntegrityCheck(env, user, req, idOrArk) {
+  const db = env.DB;
+  const material = await findMaterial(db, idOrArk);
+  if (!material) return err('المادة غير موجودة', 404);
+  const files = await db.prepare('SELECT id, filename, r2_key, size FROM files WHERE material_id = ? ORDER BY id').bind(material.id).all();
+  const missing = [];
+  for (const file of files.results || []) {
+    let object = null;
+    try { object = await env.FILES.head(file.r2_key); } catch (_) { object = null; }
+    if (!object) missing.push({ id: file.id, filename: file.filename, key: file.r2_key });
+  }
+  const status = (files.results || []).length && missing.length === 0 ? 'ok' : 'missing';
+  try {
+    await db.prepare(`INSERT OR IGNORE INTO material_assets_index (material_id) VALUES (?)`).bind(material.id).run();
+    await db.prepare(`UPDATE material_assets_index SET integrity_status = ?, checked_at = datetime('now'), updated_at = datetime('now') WHERE material_id = ?`).bind(status, material.id).run();
+  } catch (e) {
+    return err('تعذر حفظ نتيجة فحص التخزين. تأكد من تطبيق migration 0041.', 500);
+  }
+  await audit(db, { userId: user.id, action: 'material.integrity_check', target: material.ark, detail: JSON.stringify({ status, files: (files.results || []).length, missing: missing.map(item => item.id) }), ip: clientIp(req) });
+  return json({ ok: true, materialId: material.id, ark: material.ark, status, fileCount: (files.results || []).length, missing });
 }
 
 async function admDiscussionImageUpload(env, req, user, discussionId) {

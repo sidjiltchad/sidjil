@@ -167,7 +167,7 @@ ${head}
     ${body}
   </main>
 </div>
-<script src="/admin.js?v=20261004-material-edit-requests" defer></script>
+<script src="/admin.js?v=20261004-material-edit-requests-v2" defer></script>
 </body>
 </html>`;
 }
@@ -212,7 +212,7 @@ ${THEME_INIT}
   </form>
   <p class="muted small">الجلسة صالحة لمدة 12 ساعة، وكل عملية إدارية تُسجَّل مع عنوان IP.</p>
 </div>
-<script src="/admin.js?v=20261004-material-edit-requests" defer></script>
+<script src="/admin.js?v=20261004-material-edit-requests-v2" defer></script>
 </body>
 </html>`;
 }
@@ -327,7 +327,8 @@ async function contentHealthPage(env, user, req) {
     if (['book', 'article', 'journal'].includes(m.type) && !m.pdf_file_id) issues.push('PDF');
     if (!Number(m.has_text) && ['document', 'article', 'excerpt', 'correspondence'].includes(m.type)) issues.push('نص');
     if (m.integrity_status === 'missing') issues.push('R2');
-    return `<tr><td class="mono small">${esc(m.ark)}</td><td><a href="/admin/materials/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a></td><td>${esc(TYPE_LABELS[m.type] || m.type)}</td><td>${issues.length ? `<span class="badge b-review">${esc(issues.join(' · '))}</span>` : '<span class="badge b-pub">سليمة مبدئيًا</span>'}</td><td class="muted">${fmtDate(m.updated_at)}</td><td><a class="btn btn-sm btn-ghost" href="/admin/materials/${m.id}">فحص وإصلاح</a></td></tr>`;
+    const integrity = m.integrity_status === 'ok' ? '<span class="badge b-pub">R2 سليم</span>' : m.integrity_status === 'missing' ? '<span class="badge b-review">R2 مفقود</span>' : '<span class="badge b-draft">لم يُفحص</span>';
+    return `<tr><td class="mono small">${esc(m.ark)}</td><td><a href="/admin/materials/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a></td><td>${esc(TYPE_LABELS[m.type] || m.type)}</td><td>${issues.length ? `<span class="badge b-review">${esc(issues.join(' · '))}</span>` : '<span class="badge b-pub">سليمة مبدئيًا</span>'} ${integrity}</td><td class="muted">${fmtDate(m.updated_at)}</td><td><button class="btn btn-sm btn-ghost" type="button" data-integrity-check="${esc(m.id)}">فحص R2</button> <a class="btn btn-sm btn-ghost" href="/admin/materials/${m.id}">فحص وإصلاح</a></td></tr>`;
   }).join('');
   const typeOpts = Object.entries(TYPE_LABELS).map(([value, label]) => `<option value="${esc(value)}"${type === value ? ' selected' : ''}>${esc(label)}</option>`).join('');
   const body = `${pageHead('صحة المحتوى', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div>

@@ -167,6 +167,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ---------- فحص سلامة ملفات R2 ----------
+  document.querySelectorAll('[data-integrity-check]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      setLoading(btn, true);
+      try {
+        const result = await api(`/api/v1/admin/materials/${encodeURIComponent(btn.dataset.integrityCheck)}/integrity`, 'POST', {});
+        if (result.status === 'ok') toast(`تم الفحص: ${result.fileCount} ملف سليم في R2`);
+        else toast(`اكتمل الفحص: ${result.missing?.length || 0} ملف مفقود`, false);
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); }
+      finally { setLoading(btn, false); }
+    });
+  });
+
   // ---------- حذف مادة ----------
   document.querySelectorAll('[data-del-material]').forEach(btn => {
     btn.addEventListener('click', async () => {
