@@ -199,10 +199,13 @@ async function apiCitation(env, url, ark) {
 // ---------- القوائم ----------
 
 const LIST_CONFIG = {
-  people: { table: 'people', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig'] },
-  places: { table: 'places', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig', 'region'] },
-  sources: { table: 'sources', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name'] },
-  tags: { table: 'tags', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig'] },
+  // IDs provide a collation independent keyset for Arabic and French names.
+  // The public lists remain deterministic and can now advance past a page on
+  // every D1 region without re-including rows because of text collation.
+  people: { table: 'people', order: 'id', cursor: ['id'], searchCols: ['name_ar', 'name_orig'] },
+  places: { table: 'places', order: 'id', cursor: ['id'], searchCols: ['name_ar', 'name_orig', 'region'] },
+  sources: { table: 'sources', order: 'id', cursor: ['id'], searchCols: ['name_ar', 'name'] },
+  tags: { table: 'tags', order: 'id', cursor: ['id'], searchCols: ['name_ar', 'name_orig'] },
   // Keep the cursor key numeric. Arabic title comparison depends on the
   // database collation and can make a valid title cursor re-include the same
   // row; sort_order + id preserves the intended grouping without that risk.
@@ -233,7 +236,11 @@ async function apiList(env, url, key) {
   const countWhereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const countBinds = binds.slice();
   if (cursor && cfg.cursor.every(column => cursor[column] !== undefined)) {
-    if (cfg.cursor.length === 2) {
+    if (cfg.cursor.length === 1) {
+      const [id] = cfg.cursor;
+      where.push(`${id} > ?`);
+      binds.push(Number(cursor[id]));
+    } else if (cfg.cursor.length === 2) {
       const [value, id] = cfg.cursor;
       where.push(`(${value} > ? OR (${value} = ? AND id > ?))`);
       binds.push(cursor[value], cursor[value], Number(cursor[id]));
