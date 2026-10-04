@@ -1972,6 +1972,7 @@ async function researcherDashPage(env, user, req) {
     : feed === 'following'
       ? 'تابع باحثين لترى جديد موادهم ونقاشاتهم هنا.'
       : `لا توجد مواد في تصفية «${feedLabels[feed]}».`;
+  const emptyFeedHtml = `<div class="social-card empty-state">${searchTerm ? `لا توجد نتائج للبحث عن «${esc(searchTerm)}».` : feedEmpty}</div>`;
   const activeFeedPage = feed === 'following' ? followingPage : publishedPage;
   const body = `
   <form class="researcher-main-search" action="/researcher" method="get" role="search" aria-label="البحث في مساحة الباحث">
@@ -1987,7 +1988,7 @@ async function researcherDashPage(env, user, req) {
   ${dashboardComposer}
   ${feed === 'following' ? '' : `<nav class="researcher-category-filter" aria-label="تصفية المواد بحسب القسم"><span>القسم</span><div class="researcher-category-tabs">${categoryTabs}</div></nav>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
-  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-search="${esc(searchTerm)}" data-offset="${activeFeedPage.nextOffset}" data-limit="18" data-has-more="${activeFeedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${searchTerm ? `لا توجد نتائج للبحث عن «${esc(searchTerm)}».` : feedEmpty}`}</div>`}</div>
+  <div id="researcherPublishedFeed" class="researcher-published-feed" data-feed="${esc(feed)}" data-section="${selectedSection?.id ? esc(selectedSection.id) : ''}" data-search="${esc(searchTerm)}" data-offset="${activeFeedPage.nextOffset}" data-limit="18" data-has-more="${activeFeedPage.hasMore ? 'true' : 'false'}">${(feed === 'following' ? followingFeed : publishedFeed) || emptyFeedHtml}</div>
   ${activeFeedPage.hasMore ? '<div class="researcher-feed-loader" data-researcher-feed-loader role="status" aria-live="polite"><span class="researcher-feed-loader-spinner" aria-hidden="true"></span><span>جارٍ تحميل المزيد عند الاقتراب من نهاية الصفحة…</span></div>' : ''}
   ${feed === 'discover' ? `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
   <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>` : ''}
