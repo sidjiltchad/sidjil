@@ -973,7 +973,6 @@ function initJournalArticleForm() {
     const title = form.querySelector('[name="title"]').value.trim();
     const body = form.querySelector('[name="body"]').value.trim();
     if (!title || !body) { toast('العنوان والنص مطلوبان', false); return; }
-    if (!uploadFields.querySelector('input[name="cover"]')?.files?.length) { toast('اختر صورة غلاف المقال أولًا', false); return; }
     if (submitBtn) submitBtn.disabled = true;
     if (status) status.textContent = 'جارٍ إرسال المقال...';
     try {
@@ -982,7 +981,7 @@ function initJournalArticleForm() {
       });
       try {
         if (status) status.textContent = 'جارٍ رفع الصور والملفات...';
-        await uploadSelectedMaterialFiles(data.id, uploadFields, { requireCover: true });
+        await uploadSelectedMaterialFiles(data.id, uploadFields, { article: true });
       } catch (uploadError) {
         toast(`أُنشئ المقال، لكن لم يكتمل رفع المرفقات: ${uploadError.message}`, false);
         setTimeout(() => { location.href = `/researcher/${data.id}`; }, 1200);

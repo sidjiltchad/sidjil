@@ -662,17 +662,15 @@ async function admMaterialSubmit(env, user, req, id) {
     if (Number(m.created_by) !== Number(user.id)) return err('هذه المادة ليست من منشوراتك', 403);
   }
   if (m.publish_status !== 'draft') return err('يمكن إرسال المسودات فقط للمراجعة', 400);
-  {
+  if (m.type !== 'article') {
     const files = await db.prepare('SELECT kind, mime, filename FROM files WHERE material_id = ?').bind(m.id).all();
     const rows = files.results || [];
     const hasCover = rows.some(f => f.kind === 'cover' && /^image\//i.test(f.mime || ''));
     if (!hasCover) return err('أضف صورة الغلاف قبل الإرسال للمراجعة', 400);
-    if (m.type !== 'article') {
-      const hasContent = rows.some(f => f.kind === 'attachment' && (
-        /^image\//i.test(f.mime || '') || f.mime === 'application/pdf' || /\.pdf$/i.test(f.filename || '')
-      ));
-      if (!hasContent) return err('أضف صور المحتوى أو ملف PDF قبل الإرسال للمراجعة', 400);
-    }
+    const hasContent = rows.some(f => f.kind === 'attachment' && (
+      /^image\//i.test(f.mime || '') || f.mime === 'application/pdf' || /\.pdf$/i.test(f.filename || '')
+    ));
+    if (!hasContent) return err('أضف صور المحتوى أو ملف PDF قبل الإرسال للمراجعة', 400);
   }
   await db
     .prepare("UPDATE materials SET publish_status = 'in_review', review_note = NULL, updated_at = datetime('now') WHERE id = ?")
@@ -908,11 +906,13 @@ async function admMaterialUpload(env, user, req, idOrArk) {
     const isPdf = file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '');
     const isArticleFile = m.type === 'article' && /\.(pdf|docx?)$/i.test(file?.name || '');
     if (requestedKind === 'cover') {
+      if (m.type === 'article') return err('مقالات المجلة لا تحتاج إلى صورة غلاف هنا', 400);
       if (!isImage) return err('الغلاف يجب أن يكون صورة', 400);
       const existing = await db.prepare("SELECT id FROM files WHERE material_id = ? AND kind = 'cover' LIMIT 1").bind(m.id).first();
       if (existing) return err('للمادة صورة غلاف واحدة فقط؛ احذف الغلاف الحالي أولًا لاستبداله', 400);
       kind = 'cover';
     } else if (requestedKind === 'content-image') {
+      if (m.type === 'article') return err('يمكن إرفاق ملف PDF أو Word واحد بمقال المجلة', 400);
       if (!isImage) return err('اختر صورة بصيغة مدعومة', 400);
       const existing = await db.prepare('SELECT kind, mime, filename FROM files WHERE material_id = ? AND kind = \'attachment\'').bind(m.id).all();
       const rows = existing.results || [];

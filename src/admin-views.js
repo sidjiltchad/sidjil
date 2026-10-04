@@ -1296,6 +1296,14 @@ const SJ_ICONS = {
 };
 
 function researcherUploadFields(prefix, { article = false, coverExists = false, imageCount = 0, fileExists = false } = {}) {
+  if (article) {
+    return `<div class="researcher-upload-fields researcher-article-file-field" data-upload-fields data-article="true" data-existing-images="0">
+      <div class="researcher-upload-field"><strong>ملف المقال (اختياري)</strong><p>يمكن إرفاق ملف PDF أو Word واحد.</p>
+        <input id="${prefix}-content-file" name="contentFile" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden${fileExists ? ' disabled' : ''}>
+        <label class="researcher-upload-picker${fileExists ? ' is-disabled' : ''}" for="${prefix}-content-file"><span class="rup-icon">${SJ_ICONS.file}</span><span>${fileExists ? 'تم رفع الملف' : 'اختيار ملف المقال'}</span></label><span class="researcher-upload-selection" data-picker-label="${prefix}-content-file" data-empty-label="ملف PDF أو Word واحد">${fileExists ? 'الملف الحالي محفوظ' : 'ملف PDF أو Word واحد'}</span>
+      </div>
+    </div>`;
+  }
   const contentAccept = article
     ? '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     : '.pdf,application/pdf';
@@ -1439,7 +1447,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261003-rpdf1"></script>
-<script src="/researcher-feed-v5.js?v=20261004-researcher-upload-ux" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-article-attachment-only" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
 (() => {
@@ -2157,7 +2165,7 @@ async function researcherFormPage(env, user, mode, id) {
   }
   const isEdit = !!m;
   const defType = isEdit ? m.type : (mode === 'article' ? 'article' : 'document');
-  const typeOpts = Object.entries(TYPE_LABELS)
+  const typeOpts = Object.entries(TYPE_LABELS).filter(([value]) => !(mode === 'new' && value === 'article'))
     .map(([v, l]) => `<option value="${v}"${defType === v ? ' selected' : ''}>${esc(l)}</option>`).join('');
 
   const sections = await db.prepare(
@@ -2274,7 +2282,7 @@ async function researcherJournalPage(env, user) {
   const composer = verified ? `
   <section class="social-card journal-write" id="write" aria-label="كتابة مقال للمجلة">
     <h2>✍ اكتب مقالًا للمجلة</h2>
-    <p class="muted small">اكتب مقالك هنا وأرفق صورة أو ملف Word، وسيُرسل للإدارة للمراجعة قبل النشر.</p>
+    <p class="muted small">اكتب مقالك وأرفق ملف PDF أو Word واحدًا إن رغبت؛ ثم أرسله للإدارة للمراجعة.</p>
     <form id="journalArticleForm">
       <div class="field"><label for="ja-title">عنوان المقال *</label><input id="ja-title" name="title" required maxlength="200" placeholder="عنوان المقال"></div>
       <div class="field"><label for="ja-body">نص المقال *</label><textarea id="ja-body" name="body" rows="8" required maxlength="50000" placeholder="اكتب مقالك هنا..." data-autogrow></textarea></div>
