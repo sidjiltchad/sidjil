@@ -86,6 +86,8 @@ async function findMaterial(db, idOrArk) {
 
 // ---------- صلاحيات الباحث ----------
 function researcherAllowed(rest, method) {
+  // A researcher may always revoke their own authenticated session.
+  if (rest === 'logout' && method === 'POST') return true;
   if (rest === 'profile' && (method === 'GET' || method === 'PATCH')) return true;
   if (rest === 'profile/avatar' && (method === 'POST' || method === 'DELETE')) return true;
   if (rest === 'profile/password' && method === 'POST') return true;
