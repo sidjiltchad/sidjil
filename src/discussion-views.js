@@ -3,15 +3,13 @@
 // /discussions — /discussion/:id — /researcher/register
 // ============================================================
 
-import { esc, langPath, paginationHTML, truncate, layout, shareHTML, enrichMaterials } from './views.js';
+import { esc, langPath, truncate, layout, shareHTML, enrichMaterials } from './views.js';
 import { t } from './i18n.js';
 import { getSessionUser } from './lib/auth.js';
 import {
-  fetchDiscussions,
   getDiscussionFull,
   viewerReactions,
   discussionsForMaterial,
-  DISCUSSION_KINDS,
   REACTION_KINDS,
 } from './discussions.js';
 
@@ -62,25 +60,6 @@ export function reactionButtons(lang, discussionId, replyId, counts, mine) {
 
 function authorLine(lang, name, verified, type) {
   return `<span class="d-author">${esc(name || 'باحث')}${verified ? ' ' + verifiedBadge(lang, type) : ''}</span>`;
-}
-
-function discussionCard(ctx, d) {
-  const { lang } = ctx;
-  const url = langPath(ctx, `/discussion/${d.id}`);
-  const matUrl = d.material_id ? langPath(ctx, `/document/${encodeURIComponent(d.material_ark)}`) : null;
-  return `<article class="d-card">
-    <div class="d-card-top">${kindBadge(lang, d.kind)}
-      <span class="d-meta">${authorLine(lang, d.author_name, Number(d.author_verified) === 1, d.author_verification_type)} · ${fmtDT(d.created_at)}</span>
-    </div>
-    <h3 class="d-card-title"><a href="${url}">${esc(d.title)}</a></h3>
-    <p class="d-card-excerpt">${esc(truncate(d.body, 160))}</p>
-    ${matUrl ? `<p class="d-card-mat">${esc(t(lang, 'discussion_about_material'))} <a href="${matUrl}">${esc(d.material_title || d.material_ark)}</a></p>` : ''}
-    <div class="d-card-foot">
-      <span class="d-count">💬 ${d.replies_count || 0}</span>
-      <span class="d-count">👍 ${d.reactions_count || 0}</span>
-      <a class="d-more" href="${url}">←</a>
-    </div>
-  </article>`;
 }
 
 function authErrorText(lang, code) {
@@ -168,7 +147,6 @@ function materialPostCard(ctx, material) {
     : `<div class="material-post-image material-post-placeholder">${esc(t(lang, 'type_' + material.type))}</div>`;
   const description = material.summary || material.description || '';
   const materialUrl = langPath(ctx, `/document/${encodeURIComponent(material.ark)}`);
-  const reviewUrl = `/researcher/discussions?material_id=${encodeURIComponent(material.id)}`;
   return `<article class="material-post social-card">
     <div class="post-head">
       ${avatarBlock}
@@ -180,7 +158,6 @@ function materialPostCard(ctx, material) {
     ${description ? `<p class="material-post-text">${esc(truncate(description, 360))}</p>` : ''}
     <div class="post-actions">
       <a class="post-action" href="${materialUrl}">↗ ${esc(t(lang, 'discussion_open_material'))}</a>
-      <a class="post-action" href="${reviewUrl}">💬 ${esc(t(lang, 'discussion_start_review'))}</a>
     </div>
   </article>`;
 }
@@ -194,22 +171,6 @@ export async function discussionsPage(ctx) {
     const content = `<header class="page-head"><h1>${esc(t(lang, 'discussions_title'))}</h1></header>${discussionAuthGate(ctx)}`;
     return layout(ctx, { title: t(lang, 'discussions_title'), description: t(lang, 'discussion_login_intro'), active: '/discussions', content });
   }
-  const url = new URL(ctx.url);
-  const kind = url.searchParams.get('kind');
-  const page = url.searchParams.get('page') || 1;
-  const { items, total, pages, perPage } = await fetchDiscussions(env.DB, { kind, page, perPage: 12 });
-
-  const chips = [''].concat(DISCUSSION_KINDS).map((k) => {
-    const active = (k || '') === (kind || '');
-    const href = langPath(ctx, '/discussions') + (k ? `?kind=${k}` : '');
-    const label = k ? t(lang, 'kind_' + k) : t(lang, 'kind_all');
-    return `<a class="chip${active ? ' active' : ''}" href="${href}">${esc(label)}</a>`;
-  }).join('');
-
-  const cards = items.length
-    ? `<div class="d-grid">${items.map((d) => discussionCard(ctx, d)).join('')}</div>`
-    : `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`;
-
   const materialRows = await env.DB.prepare(
     `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.updated_at,
             creator.id AS creator_id, creator.display_name AS creator_name,
@@ -220,9 +181,7 @@ export async function discussionsPage(ctx) {
   const materials = await enrichMaterials(env, materialRows.results || []);
   const materialFeed = materials.length
     ? materials.map((m) => materialPostCard(ctx, m)).join('')
-    : `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`;
-
-  const base = langPath(ctx, '/discussions') + (kind ? `?kind=${kind}&` : '?');
+    : `<p class="empty">${esc(t(lang, 'discussions_materials_empty'))}</p>`;
 
   const content = `
   <div class="wrap page-discussions">
@@ -231,13 +190,8 @@ export async function discussionsPage(ctx) {
       <h1>${esc(t(lang, 'discussions_title'))}</h1>
       <p class="page-desc">${esc(t(lang, 'discussions_intro'))}</p>
     </header>
-    <section class="social-feed-intro social-card"><strong>${esc(t(lang, 'discussion_feed_title'))}</strong><span>${esc(t(lang, 'discussion_feed_intro'))}</span></section>
+    <section class="social-section-head"><div><h2>${esc(t(lang, 'discussions_materials_title'))}</h2><p>${esc(t(lang, 'discussion_feed_intro'))}</p></div></section>
     <div class="material-feed">${materialFeed}</div>
-    <section class="social-section-head"><div><h2>${esc(t(lang, 'discussions_title'))}</h2><p>${esc(t(lang, 'discussion_feed_intro'))}</p></div><a class="btn btn-primary" href="${langPath(ctx, '/researcher/discussions')}">${esc(t(lang, 'discussion_start_review'))}</a></section>
-    <div class="chip-row" role="navigation" aria-label="${esc(t(lang, 'discussion_kind_ph'))}">${chips}</div>
-    ${cards}
-    ${paginationHTML(ctx, page, perPage, total, base)}
-    <p class="d-cta"><a class="btn btn-primary" href="${langPath(ctx, '/researcher/register')}">${esc(t(lang, 'register_researcher'))}</a></p>
   </div>
   <script src="/js/discussions.js?v=20261004-researcher-auth-flow" defer></script>`;
 
