@@ -112,6 +112,23 @@ export default {
       return new Response(object.body, { headers });
     }
 
+    const journalAssetMatch = pathname.match(/^\/admin\/journal\/assets\/(\d+)$/);
+    if (journalAssetMatch && request.method === 'GET') {
+      const viewer = await getSessionUser(request, env);
+      if (!viewer || viewer.role !== 'admin') return new Response('غير مصرح', { status: 401 });
+      const asset = await env.DB.prepare('SELECT r2_key, filename, mime, size FROM journal_issue_assets WHERE id = ?').bind(Number(journalAssetMatch[1])).first();
+      if (!asset) return new Response('غير موجود', { status: 404 });
+      const object = await env.FILES.get(asset.r2_key);
+      if (!object) return new Response('غير موجود', { status: 404 });
+      return new Response(object.body, { headers: {
+        'Content-Type': asset.mime,
+        'Content-Length': String(asset.size),
+        'Content-Disposition': `inline; filename="${encodeURIComponent(asset.filename)}"`,
+        'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff',
+      } });
+    }
+
     // app.sidjil.org is the isolated researcher application. Its entry points
     // use the existing researcher feed and database instead of the legacy
     // public council page. Anonymous visitors still receive the login gate.

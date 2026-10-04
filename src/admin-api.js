@@ -260,6 +260,26 @@ export async function routeAdminApi(req, env) {
     return err('غير مصرح — هذه العملية من صلاحيات الإدارة فقط', 403);
   }
 
+  // إدارة المجلة وإعداد ملف العدد — صلاحية الإدارة فقط.
+  if (rest === 'journal/assets' && method === 'POST') {
+    if (!isAdmin) return err('هذه العملية من صلاحيات الإدارة فقط', 403);
+    return journalAssetUpload(env, user, req);
+  }
+  if (rest === 'journal/issues' && method === 'POST') {
+    if (!isAdmin) return err('هذه العملية من صلاحيات الإدارة فقط', 403);
+    return withJsonBody(req, body => journalIssueCreate(env, user, req, body));
+  }
+  let journalMatch = rest.match(/^journal\/issues\/(\d+)$/);
+  if (journalMatch && method === 'PUT') {
+    if (!isAdmin) return err('هذه العملية من صلاحيات الإدارة فقط', 403);
+    return withJsonBody(req, body => journalIssueUpdate(env, user, req, Number(journalMatch[1]), body));
+  }
+  journalMatch = rest.match(/^journal\/issues\/(\d+)\/ready$/);
+  if (journalMatch && method === 'POST') {
+    if (!isAdmin) return err('هذه العملية من صلاحيات الإدارة فقط', 403);
+    return journalIssueReady(env, user, req, Number(journalMatch[1]));
+  }
+
   if (rest === 'logout' && method === 'POST') {
     await logout(env, user.sessionToken);
     await audit(env.DB, { userId: user.id, action: 'admin.logout', ip: clientIp(req) });
@@ -449,6 +469,112 @@ async function withJsonBody(req, fn) {
   } catch (e) {
     return err(e.message || 'خطأ غير متوقع', 400);
   }
+}
+
+function journalText(value, limit, fallback = '') {
+  return String(value ?? fallback).trim().slice(0, limit);
+}
+
+async function journalIssueCreate(env, user, req, body) {
+  const issueNumber = journalText(body.issue_number, 32);
+  const year = Number(body.year);
+  const title = journalText(body.title_ar, 180, 'مجلة سِجِل') || 'مجلة سِجِل';
+  const subtitle = journalText(body.subtitle_ar, 240);
+  if (!issueNumber) return err('رقم العدد مطلوب', 400);
+  if (!Number.isInteger(year) || year < 1800 || year > 2200) return err('سنة العدد غير صالحة', 400);
+  if (await env.DB.prepare('SELECT id FROM journal_issues WHERE year = ? AND issue_number = ?').bind(year, issueNumber).first()) return err('رقم هذا العدد موجود بالفعل في السنة نفسها', 409);
+  const result = await env.DB.prepare(
+    `INSERT INTO journal_issues (issue_number, year, title_ar, subtitle_ar, created_by)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(issueNumber, year, title, subtitle, user.id).run();
+  const id = Number(result.meta?.last_row_id);
+  await audit(env.DB, { userId: user.id, action: 'journal.issue_create', target: String(id), detail: `العدد ${issueNumber} · ${year}`, ip: clientIp(req) });
+  return json({ ok: true, id }, 201);
+}
+
+async function journalAssetUpload(env, user, req) {
+  let form;
+  try { form = await req.formData(); } catch (_) { return err('بيانات الصورة غير صالحة', 400); }
+  const file = form.get('file');
+  if (!file || typeof file.arrayBuffer !== 'function') return err('اختر صورة أولًا', 400);
+  const mime = String(file.type || '').toLowerCase();
+  const filename = safeName(file.name || 'journal-image');
+  const ext = (filename.split('.').pop() || '').toLowerCase();
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime) || !['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return err('الصورة يجب أن تكون JPG أو PNG أو WebP', 400);
+  if (file.size < 1 || file.size > 15 * 1024 * 1024) return err('حجم الصورة يجب ألا يتجاوز 15 ميغابايت', 400);
+  const key = `journal/assets/${crypto.randomUUID()}/${filename}`;
+  await env.FILES.put(key, file, { httpMetadata: { contentType: mime } });
+  const saved = await env.DB.prepare(
+    `INSERT INTO journal_issue_assets (r2_key, filename, mime, size, uploaded_by) VALUES (?, ?, ?, ?, ?)`
+  ).bind(key, filename, mime, file.size, user.id).run();
+  const id = Number(saved.meta?.last_row_id);
+  await audit(env.DB, { userId: user.id, action: 'journal.asset_upload', target: String(id), detail: filename, ip: clientIp(req) });
+  return json({ ok: true, id, url: `/admin/journal/assets/${id}`, filename }, 201);
+}
+
+async function journalIssueUpdate(env, user, req, id, body) {
+  const issue = await env.DB.prepare('SELECT id FROM journal_issues WHERE id = ?').bind(id).first();
+  if (!issue) return err('العدد غير موجود', 404);
+  const issueNumber = journalText(body.issue_number, 32);
+  const year = Number(body.year);
+  const title = journalText(body.title_ar, 180);
+  const subtitle = journalText(body.subtitle_ar, 240);
+  const editorial = journalText(body.editorial_ar, 12000);
+  const columns = Number(body.columns_count);
+  const inputBlocks = body.blocks;
+  if (!issueNumber || !title) return err('اسم المجلة ورقم العدد مطلوبان', 400);
+  if (!Number.isInteger(year) || year < 1800 || year > 2200) return err('سنة العدد غير صالحة', 400);
+  if (await env.DB.prepare('SELECT id FROM journal_issues WHERE year = ? AND issue_number = ? AND id <> ?').bind(year, issueNumber, id).first()) return err('رقم هذا العدد موجود بالفعل في السنة نفسها', 409);
+  if (![1, 2, 3].includes(columns)) return err('اختر عدد أعمدة من 1 إلى 3', 400);
+  if (!Array.isArray(inputBlocks) || inputBlocks.length > 100) return err('قائمة محتوى العدد غير صالحة أو تتجاوز 100 عنصر', 400);
+  const blocks = [];
+  const articleIds = [];
+  const assetIds = [];
+  for (const raw of inputBlocks) {
+    if (!raw || !['article', 'text', 'image', 'ad'].includes(raw.type)) return err('نوع عنصر غير صالح في ترتيب العدد', 400);
+    if (raw.type === 'article') {
+      const materialId = Number(raw.material_id);
+      if (!Number.isInteger(materialId) || materialId < 1) return err('يوجد مقال غير صالح ضمن العدد', 400);
+      articleIds.push(materialId);
+      blocks.push({ type: 'article', material_id: materialId });
+    } else if (raw.type === 'text') {
+      blocks.push({ type: 'text', title: journalText(raw.title, 180), body: journalText(raw.body, 16000) });
+    } else if (raw.type === 'image') {
+      const assetId = Number(raw.image_asset_id) || null;
+      if (assetId) assetIds.push(assetId);
+      blocks.push({ type: 'image', image_asset_id: assetId, image_url: journalText(raw.image_url, 1000), caption: journalText(raw.caption, 240) });
+    } else {
+      const assetId = Number(raw.image_asset_id) || null;
+      if (assetId) assetIds.push(assetId);
+      blocks.push({ type: 'ad', image_asset_id: assetId, title: journalText(raw.title, 180), body: journalText(raw.body, 1000), image_url: journalText(raw.image_url, 1000), link_url: journalText(raw.link_url, 1000) });
+    }
+  }
+  if (articleIds.length) {
+    const ids = [...new Set(articleIds)];
+    const placeholders = ids.map(() => '?').join(',');
+    const valid = await env.DB.prepare(`SELECT id FROM materials WHERE type = 'article' AND publish_status = 'published' AND id IN (${placeholders})`).bind(...ids).all();
+    const validIds = new Set((valid.results || []).map(m => Number(m.id)));
+    if (ids.some(id => !validIds.has(id))) return err('يمكن إدراج المقالات المنشورة والمعتمدة فقط', 400);
+  }
+  if (assetIds.length) {
+    const ids = [...new Set(assetIds)];
+    const valid = await env.DB.prepare(`SELECT id FROM journal_issue_assets WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
+    const validIds = new Set((valid.results || []).map(asset => Number(asset.id)));
+    if (ids.some(id => !validIds.has(id))) return err('إحدى صور العدد المرفوعة غير متاحة', 400);
+  }
+  await env.DB.prepare(
+    `UPDATE journal_issues SET issue_number = ?, year = ?, title_ar = ?, subtitle_ar = ?, editorial_ar = ?, columns_count = ?, blocks_json = ?, updated_at = datetime('now') WHERE id = ?`
+  ).bind(issueNumber, year, title, subtitle, editorial, columns, JSON.stringify(blocks), id).run();
+  await audit(env.DB, { userId: user.id, action: 'journal.issue_update', target: String(id), detail: `تحديث العدد ${issueNumber}`, ip: clientIp(req) });
+  return json({ ok: true });
+}
+
+async function journalIssueReady(env, user, req, id) {
+  const issue = await env.DB.prepare('SELECT id, issue_number FROM journal_issues WHERE id = ?').bind(id).first();
+  if (!issue) return err('العدد غير موجود', 404);
+  await env.DB.prepare(`UPDATE journal_issues SET status = 'ready', ready_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`).bind(id).run();
+  await audit(env.DB, { userId: user.id, action: 'journal.issue_ready', target: String(id), detail: `اعتماد تجهيز العدد ${issue.issue_number}`, ip: clientIp(req) });
+  return json({ ok: true, status: 'ready' });
 }
 
 // ---------- المواد: قائمة ----------

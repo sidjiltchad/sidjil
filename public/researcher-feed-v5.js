@@ -997,12 +997,14 @@ function initJournalArticleForm() {
       try {
         if (status) status.textContent = 'جارٍ رفع الصور والملفات...';
         await uploadSelectedMaterialFiles(data.id, uploadFields, { article: true });
+        if (status) status.textContent = 'جارٍ إرسال المقال إلى الإدارة للمراجعة...';
+        await api(`/api/v1/admin/materials/${data.id}/submit`, 'POST', {});
       } catch (uploadError) {
-        toast(`أُنشئ المقال، لكن لم يكتمل رفع المرفقات: ${uploadError.message}`, false);
+        toast(`أُنشئ المقال، لكن لم يكتمل رفعه أو إرساله للمراجعة: ${uploadError.message}`, false);
         setTimeout(() => { location.href = `/researcher/${data.id}`; }, 1200);
         return;
       }
-      toast('أُرسل المقال مع صوره وملفاته — تجده في مسوداتك');
+      toast('أُرسل المقال إلى الإدارة للمراجعة');
       if (status) status.textContent = '';
       setTimeout(() => { location.href = `/researcher/${data.id}`; }, 900);
     } catch (err) {
