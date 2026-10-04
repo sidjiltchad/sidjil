@@ -111,6 +111,7 @@ async function translateText(req, env) {
   const s = await settings(env.DB);
   if (!s.enabled || s.maintenance_mode || !s.text_enabled) return fail('ترجمة النصوص غير متاحة حاليًا', 503, 'TRANSLATION_DISABLED');
   const user = await getSessionUser(req, env);
+  if (user && !verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
   if (!user && !s.guest_enabled) return fail('تسجيل الدخول مطلوب لاستخدام الترجمة', 401, 'LOGIN_REQUIRED');
   let body; try { body = await req.json(); } catch (_) { return fail('بيانات الطلب غير صالحة'); }
   const text = String(body.text || '').trim();
@@ -138,6 +139,7 @@ async function ocrPage(req, env) {
   const s = await settings(env.DB);
   if (!s.enabled || s.maintenance_mode || !s.ocr_enabled) return fail('OCR غير متاح حاليًا', 503, 'OCR_DISABLED');
   const user = await getSessionUser(req, env);
+  if (user && !verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
   if (!user && !s.guest_enabled) return fail('تسجيل الدخول مطلوب لاستخدام OCR', 401, 'LOGIN_REQUIRED');
   if (!env.TRANSLATION_SERVICE_URL || !env.TRANSLATION_SERVICE_TOKEN) return fail('خدمة المعالجة غير مهيأة', 503, 'SERVICE_NOT_CONFIGURED');
   const source = String(req.headers.get('X-Sidjil-OCR-Source') || 'auto');
@@ -159,6 +161,7 @@ async function requestDocumentTranslation(req, env, value) {
   const s = await settings(env.DB);
   if (!s.enabled || s.maintenance_mode || !s.document_enabled) return fail('ترجمة المستندات غير مفعلة بعد', 503, 'DOCUMENT_TRANSLATION_DISABLED');
   const user = await getSessionUser(req, env);
+  if (user && !verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
   if (!user && !s.guest_enabled) return fail('تسجيل الدخول مطلوب لطلب ترجمة مستند', 401, 'LOGIN_REQUIRED');
   let body; try { body = await req.json(); } catch (_) { return fail('بيانات الطلب غير صالحة'); }
   const source = String(body.source || 'auto'); const target = String(body.target || 'ar');

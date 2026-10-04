@@ -56,6 +56,39 @@ function clientIp(req) {
   );
 }
 
+async function recordMaterialWorkflow(db, { materialId, actorId, event, fromStatus = null, toStatus = null, note = null }) {
+  try {
+    await db.prepare(
+      `INSERT INTO material_workflow_events (material_id, actor_id, event, from_status, to_status, note)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(materialId, actorId || null, event, fromStatus, toStatus, note || null).run();
+  } catch { /* لا نفشل تغيير الحالة إذا كانت migration قيد التطبيق */ }
+}
+
+async function notifyMaterialOwner(db, material, kind, title, body, link = '/researcher') {
+  if (!material?.created_by) return;
+  try {
+    await db.prepare(
+      'INSERT INTO notifications (user_id, kind, title, body, link) VALUES (?, ?, ?, ?, ?)'
+    ).bind(material.created_by, kind, title, body || null, link).run();
+  } catch { /* الإشعار تحسين ولا يفشل الاعتماد */ }
+}
+
+async function notifyAdmins(db, kind, title, body, link = '/admin/materials/review') {
+  try {
+    await db.prepare(
+      `INSERT INTO notifications (user_id, kind, title, body, link)
+       SELECT id, ?, ?, ?, ? FROM admin_users WHERE role = 'admin' AND is_active = 1`
+    ).bind(kind, title, body || null, link).run();
+  } catch { /* الإشعار تحسين ولا يفشل الإرسال */ }
+}
+
+function requireSuperAdmin(user) {
+  return Number(user?.is_super_admin) === 1
+    ? null
+    : err('هذا الإجراء مخصص لـ Super Admin فقط', 403);
+}
+
 async function readJson(req) {
   try {
     return await req.json();
@@ -90,6 +123,8 @@ function researcherAllowed(rest, method) {
   if (rest === 'profile' && (method === 'GET' || method === 'PATCH')) return true;
   if (rest === 'profile/avatar' && (method === 'POST' || method === 'DELETE')) return true;
   if (rest === 'profile/password' && method === 'POST') return true;
+  if (rest === 'profile/sessions' && method === 'GET') return true;
+  if (rest === 'profile/sessions/revoke' && method === 'POST') return true;
   if (method === 'GET' && rest === 'materials') return true;      // تُفلتر لمواده داخل الدالة
   if (method === 'GET' && rest === 'collections') return true;    // لاختيار الأقسام في النموذج
   if (method === 'POST' && rest === 'materials') return true;     // إنشاء كمسودة حصرًا
@@ -114,7 +149,7 @@ async function requireOwnDraft(db, user, idOrArk) {
   if (!m) throw new Error('المادة غير موجودة');
   if (Number(m.created_by) !== Number(user.id)) throw new Error('هذه المادة ليست من منشوراتك');
   if (m.publish_status === 'in_review') throw new Error('المادة قيد المراجعة — لا يمكن تعديلها الآن');
-  if (m.publish_status !== 'draft') throw new Error('لا يمكن تعديل مادة منشورة — تواصل مع الإدارة');
+  if (!['draft', 'changes_requested'].includes(m.publish_status)) throw new Error('لا يمكن تعديل مادة منشورة — تواصل مع الإدارة');
   return m;
 }
 
@@ -122,7 +157,7 @@ async function requireOwnEditableMaterial(db, user, idOrArk) {
   const m = await findMaterial(db, idOrArk);
   if (!m) throw new Error('المادة غير موجودة');
   if (Number(m.created_by) !== Number(user.id)) throw new Error('هذه المادة ليست من منشوراتك');
-  if (m.publish_status === 'draft') return m;
+  if (['draft', 'changes_requested'].includes(m.publish_status)) return m;
   if (m.publish_status === 'published') {
     const grant = await db.prepare(
       "SELECT id FROM material_edit_requests WHERE material_id = ? AND researcher_id = ? AND status = 'approved' LIMIT 1"
@@ -254,7 +289,7 @@ export async function routeAdminApi(req, env) {
 
   // صلاحيات الباحث: قائمة بيضاء صارمة — كل ما عداها للإدارة فقط
   // (النشر المباشر، المراجعة، المستخدمون، الإعلانات، الكيانات، النسخ… للإدارة)
-  const isAdmin = user.role === 'admin';
+  const isAdmin = user.role === 'admin' || Number(user.is_super_admin) === 1;
   if (!isAdmin && !researcherAllowed(rest, method)) {
     await audit(env.DB, { userId: user.id, action: 'admin.forbidden', target: `${method} ${rest}`, ip: clientIp(req) });
     return err('غير مصرح — هذه العملية من صلاحيات الإدارة فقط', 403);
@@ -281,6 +316,8 @@ export async function routeAdminApi(req, env) {
     const { csrfToken, sessionToken, ...safeProfile } = user;
     return json({ profile: safeProfile });
   }
+  if (rest === 'profile/sessions' && method === 'GET') return admProfileSessions(env, user);
+  if (rest === 'profile/sessions/revoke' && method === 'POST') return admProfileSessionsRevoke(env, user, req);
   if (rest === 'profile' && method === 'PATCH')
     return withJsonBody(req, (body) => admProfileUpdate(env, user, req, body));
   if (rest === 'profile/password' && method === 'POST')
@@ -561,7 +598,7 @@ const MATERIAL_FIELDS = [
   'publish_status',
 ];
 
-const PUBLISH_STATUSES = ['draft', 'in_review', 'published', 'hidden'];
+const PUBLISH_STATUSES = ['draft', 'in_review', 'changes_requested', 'published', 'hidden'];
 const DATE_CONFIDENCES = ['confirmed', 'approximate', 'probable', 'unknown'];
 const TRANSCRIPTION_STATUSES = ['none', 'auto', 'corrected'];
 const TRANSLATION_STATUSES = ['none', 'machine', 'in_review', 'reviewed', 'approved'];
@@ -776,7 +813,7 @@ async function admMaterialSubmit(env, user, req, id) {
   if (user.role !== 'admin') {
     if (Number(m.created_by) !== Number(user.id)) return err('هذه المادة ليست من منشوراتك', 403);
   }
-  if (m.publish_status !== 'draft') return err('يمكن إرسال المسودات فقط للمراجعة', 400);
+  if (!['draft', 'changes_requested'].includes(m.publish_status)) return err('يمكن إرسال المسودات أو المواد المطلوبة للتعديل فقط', 400);
   if (m.type !== 'article') {
     const files = await db.prepare('SELECT kind, mime, filename FROM files WHERE material_id = ?').bind(m.id).all();
     const rows = files.results || [];
@@ -791,6 +828,8 @@ async function admMaterialSubmit(env, user, req, id) {
     .prepare("UPDATE materials SET publish_status = 'in_review', review_note = NULL, updated_at = datetime('now') WHERE id = ?")
     .bind(m.id)
     .run();
+  await recordMaterialWorkflow(db, { materialId: m.id, actorId: user.id, event: 'submitted', fromStatus: m.publish_status, toStatus: 'in_review' });
+  await notifyAdmins(db, 'material_submitted', 'مادة جديدة للمراجعة', `أرسل الباحث مادة للمراجعة: ${m.title_ar || m.ark}`, `/admin/materials/${m.id}`);
   await audit(db, { userId: user.id, action: 'material.submit', target: m.ark, ip: clientIp(req) });
   return json({ ok: true, status: 'in_review' });
 }
@@ -810,8 +849,21 @@ async function admMaterialReview(env, user, req, id, body) {
       .bind(m.id)
       .run();
     await rebuildSearchBlob(db, m.id);
+    await recordMaterialWorkflow(db, { materialId: m.id, actorId: user.id, event: 'approved', fromStatus: 'in_review', toStatus: 'published' });
+    await notifyMaterialOwner(db, m, 'material_approved', 'اعتمدت الإدارة مادتك', `تم اعتماد ونشر المادة: ${m.title_ar || m.ark}`, `/researcher?feed=official&material=${m.id}`);
     await audit(db, { userId: user.id, action: 'material.review_approve', target: m.ark, ip: clientIp(req) });
     return json({ ok: true, status: 'published' });
+  }
+  if (decision === 'request_changes') {
+    if (!note) return err('ملاحظة التعديل مطلوبة', 400);
+    await db
+      .prepare("UPDATE materials SET publish_status = 'changes_requested', review_note = ?, updated_at = datetime('now') WHERE id = ?")
+      .bind(note.slice(0, 2000), m.id)
+      .run();
+    await recordMaterialWorkflow(db, { materialId: m.id, actorId: user.id, event: 'changes_requested', fromStatus: 'in_review', toStatus: 'changes_requested', note: note.slice(0, 2000) });
+    await notifyMaterialOwner(db, m, 'material_changes_requested', 'طلبت الإدارة تعديل مادتك', note.slice(0, 1000), `/researcher/materials`);
+    await audit(db, { userId: user.id, action: 'material.review_changes_requested', target: m.ark, detail: note.slice(0, 200), ip: clientIp(req) });
+    return json({ ok: true, status: 'changes_requested' });
   }
   if (decision === 'reject') {
     if (!note) return err('ملاحظة المراجعة مطلوبة عند إعادة المادة', 400);
@@ -819,6 +871,8 @@ async function admMaterialReview(env, user, req, id, body) {
       .prepare('UPDATE materials SET publish_status = ?, review_note = ?, updated_at = datetime(\'now\') WHERE id = ?')
       .bind('draft', note.slice(0, 2000), m.id)
       .run();
+    await recordMaterialWorkflow(db, { materialId: m.id, actorId: user.id, event: 'rejected', fromStatus: 'in_review', toStatus: 'draft', note: note.slice(0, 2000) });
+    await notifyMaterialOwner(db, m, 'material_rejected', 'لم تعتمد الإدارة مادتك', note.slice(0, 1000), `/researcher/materials`);
     await audit(db, { userId: user.id, action: 'material.review_reject', target: m.ark, detail: note.slice(0, 200), ip: clientIp(req) });
     return json({ ok: true, status: 'draft' });
   }
@@ -841,6 +895,7 @@ async function admProfileUpdate(env, user, req, body) {
   const bio = profileText(body.bio, 1000);
   const specialty = profileText(body.specialty, 160);
   const website = profileText(body.website, 300);
+  const isPublicProfile = body.is_public_profile === undefined ? Number(user.is_public_profile) === 1 : (body.is_public_profile ? 1 : 0);
 
   if (!displayName) return err('الاسم الظاهر مطلوب', 400);
   if (!email) return err('البريد الإلكتروني مطلوب', 400);
@@ -858,10 +913,26 @@ async function admProfileUpdate(env, user, req, body) {
 
   await db.prepare(
     `UPDATE admin_users SET display_name = ?, email = ?, phone = ?, affiliation = ?,
-      job_title = ?, bio = ?, specialty = ?, website = ?, updated_at = datetime('now') WHERE id = ?`
-  ).bind(displayName, email, phone, affiliation || null, jobTitle, bio, specialty || null, website || null, user.id).run();
+      job_title = ?, bio = ?, specialty = ?, website = ?, is_public_profile = ?, updated_at = datetime('now') WHERE id = ?`
+  ).bind(displayName, email, phone, affiliation || null, jobTitle, bio, specialty || null, website || null, isPublicProfile, user.id).run();
   await audit(db, { userId: user.id, action: 'researcher.profile_update', target: user.username, detail: 'تحديث بيانات الحساب', ip: clientIp(req) });
   return json({ ok: true });
+}
+
+async function admProfileSessions(env, user) {
+  const rows = await env.DB.prepare(
+    `SELECT id, user_agent, ip, created_at, last_seen_at, expires_at,
+            CASE WHEN token = ? THEN 1 ELSE 0 END AS current
+     FROM sessions WHERE user_id = ? AND expires_at > datetime('now')
+     ORDER BY current DESC, last_seen_at DESC, created_at DESC`
+  ).bind(user.sessionToken || '', user.id).all();
+  return json({ sessions: rows.results || [] });
+}
+
+async function admProfileSessionsRevoke(env, user, req) {
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').bind(user.id, user.sessionToken || '').run();
+  await audit(env.DB, { userId: user.id, action: 'account.sessions_revoked', target: user.username, detail: 'إبطال الجلسات الأخرى', ip: clientIp(req) });
+  return json({ ok: true, sessionsRevoked: true });
 }
 
 async function admProfilePasswordUpdate(env, user, req, body) {
@@ -944,6 +1015,10 @@ async function admUserCreate(env, user, req, body) {
   const username = String(body.username || '').trim();
   const password = String(body.password || '');
   const role = body.role === 'admin' ? 'admin' : 'researcher';
+  if (role === 'admin') {
+    const blocked = requireSuperAdmin(user);
+    if (blocked) return blocked;
+  }
   if (!username || username.length < 3) return err('اسم المستخدم 3 أحرف على الأقل', 400);
   if (!/^[A-Za-z0-9_.-]+$/.test(username)) return err('اسم المستخدم: أحرف لاتينية وأرقام و _ . - فقط', 400);
   if (password.length < 8) return err('كلمة المرور 8 أحرف على الأقل', 400);
@@ -951,8 +1026,8 @@ async function admUserCreate(env, user, req, body) {
   if (exists) return err('اسم المستخدم موجود مسبقًا', 400);
   const password_hash = await hashPassword(password);
   const res = await env.DB.prepare(
-    'INSERT INTO admin_users (username, password_hash, role, is_active) VALUES (?, ?, ?, 1)'
-  ).bind(username, password_hash, role).run();
+    'INSERT INTO admin_users (username, password_hash, role, is_active, is_public_profile) VALUES (?, ?, ?, 1, ?)'
+  ).bind(username, password_hash, role, role === 'researcher' ? 1 : 0).run();
   await audit(env.DB, { userId: user.id, action: 'user.create', target: username, detail: `role=${role}`, ip: clientIp(req) });
   return json({ ok: true, id: res.meta.last_row_id }, 201);
 }
@@ -961,6 +1036,11 @@ async function admUserUpdate(env, user, req, id, body) {
   const db = env.DB;
   const target = await db.prepare('SELECT id, username, role FROM admin_users WHERE id = ?').bind(id).first();
   if (!target) return err('المستخدم غير موجود', 404);
+  const sensitiveChange = body.role !== undefined || body.is_active !== undefined || (body.password !== undefined && body.password !== '');
+  if (sensitiveChange) {
+    const blocked = requireSuperAdmin(user);
+    if (blocked) return blocked;
+  }
   const sets = [];
   const binds = [];
   // لا يمكن للمدير إيقاف نفسه أو تغيير دوره
@@ -983,7 +1063,7 @@ async function admUserUpdate(env, user, req, id, body) {
   }
   if (body.password !== undefined && body.password !== '') {
     if (String(body.password).length < 8) return err('كلمة المرور 8 أحرف على الأقل', 400);
-    sets.push('password_hash = ?');
+    sets.push('password_hash = ?', "password_changed_at = datetime('now')", 'must_change_password = 1');
     binds.push(await hashPassword(String(body.password)));
   }
   if (!sets.length) return err('لا تغييرات', 400);

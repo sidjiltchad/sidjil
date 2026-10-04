@@ -155,6 +155,10 @@ export async function login(env, username, password, ip) {
     .prepare('INSERT INTO sessions (token, user_id, expires_at, csrf_token) VALUES (?, ?, ?, ?)')
     .bind(token, user.id, expiresAt, csrfToken)
     .run();
+  try {
+    await db.prepare("UPDATE admin_users SET last_login_at = datetime('now'), updated_at = datetime('now') WHERE id = ?")
+      .bind(user.id).run();
+  } catch { /* migration قد لا تكون مطبقة محليًا بعد */ }
   await audit(db, { userId: user.id, action: 'admin.login', target: username, ip });
 
   return { ok: true, token, csrfToken, role: user.role || 'admin', username: user.username };
@@ -171,10 +175,11 @@ export async function getSessionUser(req, env) {
     const placeholders = tokens.map(() => '?').join(', ');
     const user = await env.DB
       .prepare(
-        `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.display_name, u.avatar_url, u.avatar_r2_key,
-                u.email, u.phone, u.affiliation, u.job_title, u.bio, u.specialty, u.website, u.is_public_profile,
-                s.csrf_token AS csrfToken, s.expires_at AS sessionExpiresAt,
-                s.token AS sessionToken FROM admin_users u
+        `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.is_super_admin,
+                u.display_name, u.avatar_url, u.avatar_r2_key, u.email, u.phone, u.affiliation, u.job_title,
+                u.bio, u.specialty, u.website, u.is_public_profile, u.last_login_at, u.password_changed_at,
+                u.must_change_password, s.csrf_token AS csrfToken, s.expires_at AS sessionExpiresAt,
+                s.last_seen_at AS sessionLastSeenAt, s.token AS sessionToken FROM admin_users u
          JOIN sessions s ON s.user_id = u.id
          WHERE s.token IN (${placeholders}) AND s.expires_at > datetime('now')
          ORDER BY s.created_at DESC LIMIT 1`
@@ -184,6 +189,11 @@ export async function getSessionUser(req, env) {
     if (!user || Number(user.is_active) === 0) return null;
     const { sessionExpiresAt, sessionToken, ...sessionUser } = user;
     sessionUser.sessionToken = sessionToken;
+    // تحديث آخر نشاط للجلسة. لا نفشل الطلب إذا كانت قاعدة قديمة بلا العمود الجديد.
+    try {
+      await env.DB.prepare("UPDATE sessions SET last_seen_at = datetime('now') WHERE token = ?")
+        .bind(sessionToken).run();
+    } catch { /* migration قد لا تكون مطبقة محليًا بعد */ }
     // تجديد انزلاقي: إذا انقضى أكثر من نصف العمر، مدّد الجلسة (كتابة واحدة خفيفة)
     try {
       if (sessionExpiresAt) {

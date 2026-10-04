@@ -50,7 +50,7 @@ const MIN = 60 * 1000;
 const POLICY = [
   // [prefix matcher, limit/دقيقة, scope]
   { match: (p) => p === '/api/v1/admin/login', limit: 10, window: MIN, scope: 'ip' },        // تسجيل الدخول: الأشد
-  { match: (p) => p.includes('/ocr') || p.includes('/segments'), limit: 30, window: MIN, scope: 'ip' }, // OCR والترجمة
+  { match: (p) => p.includes('/ocr') || p.includes('/segments') || p.startsWith('/api/v1/documents/') || p === '/api/v1/translate/text', limit: 20, window: MIN, scope: 'ip' }, // OCR والترجمة والمستندات
   { match: (p) => p.startsWith('/api/v1/admin/'), limit: 300, window: MIN, scope: 'ip' },   // عمليات إدارية
   { match: (p) => p === '/api/v1/reactions', limit: 30, window: MIN, scope: 'ip' }, // تفاعلات الزوار
   { match: (p) => p === '/api/v1/researcher/register', limit: 5, window: 60 * MIN, scope: 'ip' }, // تسجيل الباحثين: 5/ساعة

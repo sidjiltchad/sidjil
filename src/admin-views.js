@@ -19,8 +19,8 @@ const TYPE_LABELS = {
   journal: 'عدد مجلة',
   article: 'مقال',
 };
-const STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', published: 'منشورة', hidden: 'مخفية' };
-const STATUS_CLASS = { draft: 'b-draft', in_review: 'b-review', published: 'b-pub', hidden: 'b-hidden' };
+const STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', changes_requested: 'مطلوب تعديلها', published: 'منشورة', hidden: 'مخفية' };
+const STATUS_CLASS = { draft: 'b-draft', in_review: 'b-review', changes_requested: 'b-review', published: 'b-pub', hidden: 'b-hidden' };
 const TRSC_LABELS = { none: 'لا يوجد', auto: 'استخراج آلي', corrected: 'مصحح يدويًا' };
 const TRL_LABELS = {
   none: 'غير مترجمة', machine: 'ترجمة آلية',
@@ -1089,6 +1089,7 @@ async function reviewPage(env, user) {
       <td class="muted">${fmtDate(m.updated_at)}</td>
       <td class="row-actions">
         <button class="btn btn-sm btn-primary" data-review-approve="${m.id}" type="button">اعتماد ونشر</button>
+        <button class="btn btn-sm btn-ghost" data-review-changes="${m.id}" data-review-title="${esc(m.title_ar || m.title_orig || '')}" type="button">طلب تعديل</button>
         <button class="btn btn-sm btn-ghost" data-review-reject="${m.id}" data-review-title="${esc(m.title_ar || m.title_orig || '')}" type="button">إعادة بملاحظة</button>
       </td>
     </tr>`).join('');
@@ -1321,7 +1322,7 @@ const RESEARCHER_NAV = [
 ];
 const RESEARCHER_NAV_ICONS = { mine: 'home', journal: 'journal', discussions: 'chat', new: 'plus' };
 
-const RESEARCHER_STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', published: 'منشورة', hidden: 'مخفية' };
+const RESEARCHER_STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', changes_requested: 'مطلوب تعديلها', published: 'منشورة', hidden: 'مخفية' };
 
 function researcherAvatarMarkup(user, size = '') {
   const displayName = user?.display_name || user?.username || 'باحث';
@@ -1504,7 +1505,7 @@ ${csrfMeta}
   <div class="notif-panel" id="notifPanel" hidden><div class="notif-panel-head"><strong>التنبيهات</strong><button type="button" class="notif-panel-close" id="notifPanelClose" aria-label="إغلاق اللوحة">×</button></div><div id="notifList"></div></div>
 </nav>
 <div class="researcher-modal-veil" id="researcherMaterialModal" hidden>
-  <div class="researcher-material-modal" role="dialog" aria-modal="true" aria-labelledby="researcherMaterialModalTitle">
+  <div class="researcher-material-modal" role="dialog" aria-modal="true" aria-labelledby="researcherMaterialModalTitle" aria-describedby="researcherMaterialModalText">
     <button class="researcher-modal-close" type="button" data-researcher-modal-close aria-label="إغلاق">×</button>
     <div class="researcher-material-modal-media" id="researcherMaterialModalMedia"></div>
     <div class="researcher-material-modal-content">
@@ -1731,7 +1732,7 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
   const safeOffset = Math.max(0, Math.min(1000, Number(offset) || 0));
   const safeLimit = Math.max(6, Math.min(24, Number(limit) || 18));
   const officialFilter = safeFeed === 'official'
-    ? ` AND m.created_by = ? AND EXISTS (SELECT 1 FROM audit_log approval WHERE approval.action = 'material.review_approve' AND approval.target = m.ark)`
+    ? ` AND EXISTS (SELECT 1 FROM audit_log approval WHERE approval.action = 'material.review_approve' AND approval.target = m.ark)`
     : '';
   const approvedAtSelect = safeFeed === 'official'
     ? `COALESCE((SELECT MAX(a.created_at) FROM audit_log a WHERE a.action = 'material.review_approve' AND a.target = m.ark), m.updated_at) AS approved_at,`
@@ -1745,12 +1746,13 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
   const searchJoin = ftsQuery ? ' JOIN materials_fts search_fts ON search_fts.ark = m.ark' : '';
   const searchFilter = searchTerm
     ? ftsQuery
-      ? ' AND materials_fts MATCH ?'
+      ? ' AND search_fts MATCH ?'
       : ' AND m.ark LIKE ?'
     : '';
   const feedOrder = safeFeed === 'discover'
     ? 'ORDER BY discussions_count DESC, m.updated_at DESC, m.id DESC'
     : 'ORDER BY m.updated_at DESC, m.id DESC';
+  const fetchLimit = Math.min(500, safeOffset + safeLimit + 36);
   const query = `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
             m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
             creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
@@ -1773,14 +1775,14 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
        GROUP BY d.material_id
      ) discussion_counts ON discussion_counts.material_id = m.id
      WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}${searchFilter}
-     ${feedOrder} LIMIT 500`;
+     ${feedOrder} LIMIT ?`;
   const params = [];
-  if (safeFeed === 'official') params.push(user.id);
   if (sectionFilter) params.push(Number(sectionId));
   if (searchFilter) {
     if (ftsQuery) params.push(ftsQuery);
     else params.push(`%${searchTerm}%`);
   }
+  params.push(fetchLimit);
   const result = params.length ? await env.DB.prepare(query).bind(...params).all() : await env.DB.prepare(query).all();
   const ordered = diversifyResearcherMaterials(result.results || [], safeOffset + safeLimit);
   const pageRows = ordered.slice(safeOffset, safeOffset + safeLimit);
@@ -1832,10 +1834,11 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
   const materialSearchJoin = ftsQuery ? ' JOIN materials_fts search_fts ON search_fts.ark = m.ark' : '';
   const materialSearch = searchTerm
     ? ftsQuery
-      ? ' AND materials_fts MATCH ?'
+      ? ' AND search_fts MATCH ?'
       : ' AND m.ark LIKE ?'
     : '';
   const discussionSearch = searchTerm ? ` AND (d.title LIKE ? OR d.body LIKE ? OR m.title_ar LIKE ?)` : '';
+  const fetchLimit = Math.min(500, safeOffset + safeLimit + 36);
   const [fMats, fDiscs] = await Promise.all([
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
@@ -1856,8 +1859,8 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
          GROUP BY d.material_id
        ) discussion_counts ON discussion_counts.material_id = m.id
        WHERE fl.follower_id = ? AND m.publish_status = 'published'${materialSearch}
-       ORDER BY m.updated_at DESC, m.id DESC LIMIT 500`
-    ).bind(user.id, ...(materialSearch ? (ftsQuery ? [ftsQuery] : [`%${searchTerm}%`]) : [])).all(),
+       ORDER BY m.updated_at DESC, m.id DESC LIMIT ?`
+    ).bind(user.id, ...(materialSearch ? (ftsQuery ? [ftsQuery] : [`%${searchTerm}%`]) : []), fetchLimit).all(),
     env.DB.prepare(
       `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
               d.created_at AS sort_date,
@@ -1869,8 +1872,8 @@ async function loadResearcherFollowingFeed(env, user, { search = '', offset = 0,
        JOIN admin_users u ON u.id = d.author_id
        LEFT JOIN materials m ON m.id = d.material_id
        WHERE fl.follower_id = ? AND d.status = 'published'${discussionSearch}
-       ORDER BY d.created_at DESC, d.id DESC LIMIT 500`
-    ).bind(user.id, ...Array(discussionSearch ? 3 : 0).fill(`%${searchTerm}%`)).all(),
+       ORDER BY d.created_at DESC, d.id DESC LIMIT ?`
+    ).bind(user.id, ...Array(discussionSearch ? 3 : 0).fill(`%${searchTerm}%`), fetchLimit).all(),
   ]);
   await attachDiscussionImages(env.DB, fDiscs.results || []);
   const verified = Number(user.is_verified) === 1;
@@ -1984,17 +1987,17 @@ async function researcherDashPage(env, user, req) {
   ].join('');
 
   const postCards = items.map(m => {
-    const note = m.publish_status === 'draft' && m.review_note
+    const note = ['draft', 'changes_requested'].includes(m.publish_status) && m.review_note
       ? `<div class="review-note"><strong>ملاحظة المراجعة:</strong> ${esc(m.review_note)}</div>` : '';
     const actions = `
       <a class="btn btn-sm" href="/researcher/${m.id}">تعديل</a>
-      ${m.publish_status === 'draft' ? `<button class="btn btn-sm btn-primary" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button>
+      ${['draft', 'changes_requested'].includes(m.publish_status) ? `<button class="btn btn-sm btn-primary" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button>
       <button class="btn btn-sm btn-ghost" data-r-delete="${m.id}" type="button">حذف</button>` : ''}`;
     return `<article class="researcher-material-card social-card">
       <div class="post-head"><div class="post-avatar">س</div><div><strong>${esc(TYPE_LABELS[m.type] || m.type)}</strong><div class="post-meta">${fmtDate(m.updated_at)} · ${m.files_count} ملف</div></div><span class="post-status">${badge(RESEARCHER_STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</span></div>
       <h3><a href="/researcher/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a></h3>
       ${note}
-      <div class="post-actions"><a class="post-action" href="/researcher/${m.id}">فتح وتحرير</a>${m.publish_status === 'draft' ? `<button class="post-action post-action-button" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button><button class="post-action post-action-danger" data-r-delete="${m.id}" type="button">حذف</button>` : ''}</div>
+      <div class="post-actions"><a class="post-action" href="/researcher/${m.id}">فتح وتحرير</a>${['draft', 'changes_requested'].includes(m.publish_status) ? `<button class="post-action post-action-button" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button><button class="post-action post-action-danger" data-r-delete="${m.id}" type="button">حذف</button>` : ''}</div>
     </article>`;
   }).join('');
 
@@ -2024,10 +2027,10 @@ async function researcherDashPage(env, user, req) {
     discover: ['اكتشف · منشورات المجتمع', 'تصفح منشورات المجتمع بحسب أقسام الأرشيف، وناقش المصدر داخل مساحة الباحث.'],
     latest: ['الأحدث · منشورات المجتمع', 'أحدث المواد المنشورة في سِجِل مرتبة زمنيًا.'],
     following: ['المتابَعون · جديد من تتابعه', 'مواد ونقاشات الباحثين الذين تتابعهم، مرتبة زمنيًا.'],
-    official: ['تنبيهات الإدارة · اعتمادات منشوراتك', 'تظهر هنا المواد والمقالات التي اعتمدتها الإدارة ونشرتها في الأرشيف العام.'],
+    official: ['اعتمادات الإدارة', 'تظهر هنا المواد التي اعتمدتها الإدارة ونشرتها في الأرشيف.'],
   }[feed] || ['منشورات المجتمع', ''];
   const feedEmpty = feed === 'official'
-    ? 'لا توجد اعتمادات جديدة من الإدارة لموادك أو مقالاتك.'
+    ? 'لا توجد قرارات اعتماد جديدة من الإدارة حتى الآن.'
     : feed === 'following'
       ? 'تابع باحثين لترى جديد موادهم ونقاشاتهم هنا.'
       : `لا توجد مواد في تصفية «${feedLabels[feed]}».`;
@@ -2087,6 +2090,7 @@ async function researcherAccountPage(user) {
         <div class="field"><label for="profileSpecialty">التخصص</label><input id="profileSpecialty" name="specialty" maxlength="160" value="${v('specialty')}"></div>
         <div class="field"><label for="profileWebsite">رابط فيسبوك</label><input id="profileWebsite" name="website" type="url" maxlength="300" value="${v('website')}" dir="ltr" placeholder="https://facebook.com/..."></div>
         <div class="field researcher-account-bio"><label for="profileBio">النبذة التعريفية</label><textarea id="profileBio" name="bio" required maxlength="1000" rows="5">${v('bio')}</textarea></div>
+        <label class="researcher-account-privacy"><input type="checkbox" name="is_public_profile" value="1" ${Number(user?.is_public_profile) === 1 ? 'checked' : ''}> إظهار ملفي في دليل الباحثين</label>
       </div>
       <div class="composer-footer"><span class="muted small" data-profile-status></span><button class="btn btn-primary" type="submit">حفظ بيانات الحساب</button></div>
     </form>
@@ -2102,13 +2106,19 @@ async function researcherAccountPage(user) {
     <div class="composer-footer"><span class="muted small" data-password-status></span><button class="btn btn-primary" type="submit">تغيير كلمة المرور</button></div>
   </form>`;
   const completeBody = body + passwordBody;
-  return researcherLayout({ title: 'حسابي', active: 'account', user, body: completeBody });
+  const securityBody = `<section class="social-card researcher-security-card" aria-labelledby="researcherSecurityTitle">
+    <div class="social-section-head"><div><h2 id="researcherSecurityTitle">أمان الحساب</h2><p>راجع نشاط الدخول وأبطل الجلسات التي لا تستخدمها.</p></div></div>
+    <div class="researcher-security-meta"><span>آخر دخول: <strong>${esc(user?.last_login_at || 'غير مسجل')}</strong></span><span>آخر تغيير لكلمة المرور: <strong>${esc(user?.password_changed_at || 'غير مسجل')}</strong></span></div>
+    <div class="composer-footer"><span class="muted small" data-sessions-status></span><button class="btn btn-ghost" type="button" data-load-sessions>عرض الجلسات النشطة</button><button class="btn btn-danger" type="button" data-revoke-sessions>تسجيل الخروج من الأجهزة الأخرى</button></div>
+    <div class="researcher-session-list" data-session-list hidden></div>
+  </section>`;
+  return researcherLayout({ title: 'حسابي', active: 'account', user, body: `${completeBody}${securityBody}` });
 }
 
 async function researcherProfilePage(env, viewer, researcherId) {
   const target = await env.DB.prepare(
     `SELECT id, username, display_name, avatar_url, avatar_r2_key, verification_type, job_title,
-            affiliation, specialty, bio, website, created_at
+            affiliation, specialty, bio, website, is_public_profile, created_at
      FROM admin_users
      WHERE id = ? AND role = 'researcher' AND is_active = 1`
   ).bind(researcherId).first();
@@ -2119,7 +2129,14 @@ async function researcherProfilePage(env, viewer, researcherId) {
     });
   }
 
-  target.avatar_public_path = `/researcher/avatar/${encodeURIComponent(target.id)}`;
+  if (Number(target.is_public_profile) === 0 && Number(viewer.id) !== Number(target.id) && viewer.role !== 'admin') {
+    return researcherLayout({
+      title: 'الملف خاص', active: 'mine', user: viewer,
+      body: `<div class="card"><h2>هذا الملف خاص</h2><p class="muted">اختار الباحث عدم إظهاره في الدليل العام.</p><p><a href="/researcher">العودة إلى مساحة الباحث</a></p></div>`,
+    });
+  }
+
+  if (target.avatar_r2_key) target.avatar_public_path = `/researcher/avatar/${encodeURIComponent(target.id)}`;
   const [discussionRows, replyRows, materialRows, followCounts] = await Promise.all([
     env.DB.prepare(
       `SELECT d.id, d.title, d.body, d.kind, d.created_at, d.material_id,
@@ -2230,16 +2247,16 @@ async function researcherDirectoryPage(env, user, req) {
       ? ' JOIN researcher_follows relation ON relation.follower_id = u.id AND relation.followed_id = ?'
       : '';
   const relationParams = relationship === 'all' ? [] : [user.id];
-  const baseWhere = "u.role = 'researcher' AND u.is_active = 1";
+  const baseWhere = "u.role = 'researcher' AND u.is_active = 1 AND (u.is_public_profile = 1 OR u.id = ?)";
   const [count, rows] = await Promise.all([
-    env.DB.prepare(`SELECT COUNT(*) AS total FROM admin_users u${relationJoin} WHERE ${baseWhere}`).bind(...relationParams).first(),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM admin_users u${relationJoin} WHERE ${baseWhere}`).bind(...relationParams, user.id).first(),
     env.DB.prepare(
       `SELECT u.id, u.username, u.display_name, u.avatar_url, u.avatar_r2_key, u.verification_type,
               u.job_title, u.affiliation, u.is_verified,
               EXISTS (SELECT 1 FROM researcher_follows mine WHERE mine.follower_id = ? AND mine.followed_id = u.id) AS is_following
        FROM admin_users u${relationJoin} WHERE ${baseWhere}
        ORDER BY COALESCE(u.display_name, u.username), u.id LIMIT ? OFFSET ?`
-    ).bind(user.id, ...relationParams, perPage, (page - 1) * perPage).all(),
+    ).bind(...relationParams, user.id, user.id, perPage, (page - 1) * perPage).all(),
   ]);
   const total = Number(count?.total || 0);
   const pages = Math.max(1, Math.ceil(total / perPage));
@@ -2271,7 +2288,7 @@ async function researcherMaterialsPage(env, user) {
             m.review_note, m.updated_at,
             (SELECT COUNT(*) FROM files f WHERE f.material_id = m.id) AS files_count
      FROM materials m
-     WHERE m.created_by = ? AND m.publish_status IN ('draft', 'in_review', 'published')
+     WHERE m.created_by = ? AND m.publish_status IN ('draft', 'in_review', 'changes_requested', 'published')
      ORDER BY m.updated_at DESC, m.id DESC LIMIT 200`
   ).bind(user.id).all();
   const materials = result.results || [];
@@ -2283,7 +2300,7 @@ async function researcherMaterialsPage(env, user) {
         <span class="post-status">${badge(RESEARCHER_STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</span>
       </div>
       <h3><a href="/researcher/${m.id}">${esc(m.title_ar || m.title_orig || 'مادة بلا عنوان')}</a></h3>
-      ${m.publish_status === 'draft' && m.review_note ? `<div class="review-note">${esc(m.review_note)}</div>` : ''}
+      ${['draft', 'changes_requested'].includes(m.publish_status) && m.review_note ? `<div class="review-note">${esc(m.review_note)}</div>` : ''}
       <div class="post-actions"><a class="post-action" href="/researcher/${m.id}">${m.publish_status === 'draft' ? 'متابعة تحرير المسودة' : 'عرض المادة'}</a></div>
     </article>`).join('');
   const body = `
@@ -2468,7 +2485,7 @@ async function researcherFormPage(env, user, mode, id) {
     ? await db.prepare("SELECT status, note FROM material_edit_requests WHERE material_id = ? AND researcher_id = ? ORDER BY id DESC LIMIT 1").bind(m.id, user.id).first()
     : null;
   const editApproved = editRequest?.status === 'approved';
-  const canEditMaterial = isEdit && (m.publish_status === 'draft' || editApproved);
+  const canEditMaterial = isEdit && (m.publish_status === 'draft' || m.publish_status === 'changes_requested' || editApproved);
   const fieldDisabled = isEdit && !canEditMaterial ? ' disabled' : '';
   const defType = isEdit ? m.type : (mode === 'article' ? 'article' : 'document');
   const typeOpts = Object.entries(TYPE_LABELS).filter(([value]) => !(mode === 'new' && value === 'article'))
@@ -2517,8 +2534,8 @@ async function researcherFormPage(env, user, mode, id) {
     <section class="card">
       <h2>النشر</h2>
       <p>الحالة: ${badge(RESEARCHER_STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</p>
-      ${m.publish_status === 'draft' && m.review_note ? `<div class="review-note"><strong>ملاحظة المراجعة:</strong> ${esc(m.review_note)}</div>` : ''}
-      ${m.publish_status === 'draft' ? `<button class="btn btn-primary" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button>
+      ${['draft', 'changes_requested'].includes(m.publish_status) && m.review_note ? `<div class="review-note"><strong>ملاحظة الإدارة:</strong> ${esc(m.review_note)}</div>` : ''}
+      ${['draft', 'changes_requested'].includes(m.publish_status) ? `<button class="btn btn-primary" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button>
       <button class="btn btn-ghost" data-r-delete="${m.id}" type="button">حذف المسودة</button>` : ''}
       ${m.publish_status === 'in_review' ? '<p class="muted small">المادة قيد مراجعة الإدارة — لا يمكن تعديلها الآن.</p>' : ''}
       ${m.publish_status === 'published' && editApproved ? '<p class="notice-card">وافقت الإدارة على طلب التعديل. يمكنك تحرير بيانات المادة وملفاتها أدناه.</p>' : ''}

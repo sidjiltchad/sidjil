@@ -134,6 +134,8 @@ function initResearcherPickers() {
 }
 
 let activePdfReader = null;
+let lastResearcherModalTrigger = null;
+let lastResearcherLightboxTrigger = null;
 async function openResearcherMaterialModal(trigger) {
   const modal = document.getElementById('researcherMaterialModal');
   if (!modal || !trigger) return;
@@ -147,6 +149,7 @@ async function openResearcherMaterialModal(trigger) {
   const download = document.getElementById('researcherMaterialModalDownload');
   const discussion = document.getElementById('researcherMaterialModalDiscussion');
   if (!media || !type || !title || !meta || !text || !discussion) return;
+  lastResearcherModalTrigger = trigger;
 
   media.textContent = '';
   media.classList.toggle('researcher-material-modal-pdf', !!d.materialPdf);
@@ -273,16 +276,24 @@ function closeResearcherMaterialModal() {
   if (!modal) return;
   modal.hidden = true;
   document.body.classList.remove('researcher-modal-open');
+  if (lastResearcherModalTrigger && document.contains(lastResearcherModalTrigger)) {
+    lastResearcherModalTrigger.focus({ preventScroll: true });
+  }
+  lastResearcherModalTrigger = null;
 }
 
 // ---------- عارض الصور بأسلوب فيسبوك (الصورة نفسها بملء الشاشة) ----------
 function openImageLightbox(src, alt) {
   if (!src) return;
+  lastResearcherLightboxTrigger = document.activeElement;
   let box = document.getElementById('researcherImageLightbox');
   if (!box) {
     box = document.createElement('div');
     box.id = 'researcherImageLightbox';
     box.className = 'researcher-image-lightbox';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', 'عرض الصورة');
     box.hidden = true;
     box.innerHTML = '<button class="researcher-lightbox-close" type="button" aria-label="إغلاق">×</button><img alt="">';
     const lightboxImage = box.querySelector('img');
@@ -341,6 +352,10 @@ function closeImageLightbox() {
   box.hidden = true;
   box.querySelector('img').removeAttribute('src');
   document.body.style.overflow = '';
+  if (lastResearcherLightboxTrigger && document.contains(lastResearcherLightboxTrigger)) {
+    lastResearcherLightboxTrigger.focus({ preventScroll: true });
+  }
+  lastResearcherLightboxTrigger = null;
 }
 
 function escapeResearcherSearchRegex(value) {
@@ -709,6 +724,7 @@ function initResearcherPage() {
           specialty: String(fd.get('specialty') || '').trim(),
           website: String(fd.get('website') || '').trim(),
           bio: String(fd.get('bio') || '').trim(),
+          is_public_profile: fd.get('is_public_profile') === '1',
         });
         if (profileStatus) profileStatus.textContent = 'تم حفظ بيانات الحساب بنجاح.';
         toast('تم حفظ بيانات الحساب');
@@ -763,6 +779,47 @@ function initResearcherPage() {
       } catch (err) { toast(err.message, false); btn.disabled = false; }
     });
   });
+
+  // ---------- جلسات الحساب ----------
+  const sessionsList = document.querySelector('[data-session-list]');
+  const sessionsStatus = document.querySelector('[data-sessions-status]');
+  const loadSessionsBtn = document.querySelector('[data-load-sessions]');
+  const revokeSessionsBtn = document.querySelector('[data-revoke-sessions]');
+  const renderSessions = (items) => {
+    if (!sessionsList) return;
+    sessionsList.hidden = false;
+    sessionsList.innerHTML = (items || []).map((session) => `
+      <div class="researcher-session-item"><strong>${session.current ? 'الجلسة الحالية' : 'جلسة أخرى'}</strong>
+        <span>${String(session.user_agent || 'جهاز غير معروف').slice(0, 140)}</span>
+        <small>${String(session.ip || '—')} · آخر نشاط ${String(session.last_seen_at || session.created_at || '—')}</small>
+      </div>`).join('') || '<p class="muted">لا توجد جلسات نشطة.</p>';
+  };
+  if (loadSessionsBtn && !loadSessionsBtn.dataset.sjBound) {
+    loadSessionsBtn.dataset.sjBound = '1';
+    loadSessionsBtn.addEventListener('click', async () => {
+      loadSessionsBtn.disabled = true;
+      try {
+        const data = await api('/api/v1/admin/profile/sessions', 'GET');
+        renderSessions(data.sessions || []);
+        if (sessionsStatus) sessionsStatus.textContent = `عدد الجلسات النشطة: ${(data.sessions || []).length}`;
+      } catch (error) { if (sessionsStatus) sessionsStatus.textContent = error.message; toast(error.message, false); }
+      finally { loadSessionsBtn.disabled = false; }
+    });
+  }
+  if (revokeSessionsBtn && !revokeSessionsBtn.dataset.sjBound) {
+    revokeSessionsBtn.dataset.sjBound = '1';
+    revokeSessionsBtn.addEventListener('click', async () => {
+      if (!confirm('تسجيل الخروج من جميع الأجهزة الأخرى؟')) return;
+      revokeSessionsBtn.disabled = true;
+      try {
+        await api('/api/v1/admin/profile/sessions/revoke', 'POST');
+        if (sessionsStatus) sessionsStatus.textContent = 'أُبطلت الجلسات الأخرى.';
+        if (sessionsList) sessionsList.hidden = true;
+        toast('أُغلقت الجلسات الأخرى');
+      } catch (error) { if (sessionsStatus) sessionsStatus.textContent = error.message; toast(error.message, false); }
+      finally { revokeSessionsBtn.disabled = false; }
+    });
+  }
 
   // ---------- تسجيل الخروج ----------
   const btnLogout = document.getElementById('btnLogout');
@@ -929,42 +986,45 @@ function initResearcherPage() {
   });
 
   // ---------- محرر التعليق والتلخيص داخل بطاقة المادة ----------
-  document.querySelectorAll('[data-discussion-open]').forEach((trigger) => {
-    trigger.dataset.sjBound = '1';
-    // ربط مباشر بالزر يضمن عمله حتى إذا أعيد تهيئة الصفحة أو غُيّرت طبقات الواجهة.
-    trigger.onclick = () => {
-      const composer = document.getElementById(trigger.dataset.discussionOpen);
-      if (!composer) return;
-      document.querySelectorAll('[data-discussion-composer]').forEach((other) => {
-        if (other !== composer) other.hidden = true;
-      });
-      const alreadyOpen = !composer.hidden;
-      composer.hidden = alreadyOpen;
-      document.querySelectorAll(`[aria-controls="${trigger.dataset.discussionOpen}"]`).forEach((button) => {
-        button.setAttribute('aria-expanded', (!alreadyOpen && button === trigger) ? 'true' : 'false');
-      });
-      if (!alreadyOpen) {
-        const kindVal = trigger.dataset.discussionKind || 'comment';
-        const radio = composer.querySelector(`input[name="kind"][value="${kindVal}"]`);
-        if (radio) radio.checked = true;
-        const body = composer.querySelector('textarea[name="body"]');
-        if (body) setTimeout(() => body.focus(), 0);
+  // Event delegation ضروري لأن البطاقات تُضاف لاحقًا عبر البحث والتحميل التلقائي.
+  const feedRoot = document.querySelector('[data-researcher-feed]') || document.body;
+  if (!feedRoot.dataset.sjDiscussionDelegation) {
+    feedRoot.dataset.sjDiscussionDelegation = '1';
+    feedRoot.addEventListener('click', (event) => {
+      const trigger = event.target.closest('[data-discussion-open]');
+      if (trigger && feedRoot.contains(trigger)) {
+        event.preventDefault();
+        const composer = document.getElementById(trigger.dataset.discussionOpen);
+        if (!composer) return;
+        document.querySelectorAll('[data-discussion-composer]').forEach((other) => {
+          if (other !== composer) other.hidden = true;
+        });
+        const alreadyOpen = !composer.hidden;
+        composer.hidden = alreadyOpen;
+        document.querySelectorAll(`[aria-controls="${trigger.dataset.discussionOpen}"]`).forEach((button) => {
+          button.setAttribute('aria-expanded', (!alreadyOpen && button === trigger) ? 'true' : 'false');
+        });
+        if (!alreadyOpen) {
+          const kindVal = trigger.dataset.discussionKind || 'comment';
+          const radio = composer.querySelector(`input[name="kind"][value="${kindVal}"]`);
+          if (radio) radio.checked = true;
+          const body = composer.querySelector('textarea[name="body"]');
+          if (body) setTimeout(() => body.focus(), 0);
+        }
+        return;
       }
-    };
-  });
-  document.querySelectorAll('[data-discussion-close]').forEach((button) => {
-    button.dataset.sjBound = '1';
-    button.onclick = () => {
-      const composer = button.closest('[data-discussion-composer]');
-      if (!composer) return;
-      composer.hidden = true;
-      document.querySelectorAll(`[aria-controls="${composer.id}"]`).forEach((trigger) => trigger.setAttribute('aria-expanded', 'false'));
-    };
-  });
-  document.querySelectorAll('[data-inline-discussion]').forEach((inlineForm) => {
-    if (inlineForm.dataset.sjBound) return;
-    inlineForm.dataset.sjBound = '1';
-    inlineForm.addEventListener('submit', async (event) => {
+      const closeButton = event.target.closest('[data-discussion-close]');
+      if (closeButton && feedRoot.contains(closeButton)) {
+        event.preventDefault();
+        const composer = closeButton.closest('[data-discussion-composer]');
+        if (!composer) return;
+        composer.hidden = true;
+        document.querySelectorAll(`[aria-controls="${composer.id}"]`).forEach((button) => button.setAttribute('aria-expanded', 'false'));
+      }
+    });
+    feedRoot.addEventListener('submit', async (event) => {
+      const inlineForm = event.target.closest('[data-inline-discussion]');
+      if (!inlineForm || !feedRoot.contains(inlineForm)) return;
       event.preventDefault();
       const btn = inlineForm.querySelector('[type="submit"]');
       const kind = inlineForm.querySelector('[name="kind"]:checked')?.value || inlineForm.querySelector('[name="kind"]')?.value || 'comment';
@@ -981,7 +1041,7 @@ function initResearcherPage() {
         if (btn) btn.disabled = false;
       }
     });
-  });
+  }
 
   // ---------- نموذج نقاش جديد ----------
   const dForm = document.getElementById('discussionForm');

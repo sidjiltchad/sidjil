@@ -98,7 +98,7 @@ export default {
       const avatarUser = researcherAvatarMatch[1]
         ? await env.DB.prepare(
             `SELECT avatar_r2_key FROM admin_users
-             WHERE id = ? AND role = 'researcher' AND is_active = 1 AND is_verified = 1`
+            WHERE id = ? AND role = 'researcher' AND is_active = 1`
           ).bind(Number(researcherAvatarMatch[1])).first()
         : viewer;
       if (!avatarUser || !avatarUser.avatar_r2_key) return new Response('غير موجود', { status: 404 });

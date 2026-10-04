@@ -1383,6 +1383,13 @@ body.translation-workspace-open { overflow: hidden; }
 .researcher-account-photo-head h2 { margin: 0 0 .25rem; font-size: 1.05rem; }
 .researcher-account-photo-head p { margin: 0; line-height: 1.7; }
 .researcher-account-photo-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; }
+.researcher-account-privacy { display: flex; align-items: center; gap: .55rem; margin-top: .35rem; color: var(--muted); font-size: .88rem; }
+.researcher-security-card { margin-top: 1rem; padding: 1.1rem 1.2rem; }
+.researcher-security-meta { display: flex; flex-wrap: wrap; gap: .65rem 1.2rem; color: var(--muted); font-size: .86rem; padding: .75rem 0; }
+.researcher-security-meta strong { color: var(--ink); font-weight: 700; }
+.researcher-session-list { display: grid; gap: .55rem; margin-top: .85rem; }
+.researcher-session-item { display: grid; gap: .2rem; padding: .7rem .8rem; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--surface-2); }
+.researcher-session-item span, .researcher-session-item small { color: var(--muted); overflow-wrap: anywhere; }
 .researcher-account-photo-actions input[type="file"] { display: none; }
 .researcher-account-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; }
 .researcher-account-fields .field { margin: 0; }

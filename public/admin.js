@@ -659,6 +659,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  document.querySelectorAll('[data-review-changes]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const note = window.prompt(`اكتب ملاحظة التعديل للباحث:\n${btn.dataset.reviewTitle || ''}`, 'يرجى استكمال البيانات وتصحيح الملفات قبل إعادة الإرسال.')?.trim();
+      if (!note) return;
+      setLoading(btn, true);
+      try {
+        await api(`/api/v1/admin/materials/${btn.dataset.reviewChanges}/review`, 'POST', { decision: 'request_changes', note });
+        toast('أُرسلت ملاحظة التعديل إلى الباحث');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); setLoading(btn, false); }
+    });
+  });
+
   const reviewModal = document.getElementById('reviewModal');
   const reviewNote = document.getElementById('reviewNote');
   const reviewTitle = document.getElementById('reviewModalTitle');

@@ -8,7 +8,7 @@
 // الكتابة للباحثين الموثّقين فقط.
 // ============================================================
 
-import { getSessionUser } from './lib/auth.js';
+import { getSessionUser, verifyCsrf } from './lib/auth.js';
 import { audit } from './lib/db.js';
 
 function json(data, status = 200) {
@@ -155,6 +155,10 @@ export async function routeSocialApi(req, env) {
   const url = new URL(req.url);
   const path = url.pathname;
   const user = await getSessionUser(req, env);
+
+  if (req.method === 'POST' && user && !verifyCsrf(user, req)) {
+    return err('رمز CSRF غير صالح أو مفقود', 403);
+  }
 
   if (req.method === 'POST' && path === '/api/v1/social/follow') return apiFollowToggle(env, req, user);
   if (req.method === 'GET' && path === '/api/v1/social/follow-status') return apiFollowStatus(env, req, user);
