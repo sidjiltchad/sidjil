@@ -31,18 +31,21 @@
     const title = btn.dataset.translateTitle || document.querySelector('#pdfViewerBox')?.dataset.translateTitle || '';
     const originalDownload = btn.dataset.translateOriginalDownload || document.querySelector('#pdfViewerBox')?.dataset.translateOriginalDownload || pdf;
     if (!pdf) { const el = modal(`<h2>${labels.translate}</h2><p class="translate-inline-status">${labels.error}</p>`); el.querySelectorAll('[data-translation-close]').forEach((x) => x.addEventListener('click', close)); return; }
-    const el = modal(`<div class="translation-workspace" data-translation-workspace dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
+    const el = modal(`<div class="translation-workspace" data-translation-workspace aria-label="${esc(title || labels.translate)}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
       <header class="translation-workspace-head">
-        <div class="translation-workspace-heading"><span class="translation-workspace-kicker">${labels.translate}</span><h2>${esc(title || labels.translate)}</h2><span class="translation-workspace-page" data-ta-page-status></span></div>
+        <button class="translation-workspace-close" type="button" data-translation-close data-translation-drag-close aria-label="${labels.close}" title="${labels.close}"><span class="translation-close-grip" aria-hidden="true"></span><span class="sr-only">${labels.close}</span></button>
         <div class="translation-workspace-actions">
-          <label class="translation-language"><span>${labels.from}</span><select data-ta-source>${langs('auto')}</select></label>
-          <span class="translation-arrow" aria-hidden="true">→</span>
-          <label class="translation-language"><span>${labels.to}</span><select data-ta-target><option value="ar">العربية</option><option value="fr">Français</option><option value="en">English</option></select></label>
-          <a class="btn btn-small btn-ghost" data-ta-download-original href="${esc(originalDownload)}">${labels.download} ${lang === 'fr' ? 'original' : 'الأصل'}</a>
-          <button class="btn btn-small btn-primary" type="button" data-ta-start-translation>${labels.translate}</button>
-          <button class="btn btn-small" type="button" data-ta-download-translation disabled>${lang === 'fr' ? 'Télécharger le texte' : 'تنزيل النص المترجم'}</button>
-          <button class="btn btn-small btn-primary" type="button" data-ta-create-pdf>${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}</button>
-          <button class="translation-action-close" type="button" data-translation-close aria-label="${labels.close}">×</button>
+          <div class="translation-language-controls">
+            <label class="translation-language"><span>${labels.from}</span><select data-ta-source>${langs('auto')}</select></label>
+            <span class="translation-arrow" aria-hidden="true">→</span>
+            <label class="translation-language"><span>${labels.to}</span><select data-ta-target><option value="ar">العربية</option><option value="fr">Français</option><option value="en">English</option></select></label>
+          </div>
+          <div class="translation-icon-actions" role="toolbar" aria-label="${lang === 'fr' ? 'Actions du lecteur' : 'إجراءات القارئ'}">
+            <a class="translation-icon-action" data-ta-download-original href="${esc(originalDownload)}" aria-label="${lang === 'fr' ? 'Télécharger l’original' : 'تنزيل الأصل'}" title="${lang === 'fr' ? 'Télécharger l’original' : 'تنزيل الأصل'}"><span class="translation-icon translation-icon-download" aria-hidden="true">↓</span><span class="sr-only">${lang === 'fr' ? 'Original' : 'الأصل'}</span></a>
+            <button class="translation-icon-action translation-icon-action-primary" type="button" data-ta-start-translation aria-label="${labels.translate}" title="${labels.translate}"><span class="translation-icon" aria-hidden="true">✦</span><span class="sr-only">${labels.translate}</span></button>
+            <button class="translation-icon-action" type="button" data-ta-download-translation aria-label="${lang === 'fr' ? 'Télécharger le texte traduit' : 'تنزيل النص المترجم'}" title="${lang === 'fr' ? 'Télécharger le texte traduit' : 'تنزيل النص المترجم'}" disabled><span class="translation-icon" aria-hidden="true">T↓</span><span class="sr-only">${lang === 'fr' ? 'Texte traduit' : 'النص المترجم'}</span></button>
+            <button class="translation-icon-action" type="button" data-ta-create-pdf aria-label="${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}" title="${lang === 'fr' ? 'Exporter en PDF' : 'تصدير PDF'}" disabled><span class="translation-icon translation-icon-pdf" aria-hidden="true">PDF</span><span class="sr-only">PDF</span></button>
+          </div>
         </div>
       </header>
       <div class="translation-progress-wrap" aria-live="polite"><div class="translation-progress-track"><div class="translation-progress-bar" data-ta-progress></div></div><span class="translation-progress-label" data-ta-progress-label>0%</span></div>
@@ -60,6 +63,33 @@
     el.querySelector('.translation-action-card')?.classList.add('translation-workspace-card');
     document.body.classList.add('translation-workspace-open');
     el.querySelectorAll('[data-translation-close]').forEach((x) => x.addEventListener('click', close));
+    const closeHandle = el.querySelector('[data-translation-drag-close]');
+    if (closeHandle) {
+      let startY = 0;
+      let dragging = false;
+      closeHandle.addEventListener('pointerdown', (event) => {
+        startY = event.clientY;
+        dragging = true;
+        closeHandle.setPointerCapture?.(event.pointerId);
+        el.querySelector('.translation-workspace-card')?.classList.add('is-dragging');
+      });
+      closeHandle.addEventListener('pointermove', (event) => {
+        if (!dragging) return;
+        const delta = Math.max(0, event.clientY - startY);
+        el.querySelector('.translation-workspace-card')?.style.setProperty('--reader-drag-offset', `${delta}px`);
+      });
+      const finishDrag = (event) => {
+        if (!dragging) return;
+        dragging = false;
+        const delta = Math.max(0, event.clientY - startY);
+        const card = el.querySelector('.translation-workspace-card');
+        card?.classList.remove('is-dragging');
+        card?.style.removeProperty('--reader-drag-offset');
+        if (delta > 72) close();
+      };
+      closeHandle.addEventListener('pointerup', finishDrag);
+      closeHandle.addEventListener('pointercancel', finishDrag);
+    }
     const mobileTabs = [...el.querySelectorAll('[data-ta-mobile-tab]')];
     mobileTabs.forEach((tab) => tab.addEventListener('click', () => {
       const selected = tab.dataset.taMobileTab;

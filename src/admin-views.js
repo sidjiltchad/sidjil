@@ -135,7 +135,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v4">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v5">
 ${head}
 </head>
 <body>
@@ -195,7 +195,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v4">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v5">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -1575,7 +1575,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v4">
+<link rel="stylesheet" href="/admin.css?v=20261004-admin-ui-v5">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1672,7 +1672,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v6"></script>
 <script src="/researcher-feed-v5.js?v=20261004-reader-flow-v1" defer></script>
-<script src="/translate-inline.js?v=20261004-reader-flow-v1" defer></script>
+<script src="/translate-inline.js?v=20261004-reader-ui-v2" defer></script>
 <script>
 (() => {
   const init = () => {

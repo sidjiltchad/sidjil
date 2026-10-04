@@ -3640,6 +3640,32 @@ body.translation-workspace-open { overflow: hidden; }
   .translation-workspace-status { flex:0 0 auto; min-height:2rem; padding:.35rem .65rem max(.35rem, env(safe-area-inset-bottom, 0px)); font-size:.7rem; line-height:1.45; }
 }
 
+/* رأس قارئ الترجمة: مساحة نظيفة وأدوات أيقونية مع إغلاق بالسحب */
+.translation-workspace-head { position:relative; display:block; padding:1.35rem 1rem .65rem; }
+.translation-workspace-actions { display:flex; align-items:center; justify-content:center; gap:.9rem; width:100%; }
+.translation-language-controls { display:flex; align-items:center; justify-content:center; gap:.35rem; }
+.translation-icon-actions { display:flex; align-items:center; justify-content:center; gap:.4rem; }
+.translation-icon-action { display:grid; place-items:center; width:2.35rem; height:2.35rem; padding:0; border:1px solid color-mix(in srgb, var(--gold) 35%, var(--line)); border-radius:50%; background:var(--paper); color:var(--ink); text-decoration:none; cursor:pointer; box-shadow:0 3px 10px rgba(16,24,40,.08); transition:transform .18s ease, background .18s ease, color .18s ease, border-color .18s ease; }
+.translation-icon-action:hover:not(:disabled), .translation-icon-action:focus-visible { transform:translateY(-2px); border-color:var(--gold); background:color-mix(in srgb, var(--gold) 13%, var(--paper)); color:var(--gold-deep); outline:none; }
+.translation-icon-action:disabled { cursor:not-allowed; opacity:.38; box-shadow:none; }
+.translation-icon-action-primary { border-color:var(--teal); background:color-mix(in srgb, var(--teal) 12%, var(--paper)); color:var(--teal); }
+.translation-icon { display:block; font-size:1.12rem; font-weight:800; line-height:1; }
+.translation-icon-pdf { font-size:.58rem; letter-spacing:-.04em; }
+.translation-workspace-close { position:absolute; inset-block-start:.38rem; inset-inline-start:50%; z-index:3; display:grid; place-items:center; width:4.5rem; height:1.35rem; padding:0; border:0; border-radius:999px; background:transparent; color:var(--muted); cursor:grab; transform:translateX(-50%); touch-action:none; }
+.translation-workspace-close:active { cursor:grabbing; }
+.translation-close-grip { display:block; width:2.8rem; height:.24rem; border-radius:999px; background:currentColor; opacity:.6; transition:width .18s ease, opacity .18s ease; }
+.translation-workspace-close:hover .translation-close-grip, .translation-workspace-close:focus-visible .translation-close-grip { width:3.35rem; opacity:1; }
+.translation-workspace-card.is-dragging { transform:translateY(var(--reader-drag-offset, 0px)); transition:none; }
+@media (max-width:700px) {
+  .translation-workspace-head { padding:1.55rem .65rem .55rem; }
+  .translation-workspace-actions { display:flex !important; flex-direction:column; gap:.5rem; }
+  .translation-language-controls, .translation-icon-actions { width:100%; }
+  .translation-language-controls { justify-content:center; }
+  .translation-icon-actions { justify-content:center; gap:.65rem; }
+  .translation-icon-action { width:2.55rem; height:2.55rem; }
+  .translation-workspace-close { inset-block-start:.48rem; }
+}
+
 /* شريط سفلي للتطبيق (وضع standalone) */
 .pwa-bar { display: none; }
 @media (display-mode: standalone) {
