@@ -199,16 +199,27 @@ async function apiCitation(env, url, ark) {
 // ---------- القوائم ----------
 
 const LIST_CONFIG = {
-  people: { table: 'people', order: 'name_ar', searchCols: ['name_ar', 'name_orig'] },
-  places: { table: 'places', order: 'name_ar', searchCols: ['name_ar', 'name_orig', 'region'] },
-  sources: { table: 'sources', order: 'name_ar', searchCols: ['name_ar', 'name'] },
-  tags: { table: 'tags', order: 'name_ar', searchCols: ['name_ar', 'name_orig'] },
-  collections: { table: 'collections', order: 'sort_order, title_ar', searchCols: ['title_ar', 'title_fr'] },
+  people: { table: 'people', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig'] },
+  places: { table: 'places', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig', 'region'] },
+  sources: { table: 'sources', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name'] },
+  tags: { table: 'tags', order: 'name_ar, id', cursor: ['name_ar', 'id'], searchCols: ['name_ar', 'name_orig'] },
+  collections: { table: 'collections', order: 'sort_order, title_ar, id', cursor: ['sort_order', 'title_ar', 'id'], searchCols: ['title_ar', 'title_fr'] },
 };
+
+function encodeListCursor(value) {
+  try { return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); } catch { return null; }
+}
+
+function decodeListCursor(value) {
+  if (!value) return null;
+  try { const token = String(value); const padded = token.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((token.length + 3) % 4); const row = JSON.parse(atob(padded)); return row && typeof row === 'object' ? row : null; } catch { return null; }
+}
 
 async function apiList(env, url, key) {
   const cfg = LIST_CONFIG[key];
-  const { page, perPage, offset } = pageParams(url);
+  const { page, perPage } = pageParams(url);
+  const cursor = decodeListCursor(url.searchParams.get('cursor'));
+  const offset = cursor ? 0 : (page - 1) * perPage;
   const q = (url.searchParams.get('q') || '').trim();
   const where = [];
   const binds = [];
@@ -216,14 +227,31 @@ async function apiList(env, url, key) {
     where.push(`(${cfg.searchCols.map((c) => `${c} LIKE ?`).join(' OR ')})`);
     for (const _ of cfg.searchCols) binds.push(`%${q}%`);
   }
+  const countWhereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const countBinds = binds.slice();
+  if (cursor && cfg.cursor.every(column => cursor[column] !== undefined)) {
+    if (cfg.cursor.length === 2) {
+      const [value, id] = cfg.cursor;
+      where.push(`(${value} > ? OR (${value} = ? AND id > ?))`);
+      binds.push(cursor[value], cursor[value], Number(cursor[id]));
+    } else {
+      const [first, second, id] = cfg.cursor;
+      where.push(`(${first} > ? OR (${first} = ? AND (${second} > ? OR (${second} = ? AND id > ?))))`);
+      binds.push(cursor[first], cursor[first], cursor[second], cursor[second], Number(cursor[id]));
+    }
+  }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const [itemsRes, countRow] = await Promise.all([
     env.DB.prepare(`SELECT * FROM ${cfg.table}${whereSql} ORDER BY ${cfg.order} LIMIT ? OFFSET ?`)
-      .bind(...binds, perPage, offset)
+      .bind(...binds, perPage + 1, offset)
       .all(),
-    env.DB.prepare(`SELECT COUNT(*) AS c FROM ${cfg.table}${whereSql}`).bind(...binds).first(),
+    env.DB.prepare(`SELECT COUNT(*) AS c FROM ${cfg.table}${countWhereSql}`).bind(...countBinds).first(),
   ]);
-  return json({ items: itemsRes.results, total: countRow.c, page, perPage });
+  const rawItems = itemsRes.results || [];
+  const items = rawItems.slice(0, perPage);
+  const tail = items[items.length - 1];
+  const nextCursor = rawItems.length > perPage && tail ? encodeListCursor(Object.fromEntries(cfg.cursor.map(column => [column, tail[column]]))) : null;
+  return json({ items, total: countRow.c, page, perPage, nextCursor, hasMore: Boolean(nextCursor), paginationMode: cursor ? 'cursor' : 'page' });
 }
 
 // ---------- نقاط الخريطة (خريطة سِجِل) ----------

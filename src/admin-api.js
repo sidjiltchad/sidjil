@@ -103,6 +103,15 @@ function pageParams(url) {
   return { page, perPage, offset: (page - 1) * perPage };
 }
 
+function encodeAdminCursor(value) {
+  try { return btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); } catch { return null; }
+}
+
+function decodeAdminCursor(value) {
+  if (!value) return null;
+  try { const token = String(value); const padded = token.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((token.length + 3) % 4); const row = JSON.parse(atob(padded)); return row && typeof row === 'object' ? row : null; } catch { return null; }
+}
+
 const asInt = (v) => {
   if (v === null || v === undefined || v === '') return null;
   const n = parseInt(v, 10);
@@ -583,7 +592,9 @@ async function journalPdfIssueUpload(env, user, req) {
 
 async function admMaterialsList(env, url, user) {
   const sp = url.searchParams;
-  const { page, perPage, offset } = pageParams(url);
+  const { page, perPage } = pageParams(url);
+  const cursor = decodeAdminCursor(sp.get('cursor'));
+  const offset = cursor ? 0 : (page - 1) * perPage;
   const where = [];
   const binds = [];
   const status = sp.get('status');
@@ -607,6 +618,12 @@ async function admMaterialsList(env, url, user) {
     where.push('m.created_by = ?');
     binds.push(user.id);
   }
+  const countWhereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  const countBinds = binds.slice();
+  if (cursor && cursor.updated_at !== undefined && cursor.id !== undefined) {
+    where.push('(m.updated_at < ? OR (m.updated_at = ? AND m.id < ?))');
+    binds.push(cursor.updated_at || '', cursor.updated_at || '', Number(cursor.id));
+  }
   const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const fromSql = 'FROM materials m LEFT JOIN admin_users u ON u.id = m.created_by';
   const [itemsRes, countRow] = await Promise.all([
@@ -616,11 +633,15 @@ async function admMaterialsList(env, url, user) {
               m.updated_at, u.username AS creator
        ${fromSql}${whereSql} ORDER BY m.updated_at DESC, m.id DESC LIMIT ? OFFSET ?`
     )
-      .bind(...binds, perPage, offset)
+      .bind(...binds, perPage + 1, offset)
       .all(),
-    env.DB.prepare(`SELECT COUNT(*) AS c ${fromSql}${whereSql}`).bind(...binds).first(),
+    env.DB.prepare(`SELECT COUNT(*) AS c ${fromSql}${countWhereSql}`).bind(...countBinds).first(),
   ]);
-  return json({ items: itemsRes.results, total: countRow.c, page, perPage });
+  const rawItems = itemsRes.results || [];
+  const items = rawItems.slice(0, perPage);
+  const tail = items[items.length - 1];
+  const nextCursor = rawItems.length > perPage && tail ? encodeAdminCursor({ updated_at: tail.updated_at || '', id: tail.id }) : null;
+  return json({ items, total: countRow.c, page, perPage, nextCursor, hasMore: Boolean(nextCursor), paginationMode: cursor ? 'cursor' : 'page' });
 }
 
 // ---------- المواد: إنشاء ----------
