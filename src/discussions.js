@@ -67,7 +67,7 @@ export async function requireVerifiedResearcher(env, req) {
 // ---------- القراءة العامة ----------
 
 const DISCUSSION_SELECT = `
-  d.id, d.material_id, d.author_id, d.kind, d.title, d.body, d.quote_text, d.page_no,
+  d.id, d.material_id, d.author_id, d.kind, d.title, d.body, d.quote_text, d.page_no, d.quote_anchor,
   d.status, d.created_at, d.updated_at,
   COALESCE(u.display_name, u.username) AS author_name,
   u.is_verified AS author_verified,
@@ -293,6 +293,7 @@ export async function apiDiscussionCreate(env, req, user) {
   const title = String(body.title || '').trim().slice(0, 200);
   const text = String(body.body || '').trim().slice(0, 20000);
   if (!title || !text) return err('العنوان والنص مطلوبان', 400);
+  const quoteAnchor = normalizeQuoteAnchor(body.quote_anchor);
 
   let materialId = null;
   if (body.material_id) {
@@ -306,8 +307,8 @@ export async function apiDiscussionCreate(env, req, user) {
   }
   const res = await env.DB
     .prepare(
-      `INSERT INTO discussions (material_id, author_id, kind, title, body, quote_text, page_no)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO discussions (material_id, author_id, kind, title, body, quote_text, page_no, quote_anchor)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       materialId,
@@ -316,11 +317,22 @@ export async function apiDiscussionCreate(env, req, user) {
       title,
       text,
       String(body.quote_text || '').trim().slice(0, 2000) || null,
-      String(body.page_no || '').trim().slice(0, 20) || null
+      quoteAnchor ? String(JSON.parse(quoteAnchor).page) : (String(body.page_no || '').trim().slice(0, 20) || null),
+      quoteAnchor
     )
     .run();
   await audit(env.DB, { userId: user.id, action: 'discussion.create', target: String(res.meta.last_row_id), ip: clientIp(req) });
   return json({ ok: true, id: res.meta.last_row_id }, 201);
+}
+
+function normalizeQuoteAnchor(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const page = Math.floor(Number(value.page));
+  const x = Number(value.x); const y = Number(value.y);
+  const width = Number(value.width); const height = Number(value.height);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 100000) return null;
+  if (![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0 || x > 1 || y > 1 || width > 1 || height > 1 || x + width > 1.01 || y + height > 1.01) return null;
+  return JSON.stringify({ page, x, y, width, height });
 }
 
 export async function apiDiscussionUpdate(env, req, user, id) {
@@ -344,12 +356,13 @@ export async function apiDiscussionUpdate(env, req, user, id) {
   const title = String(body.title || '').trim().slice(0, 200);
   const text = String(body.body || '').trim().slice(0, 20000);
   if (!title || !text) return err('العنوان والنص مطلوبان', 400);
+  const quoteAnchor = body.quote_anchor === undefined ? d.quote_anchor : normalizeQuoteAnchor(body.quote_anchor);
   await db.prepare(
-    `UPDATE discussions SET title = ?, body = ?, quote_text = ?, page_no = ?, updated_at = datetime('now') WHERE id = ?`
+    `UPDATE discussions SET title = ?, body = ?, quote_text = ?, page_no = ?, quote_anchor = ?, updated_at = datetime('now') WHERE id = ?`
   )
     .bind(title, text,
       String(body.quote_text || '').trim().slice(0, 2000) || null,
-      String(body.page_no || '').trim().slice(0, 20) || null, id)
+      quoteAnchor ? String(JSON.parse(quoteAnchor).page) : (String(body.page_no || '').trim().slice(0, 20) || null), quoteAnchor, id)
     .run();
   return json({ ok: true });
 }

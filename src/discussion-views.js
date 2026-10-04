@@ -271,9 +271,19 @@ export async function discussionPage(ctx, id) {
   const csrfMeta = user && user.csrfToken ? `<meta name="csrf-token" content="${esc(user.csrfToken)}">` : '';
 
   const matUrl = d.material_id ? langPath(ctx, `/document/${encodeURIComponent(d.material_ark)}`) : null;
+  let quotePositionUrl = '';
+  if (matUrl && d.quote_anchor) {
+    try {
+      const anchor = JSON.parse(d.quote_anchor);
+      const values = [anchor.x, anchor.y, anchor.width, anchor.height].map(Number);
+      if (Number(anchor.page) > 0 && values.every((n) => Number.isFinite(n) && n >= 0 && n <= 1)) {
+        quotePositionUrl = `${matUrl}#pdf-page=${Math.floor(Number(anchor.page))}&pdf-anchor=${values.map((n) => n.toFixed(5)).join(',')}`;
+      }
+    } catch { /* تعليق قديم بلا موضع هندسي محفوظ */ }
+  }
   const quoteBlock = d.quote_text ? `<blockquote class="d-quote" dir="auto">
       <div class="d-quote-label">${esc(t(lang, 'quote_label'))}${d.page_no ? ` — ${esc(t(lang, 'page_label'))} ${esc(d.page_no)}` : ''}</div>
-      ${esc(d.quote_text)}</blockquote>` : '';
+      ${esc(d.quote_text)}${quotePositionUrl ? `<a class="d-quote-position-link" href="${esc(quotePositionUrl)}">افتح موضع التعليق في المستند ↗</a>` : ''}</blockquote>` : '';
 
   // الردود: مستوى أول + ردود متداخلة
   const byId = new Map(replies.map((r) => [r.id, r]));

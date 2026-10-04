@@ -28,6 +28,9 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var readingPages = box.querySelector('[data-pdf-reading-pages]');
   var readBtn = box.querySelector('[data-pdf-read]');
   var hasReadingMode = !!(readingPages && readBtn);
+  var pdfFragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  var requestedPage = Math.max(0, parseInt(pdfFragment.get('pdf-page'), 10) || 0);
+  var requestedAnchor = (pdfFragment.get('pdf-anchor') || '').split(',').map(Number);
 
   var pdfDoc = null;
   var pageNum = 1;
@@ -36,6 +39,8 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var rendering = false;
   var readingMode = false;
   var readingObserver = null;
+  var pinchStart = null;
+  var lastTapAt = 0;
 
   function showError() {
     errEl.classList.remove('hidden');
@@ -119,6 +124,16 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
       }).promise;
     }).then(function () {
+      if (requestedPage === pageNumber && requestedAnchor.length === 4 && requestedAnchor.every(Number.isFinite)) {
+        var pageBox = pageCanvas.parentElement;
+        pageBox.style.position = 'relative';
+        var marker = pageBox.querySelector('.pdf-quote-anchor');
+        if (!marker) { marker = document.createElement('div'); marker.className = 'pdf-quote-anchor'; marker.setAttribute('aria-label', 'موضع التعليق'); pageBox.appendChild(marker); }
+        marker.style.left = (Math.max(0, Math.min(1, requestedAnchor[0])) * 100) + '%';
+        marker.style.top = (Math.max(0, Math.min(1, requestedAnchor[1])) * 100) + '%';
+        marker.style.width = (Math.max(0, Math.min(1, requestedAnchor[2])) * 100) + '%';
+        marker.style.height = (Math.max(0, Math.min(1, requestedAnchor[3])) * 100) + '%';
+      }
       pageCanvas.dataset.loading = '0';
       pageCanvas.dataset.rendered = '1';
     }).catch(function () {
@@ -189,8 +204,38 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       if (document.fullscreenElement) document.exitFullscreen();
       else if (el.requestFullscreen) el.requestFullscreen();
       else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-    } catch (e) { /* غير مدعوم — يُتجاهل */ }
+      else el.classList.toggle('pdf-mobile-fullscreen');
+    } catch (e) { el.classList.toggle('pdf-mobile-fullscreen'); }
   });
+  document.addEventListener('fullscreenchange', function () {
+    if (document.fullscreenElement === box) box.classList.remove('pdf-mobile-fullscreen');
+  });
+
+  wrap.addEventListener('touchstart', function (event) {
+    if (event.touches.length === 2) {
+      var a = event.touches[0]; var b = event.touches[1];
+      pinchStart = { distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), scale: scale };
+    } else if (event.touches.length === 1) {
+      var now = Date.now();
+      if (now - lastTapAt < 280 && !readingMode) {
+        fitMode = !fitMode;
+        if (!fitMode) scale = Math.min(3, Math.max(1.25, scale * 1.5));
+        renderPage(); lastTapAt = 0;
+      } else lastTapAt = now;
+    }
+  }, { passive: true });
+  wrap.addEventListener('touchmove', function (event) {
+    if (!pinchStart || event.touches.length !== 2 || readingMode) return;
+    event.preventDefault();
+    var a = event.touches[0]; var b = event.touches[1];
+    pinchStart.nextScale = Math.min(5, Math.max(.4, pinchStart.scale * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinchStart.distance));
+  }, { passive: false });
+  wrap.addEventListener('touchend', function (event) {
+    if (!pinchStart) return;
+    if (event.touches.length) return;
+    if (pinchStart.nextScale && !readingMode) { fitMode = false; scale = pinchStart.nextScale; renderPage(); }
+    pinchStart = null;
+  }, { passive: true });
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
@@ -202,7 +247,11 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   pdfjsLib.getDocument({ url: url, withCredentials: true, ...pdfRenderOptions }).promise.then(function (doc) {
     pdfDoc = doc;
     countEl.textContent = String(doc.numPages);
-    renderPage();
+    if (hasReadingMode && (requestedPage > 0 || window.matchMedia('(max-width: 640px)').matches)) {
+      if (requestedPage > 0) pageNum = Math.min(doc.numPages, requestedPage);
+      enterReadingMode();
+      if (requestedPage > 0) requestAnimationFrame(function () { goTo(pageNum); });
+    } else renderPage();
   }).catch(function () {
     showError();
   });

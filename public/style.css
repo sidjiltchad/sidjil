@@ -2204,6 +2204,32 @@ blockquote {
   unicode-bidi: isolate;
 }
 
+.pdf-reading-pages { max-height: min(82vh, 960px); overflow: auto; padding: .75rem; background: #252a31; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
+.pdf-reading-page { display: grid; justify-items: center; margin: 0 auto .8rem; width: max-content; min-width: 100%; }
+.pdf-reading-page canvas { display: block; max-width: none; background: #fff; box-shadow: 0 3px 14px rgba(0,0,0,.35); }
+.pdf-viewer.pdf-mobile-fullscreen,
+.pdf-viewer:fullscreen { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; background: #171b21; }
+.pdf-viewer.pdf-mobile-fullscreen .pdf-toolbar,
+.pdf-viewer:fullscreen .pdf-toolbar { position: sticky; top: 0; z-index: 2; flex: none; }
+.pdf-viewer.pdf-mobile-fullscreen .pdf-canvas-wrap,
+.pdf-viewer:fullscreen .pdf-canvas-wrap,
+.pdf-viewer.pdf-mobile-fullscreen .pdf-reading-pages,
+.pdf-viewer:fullscreen .pdf-reading-pages { flex: 1; width: 100%; max-height: none; min-height: 0; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+@media (max-width: 640px) {
+  .pdf-viewer { width: 100%; max-width: 100%; border-radius: 14px; }
+  .pdf-toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: nowrap; gap: 6px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 8px; scrollbar-width: thin; }
+  .pdf-toolbar > * { flex: 0 0 auto; }
+  .pdf-toolbar .pdf-sep { display: none; }
+  .pdf-pageinfo { min-width: 58px; }
+  .pdf-canvas-wrap { width: 100%; max-height: 72dvh; min-height: 56dvh; padding: 5px; overflow: auto; align-items: flex-start; justify-content: center; touch-action: pan-x pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .pdf-canvas-wrap canvas { flex: none; max-width: none; }
+  .pdf-reading-pages { max-height: 74dvh; padding: .4rem 0; scroll-snap-type: y proximity; }
+  .pdf-reading-page { min-width: 100%; margin-bottom: .5rem; scroll-snap-align: start; }
+  .pdf-reading-page canvas { max-width: 100%; height: auto; }
+  .pdf-viewer.pdf-mobile-fullscreen .pdf-toolbar,
+  .pdf-viewer:fullscreen .pdf-toolbar { overflow-x: auto; }
+}
+
 /* ---------- 16. بطاقات القوائم والتصنيفات (Lists & Categories) ---------- */
 .cat-grid {
   display: grid;
@@ -3462,6 +3488,9 @@ blockquote {
 .d-body { font-size: 1.02rem; line-height: 2; margin: 1rem 0; text-align: justify; }
 .d-quote { border-inline-start: 3px solid var(--gold); background: var(--paper-2); margin: 1rem 0; padding: .9rem 1.1rem; border-radius: 0 var(--radius) var(--radius) 0; font-size: .95rem; line-height: 1.9; }
 .d-quote-label { font-size: .75rem; font-weight: 700; color: var(--gold-deep); margin-bottom: .3rem; }
+.d-quote-position-link { display: block; width: fit-content; margin-top: .55rem; color: var(--teal); font-size: .82rem; font-weight: 700; text-decoration: none; }
+.d-quote-position-link:hover { text-decoration: underline; }
+.pdf-quote-anchor { position: absolute; z-index: 2; border: 2px solid #d88900; border-radius: 3px; background: rgba(255, 204, 70, .22); box-shadow: 0 0 0 9999px rgba(14, 19, 27, .13); pointer-events: none; }
 
 .react-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
 .react-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .42rem .9rem; border-radius: var(--radius-pill); border: 1px solid var(--line); background: var(--paper); cursor: pointer; font-family: var(--font-body); font-size: .85rem; color: var(--ink); transition: all .18s; }

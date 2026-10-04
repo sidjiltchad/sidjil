@@ -15,14 +15,15 @@
     document.body.classList.remove('translation-workspace-open');
   };
   const langs = (source) => `<option value="auto"${source === 'auto' ? ' selected' : ''}>${labels.auto}</option><option value="ar">العربية</option><option value="fr">Français</option><option value="en">English</option>`;
-  async function textAction(btn) {
+  async function textAction(btn, selectedText) {
     const selector = btn.dataset.translateSelector || '[data-translation-source]';
-    const nodes = [...document.querySelectorAll(selector)]; const text = nodes.map((x) => x.textContent.trim()).filter(Boolean).join('\n\n');
+    const nodes = [...document.querySelectorAll(selector)]; const text = String(selectedText || nodes.map((x) => x.textContent.trim()).filter(Boolean).join('\n\n')).trim();
     if (!text) { const s = btn.parentElement.querySelector('[data-translate-status]'); if (s) s.textContent = labels.error; return; }
     const el = modal(`<button class="translation-action-close" type="button" data-translation-close>×</button><h2>${labels.textTranslate}</h2><div class="translation-action-grid"><label>${labels.from}<select id="taSource">${langs('auto')}</select></label><label>${labels.to}<select id="taTarget"><option value="ar">العربية</option><option value="fr">Français</option><option value="en">English</option></select></label></div><button class="btn btn-primary" id="taSubmit">${labels.textTranslate}</button><p class="translate-inline-status" id="taStatus"></p><div class="translation-action-result hidden" id="taResult"><h3>${labels.output}</h3><div class="text-block" dir="auto" id="taOutput"></div><div class="content-translate-actions"><button class="btn btn-small" type="button" id="taCopy">${lang === 'fr' ? 'Copier' : 'نسخ الترجمة'}</button><button class="btn btn-small btn-ghost" type="button" id="taDownload">${labels.download}</button></div></div>`);
     el.querySelectorAll('[data-translation-close]').forEach((x) => x.addEventListener('click', close));
     el.querySelector('#taSubmit').addEventListener('click', async () => { const status = el.querySelector('#taStatus'); const result = el.querySelector('#taResult'); const output = el.querySelector('#taOutput'); const target = el.querySelector('#taTarget').value; status.textContent = labels.working; try { const r = await fetch('/api/v1/translate/text', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ text, source:el.querySelector('#taSource').value, target }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error || labels.error); output.textContent = d.translatedText; output.setAttribute('dir', target === 'ar' ? 'rtl' : 'ltr'); output.setAttribute('lang', target); output.classList.toggle('translation-output-rtl', target === 'ar'); result.classList.remove('hidden'); status.textContent = labels.ready; el.querySelector('#taCopy').onclick = () => navigator.clipboard?.writeText(d.translatedText); el.querySelector('#taDownload').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([d.translatedText], {type:'text/plain;charset=utf-8'})); a.download = 'sidjil-translation.txt'; a.click(); }; } catch (e) { status.textContent = e.message || labels.error; } });
   }
+  window.SidjilTranslateSelection = (text) => textAction({ dataset: {} }, text);
   async function documentAction(btn) {
     const material = btn.dataset.translateDocument;
     const pdf = btn.dataset.translatePdf || document.querySelector('#pdfViewerBox')?.dataset.translatePdf || '';
