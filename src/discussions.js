@@ -321,8 +321,28 @@ export async function apiDiscussionCreate(env, req, user) {
       quoteAnchor
     )
     .run();
-  await audit(env.DB, { userId: user.id, action: 'discussion.create', target: String(res.meta.last_row_id), ip: clientIp(req) });
-  return json({ ok: true, id: res.meta.last_row_id }, 201);
+  const discussionId = res.meta.last_row_id;
+  await recordSocialMetadata(env.DB, { text: `${title}\n${text}`, actorId: user.id, targetType: 'discussion', targetId: discussionId });
+  await audit(env.DB, { userId: user.id, action: 'discussion.create', target: String(discussionId), ip: clientIp(req) });
+  return json({ ok: true, id: discussionId }, 201);
+}
+
+async function recordSocialMetadata(db, { text, actorId, targetType, targetId }) {
+  const body = String(text || '');
+  const usernames = [...new Set([...body.matchAll(/@([A-Za-z0-9_.-]{3,64})/g)].map(match => match[1].toLowerCase()))].slice(0, 20);
+  for (const username of usernames) {
+    const target = await db.prepare("SELECT id, display_name, username FROM admin_users WHERE lower(username) = ? AND is_active = 1 AND role IN ('researcher','admin')").bind(username).first();
+    if (!target || Number(target.id) === Number(actorId)) continue;
+    await db.prepare('INSERT OR IGNORE INTO social_mentions (mentioned_user_id, actor_id, target_type, target_id) VALUES (?, ?, ?, ?)').bind(target.id, actorId, targetType, targetId).run().catch(() => {});
+    await notifyUser(db, target.id, 'mention', 'أشار إليك باحث', `ذُكر اسمك في منشور: ${body.slice(0, 120)}`, `/researcher/discussions?focus=${targetType === 'discussion' ? targetId : ''}`);
+  }
+  const tags = [...new Set([...body.matchAll(/#([\p{L}\p{N}_-]{1,40})/gu)].map(match => match[1]))].slice(0, 10);
+  for (const name of tags) {
+    const normalized = name.normalize('NFKC').toLocaleLowerCase();
+    await db.prepare('INSERT OR IGNORE INTO social_tags (name, normalized_name, created_by) VALUES (?, ?, ?)').bind(name, normalized, actorId).run().catch(() => {});
+    const tag = await db.prepare('SELECT id FROM social_tags WHERE normalized_name = ?').bind(normalized).first().catch(() => null);
+    if (tag) await db.prepare('INSERT OR IGNORE INTO social_post_tags (tag_id, target_type, target_id) VALUES (?, ?, ?)').bind(tag.id, targetType, targetId).run().catch(() => {});
+  }
 }
 
 function normalizeQuoteAnchor(value) {
@@ -357,6 +377,9 @@ export async function apiDiscussionUpdate(env, req, user, id) {
   const text = String(body.body || '').trim().slice(0, 20000);
   if (!title || !text) return err('العنوان والنص مطلوبان', 400);
   const quoteAnchor = body.quote_anchor === undefined ? d.quote_anchor : normalizeQuoteAnchor(body.quote_anchor);
+  await db.prepare('INSERT INTO discussion_versions (discussion_id, editor_id, title, body) VALUES (?, ?, ?, ?)').bind(id, user.id, d.title, d.body).run().catch(() => {});
+  await db.prepare("DELETE FROM social_mentions WHERE target_type = 'discussion' AND target_id = ?").bind(id).run().catch(() => {});
+  await db.prepare("DELETE FROM social_post_tags WHERE target_type = 'discussion' AND target_id = ?").bind(id).run().catch(() => {});
   await db.prepare(
     `UPDATE discussions SET title = ?, body = ?, quote_text = ?, page_no = ?, quote_anchor = ?, updated_at = datetime('now') WHERE id = ?`
   )
@@ -364,6 +387,8 @@ export async function apiDiscussionUpdate(env, req, user, id) {
       String(body.quote_text || '').trim().slice(0, 2000) || null,
       quoteAnchor ? String(JSON.parse(quoteAnchor).page) : (String(body.page_no || '').trim().slice(0, 20) || null), quoteAnchor, id)
     .run();
+  await recordSocialMetadata(db, { text: `${title}\n${text}`, actorId: user.id, targetType: 'discussion', targetId: id });
+  await audit(db, { userId: user.id, action: 'discussion.update', target: String(id), ip: clientIp(req) });
   return json({ ok: true });
 }
 
@@ -398,6 +423,7 @@ export async function apiReplyCreate(env, req, user, discussionId) {
   const res = await db.prepare(
     'INSERT INTO discussion_replies (discussion_id, parent_id, author_id, body) VALUES (?, ?, ?, ?)'
   ).bind(discussionId, parentId, user.id, text).run();
+  await recordSocialMetadata(db, { text, actorId: user.id, targetType: 'reply', targetId: res.meta.last_row_id });
   await audit(db, { userId: user.id, action: 'discussion.reply', target: String(discussionId), ip: clientIp(req) });
   try {
     const d = await db.prepare('SELECT author_id, title FROM discussions WHERE id = ?').bind(discussionId).first();

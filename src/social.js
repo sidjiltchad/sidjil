@@ -202,6 +202,22 @@ async function apiBookmark(env, req, user) {
   return json({ ok: true, saved: true });
 }
 
+async function apiBookmarksList(env, req, user) {
+  if (!user) return err('سجّل الدخول أولًا', 401);
+  const limit = Math.min(Math.max(Number(new URL(req.url).searchParams.get('limit') || 30), 1), 100);
+  const rows = await env.DB.prepare(`SELECT b.id, b.target_type, b.target_id, b.created_at,
+      COALESCE(m.title_ar, d.title, substr(r.body, 1, 160)) AS title,
+      COALESCE(m.description, d.body, r.body) AS excerpt,
+      CASE WHEN m.id IS NOT NULL THEN 'material' WHEN d.id IS NOT NULL THEN 'discussion' ELSE 'reply' END AS resolved_type
+    FROM social_bookmarks b
+    LEFT JOIN materials m ON b.target_type = 'material' AND m.id = b.target_id AND m.publish_status = 'published'
+    LEFT JOIN discussions d ON b.target_type = 'discussion' AND d.id = b.target_id AND d.status = 'published'
+    LEFT JOIN discussion_replies r ON b.target_type = 'reply' AND r.id = b.target_id AND r.status = 'published'
+    WHERE b.user_id = ? AND (m.id IS NOT NULL OR d.id IS NOT NULL OR r.id IS NOT NULL)
+    ORDER BY b.created_at DESC, b.id DESC LIMIT ?`).bind(user.id, limit).all();
+  return json({ items: rows.results || [] });
+}
+
 async function apiTagTarget(env, req, user) {
   const blocked = requireVerified(user); if (blocked) return blocked;
   let body = {}; try { body = await req.json(); } catch { return err('طلب غير صالح'); }
@@ -266,6 +282,7 @@ export async function routeSocialApi(req, env) {
   if (req.method === 'POST' && path === '/api/v1/social/reaction') return apiReaction(env, req, user);
   if (req.method === 'GET' && path === '/api/v1/social/reactions') return apiReactionStatus(env, req, user);
   if (req.method === 'POST' && path === '/api/v1/social/bookmark') return apiBookmark(env, req, user);
+  if (req.method === 'GET' && path === '/api/v1/social/bookmarks') return apiBookmarksList(env, req, user);
   if (req.method === 'POST' && path === '/api/v1/social/tags') return apiTagTarget(env, req, user);
   if (req.method === 'POST' && path === '/api/v1/social/block') return apiRelation(env, req, user, 'block');
   if (req.method === 'POST' && path === '/api/v1/social/mute') return apiRelation(env, req, user, 'mute');
