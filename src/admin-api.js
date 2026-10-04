@@ -97,6 +97,7 @@ function researcherAllowed(rest, method) {
   if (/^materials\/\d+\/files$/.test(rest) && method === 'POST') return true;
   if (/^files\/\d+$/.test(rest) && method === 'DELETE') return true;
   if (/^materials\/\d+\/submit$/.test(rest) && method === 'POST') return true; // إرسال للمراجعة
+  if (/^materials\/\d+\/edit-request$/.test(rest) && method === 'POST') return true;
   // مجلس سِجِل: الباحث (الموثّق — يُتحقق داخل الدالة) ينشر النقاشات والردود
   if (rest === 'discussions' && method === 'POST') return true;
   if (/^discussions\/\d+$/.test(rest) && (method === 'PUT' || method === 'DELETE')) return true;
@@ -115,6 +116,69 @@ async function requireOwnDraft(db, user, idOrArk) {
   if (m.publish_status === 'in_review') throw new Error('المادة قيد المراجعة — لا يمكن تعديلها الآن');
   if (m.publish_status !== 'draft') throw new Error('لا يمكن تعديل مادة منشورة — تواصل مع الإدارة');
   return m;
+}
+
+async function requireOwnEditableMaterial(db, user, idOrArk) {
+  const m = await findMaterial(db, idOrArk);
+  if (!m) throw new Error('المادة غير موجودة');
+  if (Number(m.created_by) !== Number(user.id)) throw new Error('هذه المادة ليست من منشوراتك');
+  if (m.publish_status === 'draft') return m;
+  if (m.publish_status === 'published') {
+    const grant = await db.prepare(
+      "SELECT id FROM material_edit_requests WHERE material_id = ? AND researcher_id = ? AND status = 'approved' LIMIT 1"
+    ).bind(m.id, user.id).first();
+    if (grant) return m;
+  }
+  if (m.publish_status === 'in_review') throw new Error('المادة قيد المراجعة — لا يمكن تعديلها الآن');
+  throw new Error('لا يمكن تعديل المادة المنشورة قبل موافقة الإدارة على طلب التعديل');
+}
+
+async function admMaterialEditRequest(env, user, req, id) {
+  const db = env.DB;
+  const material = await findMaterial(db, id);
+  if (!material || Number(material.created_by) !== Number(user.id)) return err('المادة غير موجودة أو ليست من منشوراتك', 404);
+  if (material.publish_status !== 'published') return err('يمكن طلب تعديل المواد المنشورة فقط', 400);
+  const existing = await db.prepare(
+    "SELECT status FROM material_edit_requests WHERE material_id = ? AND researcher_id = ? ORDER BY id DESC LIMIT 1"
+  ).bind(material.id, user.id).first();
+  if (existing?.status === 'pending') return json({ ok: true, status: 'pending' });
+  if (existing?.status === 'approved') return json({ ok: true, status: 'approved' });
+  await db.prepare(
+    "INSERT INTO material_edit_requests (material_id, researcher_id, status) VALUES (?, ?, 'pending')"
+  ).bind(material.id, user.id).run();
+  await audit(db, { userId: user.id, action: 'material.edit_request', target: material.ark, ip: clientIp(req) });
+  return json({ ok: true, status: 'pending' }, 201);
+}
+
+async function admMaterialEditRequestsList(env, user) {
+  if (user.role !== 'admin') return err('صلاحية الإدارة مطلوبة', 403);
+  const result = await env.DB.prepare(
+    `SELECT r.id, r.material_id, r.requested_at, m.ark, m.title_ar, m.title_orig,
+            COALESCE(u.display_name, u.username, 'باحث') AS researcher_name
+     FROM material_edit_requests r
+     JOIN materials m ON m.id = r.material_id
+     JOIN admin_users u ON u.id = r.researcher_id
+     WHERE r.status = 'pending' AND m.publish_status = 'published'
+     ORDER BY r.requested_at ASC, r.id ASC`
+  ).all();
+  return json({ items: result.results || [] });
+}
+
+async function admMaterialEditRequestReview(env, user, req, id, body) {
+  if (user.role !== 'admin') return err('صلاحية الإدارة مطلوبة', 403);
+  const db = env.DB;
+  const decision = body.decision;
+  if (!['approve', 'reject'].includes(decision)) return err('قرار غير صالح', 400);
+  const request = await db.prepare(
+    "SELECT r.id, r.material_id, m.ark FROM material_edit_requests r JOIN materials m ON m.id = r.material_id WHERE r.id = ? AND r.status = 'pending' AND m.publish_status = 'published'"
+  ).bind(id).first();
+  if (!request) return err('طلب التعديل غير موجود أو سبق البت فيه', 404);
+  const note = String(body.note || '').trim().slice(0, 1000) || null;
+  await db.prepare(
+    "UPDATE material_edit_requests SET status = ?, note = ?, reviewed_at = datetime('now'), reviewed_by = ? WHERE id = ?"
+  ).bind(decision === 'approve' ? 'approved' : 'rejected', note, user.id, id).run();
+  await audit(db, { userId: user.id, action: `material.edit_request_${decision}`, target: request.ark, detail: note || '', ip: clientIp(req) });
+  return json({ ok: true, status: decision === 'approve' ? 'approved' : 'rejected' });
 }
 
 // ---------- الموجّه ----------
@@ -222,6 +286,16 @@ export async function routeAdminApi(req, env) {
   if (rest === 'materials' && method === 'GET') return admMaterialsList(env, url, user);
   if (rest === 'materials' && method === 'POST')
     return withJsonBody(req, (body) => admMaterialCreate(env, user, req, body));
+
+  if (rest === 'materials/edit-requests' && method === 'GET') return admMaterialEditRequestsList(env, user);
+  let editRequestMatch = rest.match(/^materials\/(\d+)\/edit-request\/review$/);
+  if (editRequestMatch && method === 'POST')
+    return withJsonBody(req, (body) => admMaterialEditRequestReview(env, user, req, parseInt(editRequestMatch[1], 10), body));
+  editRequestMatch = rest.match(/^materials\/(\d+)\/edit-request$/);
+  if (editRequestMatch && method === 'POST') {
+    if (isAdmin) return err('مسار طلب التعديل مخصص للباحث', 400);
+    return admMaterialEditRequest(env, user, req, parseInt(editRequestMatch[1], 10));
+  }
 
   let m = rest.match(/^materials\/([^/]+)\/publish$/);
   if (m && method === 'POST')
@@ -546,10 +620,10 @@ async function admMaterialUpdate(env, user, req, idOrArk, body) {
   const db = env.DB;
   const m = await findMaterial(db, idOrArk);
   if (!m) return err('المادة غير موجودة', 404);
-  // الباحث: مواده غير المنشورة فقط، ولا يغيّر حالة النشر
+  // الباحث: المسودات أو المواد المنشورة التي وافقت الإدارة على طلب تعديلها
   if (user.role !== 'admin') {
     try {
-      await requireOwnDraft(db, user, m.id);
+      await requireOwnEditableMaterial(db, user, m.id);
     } catch (e) {
       return err(e.message, 403);
     }
@@ -883,10 +957,10 @@ async function admMaterialUpload(env, user, req, idOrArk) {
   const db = env.DB;
   const m = await findMaterial(db, idOrArk);
   if (!m) return err('المادة غير موجودة', 404);
-  // الباحث: الرفع لمواده غير المنشورة فقط
+  // الباحث: الرفع لمسوداته أو لمادته المنشورة بعد موافقة الإدارة على تعديلها
   if (user.role !== 'admin') {
     try {
-      await requireOwnDraft(db, user, m.id);
+      await requireOwnEditableMaterial(db, user, m.id);
     } catch (e) {
       return err(e.message, 403);
     }
@@ -1071,10 +1145,10 @@ async function admFileDelete(env, user, req, id) {
     .bind(id)
     .first();
   if (!f) return err('الملف غير موجود', 404);
-  // الباحث: حذف ملفات مواده غير المنشورة فقط
+  // الباحث: يحذف ملفات المسودات أو المواد التي وافقت الإدارة على تعديلها
   if (user.role !== 'admin') {
     try {
-      await requireOwnDraft(db, user, f.material_id);
+      await requireOwnEditableMaterial(db, user, f.material_id);
     } catch (e) {
       return err(e.message, 403);
     }

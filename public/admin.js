@@ -633,6 +633,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ---------- طابور المراجعة ----------
+  document.querySelectorAll('[data-material-edit-approve], [data-material-edit-reject]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const approve = btn.hasAttribute('data-material-edit-approve');
+      const requestId = approve ? btn.dataset.materialEditApprove : btn.dataset.materialEditReject;
+      if (!confirm(approve ? 'السماح للباحث بتعديل هذه المادة المنشورة؟' : 'رفض طلب تعديل المادة؟')) return;
+      setLoading(btn, true);
+      try {
+        await api(`/api/v1/admin/materials/${requestId}/edit-request/review`, 'POST', { decision: approve ? 'approve' : 'reject' });
+        toast(approve ? 'سُمح للباحث بتعديل المادة' : 'رُفض طلب التعديل');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) { toast(err.message, false); setLoading(btn, false); }
+    });
+  });
+
   document.querySelectorAll('[data-review-approve]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('اعتماد هذه المادة ونشرها؟')) return;

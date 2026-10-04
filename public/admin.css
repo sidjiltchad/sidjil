@@ -1043,6 +1043,17 @@ input[type="checkbox"], input[type="radio"] {
 .researcher-activity-material h3 a:hover { color: var(--teal); }
 .researcher-activity-avatar { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; object-fit: cover; background: var(--chrome); color: var(--gold); font-weight: 800; }
 .researcher-stories { padding: .85rem 1rem; margin-bottom: .85rem; }
+.feed-brand-avatar-image { display: block; width: 100%; height: 100%; border-radius: inherit; object-fit: contain; background: var(--card); }
+.feed-brand-avatar-image.researcher-post-avatar-image { object-fit: cover; }
+.feed-brand-avatar-fallback { display: grid; width: 100%; height: 100%; place-items: center; }
+.researcher-directory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
+.researcher-directory-card { display: flex; align-items: center; gap: .75rem; padding: .85rem; color: var(--ink); text-decoration: none; }
+.researcher-directory-card:hover { border-color: var(--teal); }
+.researcher-avatar.directory-avatar { width: 48px; height: 48px; flex: 0 0 48px; }
+.researcher-directory-copy { display: flex; min-width: 0; flex-direction: column; gap: .18rem; }
+.researcher-directory-copy strong { display: flex; align-items: center; gap: .3rem; }
+.researcher-directory-copy > span { overflow: hidden; color: var(--muted); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
+.researcher-directory-pager { display: flex; align-items: center; justify-content: center; gap: 1rem; margin: 1rem 0; color: var(--muted); }
 .researcher-stories-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .7rem; font-size: .86rem; }
 .researcher-stories-head a { color: var(--teal); font-size: .78rem; text-decoration: none; }
 .researcher-story-row { display: flex; gap: .85rem; overflow: hidden; padding-bottom: 0; scrollbar-width: none; white-space: nowrap; }
@@ -1288,6 +1299,7 @@ body.translation-workspace-open { overflow: hidden; }
   .researcher-profile-identity { flex: 1 1 calc(100% - 90px); padding-top: .45rem; }
   .researcher-profile-back { width: 100%; margin: .15rem 0 0; }
   .researcher-profile-materials { grid-template-columns: 1fr; }
+  .researcher-directory-grid { grid-template-columns: 1fr; }
   .researcher-material-modal { grid-template-columns: 1fr; max-height: 92vh; }
   .researcher-material-modal-media { min-height: 0; padding: .9rem; }
   .researcher-material-modal-media img { max-height: 43vh; }

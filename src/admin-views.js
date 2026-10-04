@@ -111,7 +111,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-image-discussion-actions">
+<link rel="stylesheet" href="/admin.css?v=20261004-material-edit-community">
 ${head}
 </head>
 <body>
@@ -141,7 +141,7 @@ ${head}
     ${body}
   </main>
 </div>
-<script src="/admin.js" defer></script>
+<script src="/admin.js?v=20261004-material-edit-requests" defer></script>
 </body>
 </html>`;
 }
@@ -166,7 +166,7 @@ function loginPage() {
 ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>تسجيل الدخول — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261004-image-discussion-actions">
+<link rel="stylesheet" href="/admin.css?v=20261004-material-edit-community">
 </head>
 <body class="login-body">
 <div class="toast-zone" id="toastZone" aria-live="polite"></div>
@@ -186,7 +186,7 @@ ${THEME_INIT}
   </form>
   <p class="muted small">الجلسة صالحة لمدة 12 ساعة، وكل عملية إدارية تُسجَّل مع عنوان IP.</p>
 </div>
-<script src="/admin.js" defer></script>
+<script src="/admin.js?v=20261004-material-edit-requests" defer></script>
 </body>
 </html>`;
 }
@@ -1025,6 +1025,20 @@ async function reviewPage(env, user) {
      FROM materials m LEFT JOIN admin_users u ON u.id = m.created_by
      WHERE m.publish_status = 'in_review' ORDER BY m.updated_at ASC`).all();
   const items = rows.results || [];
+  const editRequests = await env.DB.prepare(
+    `SELECT r.id, r.material_id, r.requested_at, m.ark, m.title_ar, m.title_orig,
+            COALESCE(u.display_name, u.username, 'باحث') AS researcher_name
+     FROM material_edit_requests r
+     JOIN materials m ON m.id = r.material_id
+     JOIN admin_users u ON u.id = r.researcher_id
+     WHERE r.status = 'pending' AND m.publish_status = 'published'
+     ORDER BY r.requested_at ASC, r.id ASC`
+  ).all();
+  const editRequestRows = (editRequests.results || []).map(r => `
+    <tr><td class="mono">${esc(r.ark)}</td><td><a href="/admin/materials/${r.material_id}">${esc(r.title_ar || r.title_orig || '—')}</a></td>
+      <td>${esc(r.researcher_name)}</td><td class="muted">${fmtDate(r.requested_at)}</td>
+      <td class="row-actions"><button class="btn btn-sm btn-primary" data-material-edit-approve="${r.id}" type="button">السماح بالتعديل</button>
+      <button class="btn btn-sm btn-ghost" data-material-edit-reject="${r.id}" type="button">رفض الطلب</button></td></tr>`).join('');
   const bodyRows = items.map(m => `
     <tr>
       <td class="mono">${esc(m.ark)}</td>
@@ -1039,6 +1053,9 @@ async function reviewPage(env, user) {
     </tr>`).join('');
 
   const body = `
+  ${pageHead('طلبات تعديل المواد المنشورة', `<span class="muted">${(editRequests.results || []).length} طلب</span>`)}
+  <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>الرقم</th><th>المادة</th><th>الباحث</th><th>تاريخ الطلب</th><th>القرار</th></tr></thead>
+    <tbody>${editRequestRows || '<tr><td colspan="5" class="muted">لا توجد طلبات تعديل معلقة.</td></tr>'}</tbody></table></div></div>
   ${pageHead('طابور المراجعة', `<span class="muted">${items.length} مادة بانتظار القرار</span>`)}
   <div class="card">
     <div class="table-wrap"><table class="tbl">
@@ -1351,7 +1368,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261004-researcher-upload-ux">
+<link rel="stylesheet" href="/admin.css?v=20261004-material-edit-community">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1447,7 +1464,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 }
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261003-rpdf1"></script>
-<script src="/researcher-feed-v5.js?v=20261004-article-attachment-only" defer></script>
+<script src="/researcher-feed-v5.js?v=20261004-material-edit-community" defer></script>
 <script src="/translate-inline.js?v=20261003-pdf-modal" defer></script>
 <script>
 (() => {
@@ -1543,12 +1560,21 @@ function researcherMaterialCard(m, feed, verified) {
         </form>
       </div>`
     : `<div id="${inlineId}" class="researcher-inline-discussion" data-discussion-composer hidden><div class="notice-card"><strong>المشاركة متاحة بعد توثيق الحساب.</strong><span class="muted small">يمكنك فتح الحساب من قائمة المستخدم ومتابعة حالة التوثيق.</span></div></div>`;
-  const cardAuthor = m.author_name || 'أرشيف سِجِل';
-  const cardAvatar = String(cardAuthor).trim().slice(0, 1) || 'س';
+  const creatorId = Number(m.creator_id) || 0;
+  const cardAuthor = creatorId ? (m.creator_name || m.author_name || 'باحث') : 'أرشيف سِجِل';
+  const avatarSrc = creatorId
+    ? (m.creator_avatar_r2_key ? `/researcher/avatar/${encodeURIComponent(creatorId)}` : String(m.creator_avatar_url || '').trim())
+    : '/sidjil-logo.png';
+  const avatar = avatarSrc
+    ? `<img class="feed-brand-avatar-image${creatorId ? ' researcher-post-avatar-image' : ''}" src="${esc(avatarSrc)}" alt="${esc(cardAuthor)}" loading="lazy">`
+    : `<span class="feed-brand-avatar-fallback">${esc(String(cardAuthor).trim().slice(0, 1) || 'ب')}</span>`;
+  const cardAvatar = creatorId
+    ? `<a class="post-avatar feed-brand-avatar" href="/researcher/profile/${encodeURIComponent(creatorId)}" aria-label="صفحة ${esc(cardAuthor)}">${avatar}</a>`
+    : `<span class="post-avatar feed-brand-avatar" aria-label="أرشيف سِجِل">${avatar}</span>`;
   return `<article class="researcher-feed-post social-card">
     ${officialNotice}
     ${sourceBlock}
-    <div class="post-head"><div class="post-avatar feed-brand-avatar">${esc(cardAvatar)}</div><div><strong>${esc(cardAuthor)}</strong><div class="post-meta">${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
+    <div class="post-head">${cardAvatar}<div><strong>${esc(cardAuthor)}</strong><div class="post-meta">${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
     <button class="researcher-feed-title researcher-material-trigger" type="button" data-material-details ${materialData}>${esc(title)}</button>
     ${image}
     ${detailsButton}
@@ -1650,6 +1676,7 @@ async function researcherDashPage(env, user, req) {
   const publishedQuery =
     `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
             m.author, m.photographer, m.archive_ref, m.updated_at,
+            creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
             ${approvedAtSelect}
             s.name_ar AS source_name_ar, s.name AS source_name,
             p.name_ar AS place_name,
@@ -1661,6 +1688,7 @@ async function researcherDashPage(env, user, req) {
      FROM materials m
      LEFT JOIN sources s ON s.id = m.source_id
      LEFT JOIN places p ON p.id = m.place_id
+     LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
      WHERE m.publish_status = 'published'${officialFilter}${sectionFilter}
      ${feedOrder} LIMIT 18`;
   const publishedParams = [];
@@ -1680,12 +1708,13 @@ async function researcherDashPage(env, user, req) {
               m.author, m.photographer, m.archive_ref, m.updated_at,
               m.updated_at AS sort_date,
               COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+              u.id AS creator_id, u.display_name AS creator_name, u.avatar_url AS creator_avatar_url, u.avatar_r2_key AS creator_avatar_r2_key,
               (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.kind IN ('thumbnail', 'cover') OR f2.mime LIKE 'image/%') ORDER BY CASE WHEN f2.kind = 'cover' THEN 0 WHEN f2.kind = 'thumbnail' THEN 1 ELSE 2 END, f2.id LIMIT 1) AS thumb_id,
               (SELECT f2.id FROM files f2 WHERE f2.material_id = m.id AND (f2.mime = 'application/pdf' OR lower(f2.filename) LIKE '%.pdf') ORDER BY f2.id LIMIT 1) AS pdf_id,
               (SELECT COUNT(*) FROM discussions d WHERE d.material_id = m.id AND d.status = 'published') AS discussions_count
        FROM materials m
        JOIN researcher_follows fl ON fl.followed_id = m.created_by
-       LEFT JOIN admin_users u ON u.id = m.created_by
+       LEFT JOIN admin_users u ON u.id = m.created_by AND u.role = 'researcher'
        WHERE fl.follower_id = ? AND m.publish_status = 'published'
        ORDER BY m.updated_at DESC, m.id DESC LIMIT 30`
     ).bind(user.id).all();
@@ -1709,7 +1738,7 @@ async function researcherDashPage(env, user, req) {
     ].sort((a, b) => (b.sort < a.sort ? -1 : b.sort > a.sort ? 1 : 0));
     followingFeed = merged.map(x => x.html).join('');
   }
-  const communityRows = await env.DB.prepare(
+  const communityRows = feed === 'discover' ? await env.DB.prepare(
     `SELECT d.id, d.author_id, d.title, d.body, d.kind, d.created_at,
             u.id AS author_id, COALESCE(u.display_name, u.username, 'باحث') AS author_name,
             m.title_ar AS material_title, m.ark AS material_ark,
@@ -1717,16 +1746,16 @@ async function researcherDashPage(env, user, req) {
      FROM discussions d JOIN admin_users u ON u.id = d.author_id
      LEFT JOIN materials m ON m.id = d.material_id
      WHERE d.status = 'published' ORDER BY d.created_at DESC, d.id DESC LIMIT 12`
-  ).all();
+  ).all() : { results: [] };
   await attachDiscussionImages(env.DB, communityRows.results || []);
   const communityFeed = (communityRows.results || []).map(d => researcherDiscussionCard(d)).join('');
 
-  const researcherRows = await env.DB.prepare(
+  const researcherRows = feed === 'discover' ? await env.DB.prepare(
     `SELECT id, username, display_name, avatar_url, avatar_r2_key, job_title
      FROM admin_users
-     WHERE role = 'researcher' AND is_active = 1 AND is_verified = 1
+     WHERE role = 'researcher' AND is_active = 1
      ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 8`
-  ).all();
+  ).all() : { results: [] };
   const storyItems = (researcherRows.results || []).map(researcher => {
     const name = researcher.display_name || researcher.username || 'باحث';
     const initial = String(name).trim().slice(0, 1) || 'ب';
@@ -1793,13 +1822,13 @@ async function researcherDashPage(env, user, req) {
       : `لا توجد مواد في تصفية «${feedLabels[feed]}».`;
   const body = `
   <section class="researcher-feed-tabs social-card" aria-label="تصفية الموجز"><a class="researcher-feed-tab${feed === 'discover' ? ' active' : ''}" href="/researcher?feed=discover#feed">اكتشف</a><a class="researcher-feed-tab${feed === 'following' ? ' active' : ''}" href="/researcher?feed=following#feed">المتابَعون</a><a class="researcher-feed-tab${feed === 'latest' ? ' active' : ''}" href="/researcher?feed=latest#feed">الأحدث</a><a class="researcher-feed-tab${feed === 'official' ? ' active' : ''}" href="/researcher?feed=official#feed">اعتمادات الإدارة</a></section>
-  <section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions?view=community">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين موثقة بعد.</p>'}</section>
+  ${feed === 'discover' ? `<section class="researcher-stories social-card"><div class="researcher-stories-head"><strong>مجتمع الباحثين</strong><a href="/researcher/discussions?view=researchers">عرض الكل</a></div>${storyItems ? `<div class="researcher-story-row">${storyItems}</div>` : '<p class="researcher-stories-empty">لا توجد حسابات باحثين مسجلة بعد.</p>'}</section>` : ''}
   ${dashboardComposer}
   ${feed === 'following' ? '' : `<div class="researcher-category-tabs" aria-label="أقسام الموجز">${categoryTabs}</div>`}
   <section class="social-section-head" id="feed"><div><h2>${feedHead[0]}${selectedSection && feed !== 'following' ? ` · ${esc(selectedSection.title_ar)}` : ''}</h2><p>${feedHead[1]}</p></div></section>
   <div class="researcher-published-feed">${(feed === 'following' ? followingFeed : publishedFeed) || `<div class="social-card empty-state">${feedEmpty}</div>`}</div>
-  ${feed === 'official' || feed === 'following' ? '' : `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
-  <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>`}
+  ${feed === 'discover' ? `<section class="social-section-head researcher-own-head"><div><h2>آخر نقاشات الباحثين</h2><p>اقرأ ما كتبه الباحثون الآخرون وافتح النقاش للرد والمراجعة.</p></div><a class="btn btn-ghost" href="/researcher/discussions?view=community">عرض كل النقاشات</a></section>
+  <div class="researcher-community-feed">${communityFeed || '<div class="social-card empty-state">لا توجد نقاشات منشورة بعد.</div>'}</div>` : ''}
   <section class="social-section-head researcher-own-head"><div><h2>منشوراتي وموادي</h2><p>مسوداتك وحالات الاعتماد والملاحظات الإدارية.</p></div><a class="btn btn-ghost" href="/researcher/new">إنشاء مادة</a></section>
   <div class="researcher-material-feed">${postCards || '<div class="social-card empty-state">لا منشورات بعد — ابدأ بمادة جديدة.</div>'}</div>
   <p class="muted small researcher-help">كل مادة يرسلها الباحث تمر على مراجعة الإدارة قبل النشر. يمكنك متابعة الملاحظات وإعادة التعديل من البطاقة.</p>`;
@@ -1858,7 +1887,7 @@ async function researcherProfilePage(env, viewer, researcherId) {
     `SELECT id, username, display_name, avatar_url, avatar_r2_key, verification_type, job_title,
             affiliation, specialty, bio, website, created_at
      FROM admin_users
-     WHERE id = ? AND role = 'researcher' AND is_active = 1 AND is_verified = 1`
+     WHERE id = ? AND role = 'researcher' AND is_active = 1`
   ).bind(researcherId).first();
   if (!target) {
     return researcherLayout({
@@ -1966,6 +1995,34 @@ async function researcherProfilePage(env, viewer, researcherId) {
   return researcherLayout({ title: profileName, active: 'profile', user: viewer, body });
 }
 
+async function researcherDirectoryPage(env, user, req) {
+  const url = new URL(req.url);
+  const page = Math.max(1, parseInt(url.searchParams.get('page'), 10) || 1);
+  const perPage = 36;
+  const [count, rows] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS total FROM admin_users WHERE role = 'researcher' AND is_active = 1").first(),
+    env.DB.prepare(
+      `SELECT id, username, display_name, avatar_url, avatar_r2_key, verification_type,
+              job_title, affiliation, is_verified
+       FROM admin_users WHERE role = 'researcher' AND is_active = 1
+       ORDER BY COALESCE(display_name, username), id LIMIT ? OFFSET ?`
+    ).bind(perPage, (page - 1) * perPage).all(),
+  ]);
+  const total = Number(count?.total || 0);
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const cards = (rows.results || []).map(researcher => {
+    const name = researcher.display_name || researcher.username || 'باحث';
+    if (researcher.avatar_r2_key) researcher.avatar_public_path = `/researcher/avatar/${encodeURIComponent(researcher.id)}`;
+    return `<a class="researcher-directory-card social-card" href="/researcher/profile/${encodeURIComponent(researcher.id)}">
+      ${researcherAvatarMarkup(researcher, 'directory-avatar')}<span class="researcher-directory-copy"><strong>${esc(name)}${Number(researcher.is_verified) === 1 ? verificationBadge(researcher.verification_type) : ''}</strong>
+      <span>${esc(researcher.job_title || researcher.affiliation || 'باحث مسجل في سِجِل')}</span></span>
+    </a>`;
+  }).join('');
+  const pager = pages > 1 ? `<nav class="researcher-directory-pager" aria-label="صفحات دليل الباحثين">${page > 1 ? `<a class="btn btn-ghost btn-sm" href="?view=researchers&page=${page - 1}">السابق</a>` : ''}<span>صفحة ${page} من ${pages}</span>${page < pages ? `<a class="btn btn-ghost btn-sm" href="?view=researchers&page=${page + 1}">التالي</a>` : ''}</nav>` : '';
+  const body = `<section class="researcher-hero social-card"><div><span class="eyebrow">المجتمع البحثي</span><h1>الباحثون المسجلون</h1><p>دليل الباحثين النشطين في سِجِل (${total}).</p></div><a class="btn btn-ghost" href="/researcher?feed=discover">العودة إلى اكتشف</a></section><div class="researcher-directory-grid">${cards || '<div class="social-card empty-state">لا يوجد باحثون مسجلون.</div>'}</div>${pager}`;
+  return researcherLayout({ title: 'الباحثون المسجلون', active: 'discussions', user, body });
+}
+
 async function researcherMaterialsPage(env, user) {
   const result = await env.DB.prepare(
     `SELECT m.id, m.title_ar, m.title_orig, m.type, m.publish_status,
@@ -2003,6 +2060,7 @@ async function researcherDiscussionsPage(env, user, req) {
   const rawFocus = url.searchParams.get('focus') || '';
   const focusId = /^\d+$/.test(rawFocus) ? rawFocus : '';
   const rawView = url.searchParams.get('view');
+  if (rawView === 'researchers') return researcherDirectoryPage(env, user, req);
   const activityView = rawView === 'received' ? 'received' : rawView === 'community' ? 'community' : 'my';
 
   const rows = await env.DB.prepare(
@@ -2164,6 +2222,12 @@ async function researcherFormPage(env, user, mode, id) {
     }
   }
   const isEdit = !!m;
+  const editRequest = isEdit && m.publish_status === 'published'
+    ? await db.prepare("SELECT status, note FROM material_edit_requests WHERE material_id = ? AND researcher_id = ? ORDER BY id DESC LIMIT 1").bind(m.id, user.id).first()
+    : null;
+  const editApproved = editRequest?.status === 'approved';
+  const canEditMaterial = isEdit && (m.publish_status === 'draft' || editApproved);
+  const fieldDisabled = isEdit && !canEditMaterial ? ' disabled' : '';
   const defType = isEdit ? m.type : (mode === 'article' ? 'article' : 'document');
   const typeOpts = Object.entries(TYPE_LABELS).filter(([value]) => !(mode === 'new' && value === 'article'))
     .map(([v, l]) => `<option value="${v}"${defType === v ? ' selected' : ''}>${esc(l)}</option>`).join('');
@@ -2179,7 +2243,7 @@ async function researcherFormPage(env, user, mode, id) {
     mySectionIds = new Set((r.results || []).map(x => x.collection_id));
   }
   const secBoxes = (sections.results || []).map(s =>
-    `<label class="check"><input type="checkbox" name="sectionIds" value="${s.id}"${mySectionIds.has(s.id) ? ' checked' : ''}> ${esc(s.title_ar)}</label>`
+    `<label class="check"><input type="checkbox" name="sectionIds" value="${s.id}"${mySectionIds.has(s.id) ? ' checked' : ''}${fieldDisabled}> ${esc(s.title_ar)}</label>`
   ).join('');
 
   let filesBlock = '';
@@ -2192,7 +2256,7 @@ async function researcherFormPage(env, user, mode, id) {
     const frows = (fr.results || []).map(f => `
       <tr><td>${esc(f.filename || '—')}</td><td>${esc(f.kind || '')}</td>
       <td class="mono">${f.size ? (f.size / 1024).toFixed(0) + ' ك.ب' : '—'}</td>
-      <td><button class="btn btn-sm btn-ghost" data-r-file-del="${f.id}" type="button">حذف</button></td></tr>`).join('');
+      <td>${canEditMaterial ? `<button class="btn btn-sm btn-ghost" data-r-file-del="${f.id}" type="button">حذف</button>` : ''}</td></tr>`).join('');
     filesBlock = `
     <section class="card">
       <h2>الملفات (${(fr.results || []).length})</h2>
@@ -2200,10 +2264,10 @@ async function researcherFormPage(env, user, mode, id) {
         <thead><tr><th>الاسم</th><th>النوع</th><th>الحجم</th><th></th></tr></thead>
         <tbody>${frows || '<tr><td colspan="4" class="muted">لا ملفات مرفوعة بعد.</td></tr>'}</tbody>
       </table></div>
-      ${m.publish_status === 'draft' ? `<form id="rUploadForm" data-material="${m.id}" data-article="${m.type === 'article' ? 'true' : 'false'}">
+      ${canEditMaterial ? `<form id="rUploadForm" data-material="${m.id}" data-article="${m.type === 'article' ? 'true' : 'false'}">
         ${researcherUploadFields('rUpload', { article: m.type === 'article', coverExists, imageCount, fileExists })}
         <button class="btn btn-primary" type="submit">رفع الملفات المحددة</button>
-      </form>` : '<p class="muted small">الرفع متاح ما دامت المادة مسودة.</p>'}
+      </form>` : '<p class="muted small">تعديل الملفات متاح بعد موافقة الإدارة على طلب التعديل.</p>'}
     </section>`;
   }
 
@@ -2215,10 +2279,12 @@ async function researcherFormPage(env, user, mode, id) {
       ${m.publish_status === 'draft' ? `<button class="btn btn-primary" data-r-submit="${m.id}" type="button">إرسال للمراجعة</button>
       <button class="btn btn-ghost" data-r-delete="${m.id}" type="button">حذف المسودة</button>` : ''}
       ${m.publish_status === 'in_review' ? '<p class="muted small">المادة قيد مراجعة الإدارة — لا يمكن تعديلها الآن.</p>' : ''}
-      ${m.publish_status === 'published' ? '<p class="muted small">المادة منشورة — التعديل والحذف معطّلان. تواصل مع الإدارة عند الحاجة.</p>' : ''}
+      ${m.publish_status === 'published' && editApproved ? '<p class="notice-card">وافقت الإدارة على طلب التعديل. يمكنك تحرير بيانات المادة وملفاتها أدناه.</p>' : ''}
+      ${m.publish_status === 'published' && !editApproved && editRequest?.status === 'pending' ? '<p class="muted small">طلب تعديل المادة قيد مراجعة الإدارة.</p>' : ''}
+      ${m.publish_status === 'published' && !editApproved && editRequest?.status !== 'pending' ? `<button class="btn btn-primary" type="button" data-r-edit-request="${m.id}">طلب تعديل المادة</button>${editRequest?.status === 'rejected' && editRequest.note ? `<div class="review-note">ملاحظة الإدارة: ${esc(editRequest.note)}</div>` : ''}` : ''}
     </section>` : '';
 
-  const ro = isEdit && m.publish_status !== 'draft' ? 'disabled' : '';
+  const ro = isEdit && !canEditMaterial ? 'disabled' : '';
   const title = isEdit ? 'تعديل المادة' : (mode === 'article' ? 'مقال جديد للمجلة' : 'مادة جديدة');
   const active = isEdit ? 'mine' : mode;
   const body = `
@@ -2239,7 +2305,7 @@ async function researcherFormPage(env, user, mode, id) {
       </div>
       <div class="field"><span class="field-label">الأقسام</span><div class="checks">${secBoxes || '<span class="muted">لا أقسام معرّفة بعد.</span>'}</div></div>
       ${!isEdit ? `<section class="researcher-upload-card"><h3>صور وملفات المادة</h3><p class="muted small">حدد صورة الغلاف والمضمون الآن؛ سيرفعهما التطبيق بعد إنشاء المسودة.</p>${researcherUploadFields('rNewUpload')}</section>` : ''}
-      ${!isEdit ? '<button class="btn btn-primary" type="submit">إنشاء المسودة</button>' : (m.publish_status === 'draft' ? '<button class="btn btn-primary" type="submit">حفظ التعديلات</button>' : '')}
+      ${!isEdit ? '<button class="btn btn-primary" type="submit">إنشاء المسودة</button>' : (canEditMaterial ? '<button class="btn btn-primary" type="submit">حفظ التعديلات</button>' : '')}
     </section>
   </form>
   ${filesBlock}

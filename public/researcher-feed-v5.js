@@ -653,6 +653,21 @@ function initResearcherPage() {
   }
 
   // ---------- إرسال للمراجعة ----------
+  document.querySelectorAll('[data-r-edit-request]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('إرسال طلب إلى الإدارة للسماح بتعديل هذه المادة المنشورة؟')) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/v1/admin/materials/${btn.dataset.rEditRequest}/edit-request`, 'POST');
+        toast('أُرسل طلب تعديل المادة إلى الإدارة');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) {
+        toast(err.message, false);
+        btn.disabled = false;
+      }
+    });
+  });
+
   document.querySelectorAll('[data-r-submit]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('إرسال المادة للمراجعة؟ لن تتمكن من تعديلها بعد الإرسال.')) return;

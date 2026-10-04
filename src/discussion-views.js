@@ -152,6 +152,17 @@ export function researcherLoginPage(ctx) {
 function materialPostCard(ctx, material) {
   const { lang } = ctx;
   const title = material.title_ar || material.title_orig || material.ark;
+  const creatorId = Number(material.creator_id) || 0;
+  const creatorName = creatorId ? (material.creator_name || 'باحث') : 'أرشيف سِجِل';
+  const avatarSrc = creatorId
+    ? (material.creator_avatar_r2_key ? `/researcher/avatar/${encodeURIComponent(creatorId)}` : String(material.creator_avatar_url || '').trim())
+    : '/sidjil-logo.png';
+  const avatar = avatarSrc
+    ? `<img class="post-avatar-image" src="${esc(avatarSrc)}" alt="${esc(creatorName)}" loading="lazy">`
+    : `<span>${esc(String(creatorName).slice(0, 1))}</span>`;
+  const avatarBlock = creatorId
+    ? `<a class="post-avatar post-profile-link" href="/researcher/profile/${encodeURIComponent(creatorId)}" aria-label="صفحة ${esc(creatorName)}">${avatar}</a>`
+    : `<span class="post-avatar brand-avatar" aria-label="أرشيف سِجِل">${avatar}</span>`;
   const image = material._thumb
     ? `<img class="material-post-image" src="/file/${material._thumb}" alt="" loading="lazy">`
     : `<div class="material-post-image material-post-placeholder">${esc(t(lang, 'type_' + material.type))}</div>`;
@@ -160,8 +171,8 @@ function materialPostCard(ctx, material) {
   const reviewUrl = `/researcher/discussions?material_id=${encodeURIComponent(material.id)}`;
   return `<article class="material-post social-card">
     <div class="post-head">
-      <div class="post-avatar" aria-hidden="true">س</div>
-      <div><strong>أرشيف سِجِل</strong><div class="post-meta">${esc(t(lang, 'type_' + material.type))}${material.year ? ` · ${esc(material.year)}` : ''}</div></div>
+      ${avatarBlock}
+      <div><strong>${esc(creatorName)}</strong><div class="post-meta">${esc(t(lang, 'type_' + material.type))}${material.year ? ` · ${esc(material.year)}` : ''}</div></div>
       <span class="post-kind">${esc(t(lang, 'discussion_feed_title'))}</span>
     </div>
     <a class="material-post-title" href="${materialUrl}">${esc(title)}</a>
@@ -200,8 +211,11 @@ export async function discussionsPage(ctx) {
     : `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`;
 
   const materialRows = await env.DB.prepare(
-    `SELECT id, ark, type, title_ar, title_orig, description, summary, year, updated_at
-     FROM materials WHERE publish_status = 'published' ORDER BY updated_at DESC, id DESC LIMIT 24`
+    `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.updated_at,
+            creator.id AS creator_id, creator.display_name AS creator_name,
+            creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key
+     FROM materials m LEFT JOIN admin_users creator ON creator.id = m.created_by AND creator.role = 'researcher'
+     WHERE m.publish_status = 'published' ORDER BY m.updated_at DESC, m.id DESC LIMIT 24`
   ).all();
   const materials = await enrichMaterials(env, materialRows.results || []);
   const materialFeed = materials.length
