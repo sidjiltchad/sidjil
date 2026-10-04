@@ -1038,10 +1038,14 @@ async function initFollowButtons() {
     btn.dataset.sjBound = '1';
     const targetId = btn.dataset.followToggle;
     // الحالة الأولية
-    try {
-      const st = await api(`/api/v1/social/follow-status?user_id=${encodeURIComponent(targetId)}`);
-      setFollowBtn(btn, !!st.following);
-    } catch { /* يبقى النص الافتراضي */ }
+    if (btn.dataset.following === '1' || btn.dataset.following === '0') {
+      setFollowBtn(btn, btn.dataset.following === '1');
+    } else {
+      try {
+        const st = await api(`/api/v1/social/follow-status?user_id=${encodeURIComponent(targetId)}`);
+        setFollowBtn(btn, !!st.following);
+      } catch { /* يبقى النص الافتراضي */ }
+    }
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
@@ -1060,6 +1064,8 @@ async function initFollowButtons() {
 }
 function setFollowBtn(btn, following) {
   btn.textContent = following ? '✓ تتابعه' : 'تابِع';
+  btn.dataset.following = following ? '1' : '0';
+  btn.setAttribute('aria-pressed', following ? 'true' : 'false');
   btn.classList.toggle('btn-ghost', following);
   btn.classList.toggle('btn-primary', !following);
 }

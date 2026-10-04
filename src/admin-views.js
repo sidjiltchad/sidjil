@@ -2220,28 +2220,47 @@ async function researcherProfilePage(env, viewer, researcherId) {
 async function researcherDirectoryPage(env, user, req) {
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get('page'), 10) || 1);
+  const relationship = ['following', 'followers'].includes(url.searchParams.get('relationship'))
+    ? url.searchParams.get('relationship') : 'all';
   const perPage = 36;
+  const relationJoin = relationship === 'following'
+    ? ' JOIN researcher_follows relation ON relation.followed_id = u.id AND relation.follower_id = ?'
+    : relationship === 'followers'
+      ? ' JOIN researcher_follows relation ON relation.follower_id = u.id AND relation.followed_id = ?'
+      : '';
+  const relationParams = relationship === 'all' ? [] : [user.id];
+  const baseWhere = "u.role = 'researcher' AND u.is_active = 1";
   const [count, rows] = await Promise.all([
-    env.DB.prepare("SELECT COUNT(*) AS total FROM admin_users WHERE role = 'researcher' AND is_active = 1").first(),
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM admin_users u${relationJoin} WHERE ${baseWhere}`).bind(...relationParams).first(),
     env.DB.prepare(
-      `SELECT id, username, display_name, avatar_url, avatar_r2_key, verification_type,
-              job_title, affiliation, is_verified
-       FROM admin_users WHERE role = 'researcher' AND is_active = 1
-       ORDER BY COALESCE(display_name, username), id LIMIT ? OFFSET ?`
-    ).bind(perPage, (page - 1) * perPage).all(),
+      `SELECT u.id, u.username, u.display_name, u.avatar_url, u.avatar_r2_key, u.verification_type,
+              u.job_title, u.affiliation, u.is_verified,
+              EXISTS (SELECT 1 FROM researcher_follows mine WHERE mine.follower_id = ? AND mine.followed_id = u.id) AS is_following
+       FROM admin_users u${relationJoin} WHERE ${baseWhere}
+       ORDER BY COALESCE(u.display_name, u.username), u.id LIMIT ? OFFSET ?`
+    ).bind(user.id, ...relationParams, perPage, (page - 1) * perPage).all(),
   ]);
   const total = Number(count?.total || 0);
   const pages = Math.max(1, Math.ceil(total / perPage));
   const cards = (rows.results || []).map(researcher => {
     const name = researcher.display_name || researcher.username || 'باحث';
+    const isSelf = Number(researcher.id) === Number(user.id);
     if (researcher.avatar_r2_key) researcher.avatar_public_path = `/researcher/avatar/${encodeURIComponent(researcher.id)}`;
-    return `<a class="researcher-directory-card social-card" href="/researcher/profile/${encodeURIComponent(researcher.id)}">
-      ${researcherAvatarMarkup(researcher, 'directory-avatar')}<span class="researcher-directory-copy"><strong>${esc(name)}${Number(researcher.is_verified) === 1 ? verificationBadge(researcher.verification_type) : ''}</strong>
-      <span>${esc(researcher.job_title || researcher.affiliation || 'باحث مسجل في سِجِل')}</span></span>
-    </a>`;
+    return `<article class="researcher-directory-card social-card">
+      <a class="researcher-directory-profile" href="/researcher/profile/${encodeURIComponent(researcher.id)}">
+        ${researcherAvatarMarkup(researcher, 'directory-avatar')}<span class="researcher-directory-copy"><strong>${esc(name)}${Number(researcher.is_verified) === 1 ? verificationBadge(researcher.verification_type) : ''}</strong>
+        <span>${esc(researcher.job_title || researcher.affiliation || 'باحث مسجل في سِجِل')}</span></span>
+      </a>
+      ${isSelf ? '<span class="researcher-directory-self">حسابي</span>' : `<button class="btn btn-sm ${Number(researcher.is_following) === 1 ? 'btn-ghost' : 'btn-primary'} researcher-directory-follow" type="button" data-follow-toggle="${researcher.id}" data-following="${Number(researcher.is_following) === 1 ? '1' : '0'}" aria-pressed="${Number(researcher.is_following) === 1 ? 'true' : 'false'}">${Number(researcher.is_following) === 1 ? '✓ تتابعه' : 'تابِع'}</button>`}
+    </article>`;
   }).join('');
-  const pager = pages > 1 ? `<nav class="researcher-directory-pager" aria-label="صفحات دليل الباحثين">${page > 1 ? `<a class="btn btn-ghost btn-sm" href="?view=researchers&page=${page - 1}">السابق</a>` : ''}<span>صفحة ${page} من ${pages}</span>${page < pages ? `<a class="btn btn-ghost btn-sm" href="?view=researchers&page=${page + 1}">التالي</a>` : ''}</nav>` : '';
-  const body = `<section class="researcher-hero social-card"><div><span class="eyebrow">المجتمع البحثي</span><h1>الباحثون المسجلون</h1><p>دليل الباحثين النشطين في سِجِل (${total}).</p></div><a class="btn btn-ghost" href="/researcher?feed=discover">العودة إلى اكتشف</a></section><div class="researcher-directory-grid">${cards || '<div class="social-card empty-state">لا يوجد باحثون مسجلون.</div>'}</div>${pager}`;
+  const relationshipTabs = [
+    ['all', 'كل الباحثين'],
+    ['following', 'أتابعهم'],
+    ['followers', 'يتابعونني'],
+  ].map(([key, label]) => `<a class="researcher-directory-filter-tab${relationship === key ? ' active' : ''}" href="?view=researchers&relationship=${key}">${label}</a>`).join('');
+  const pager = pages > 1 ? `<nav class="researcher-directory-pager" aria-label="صفحات دليل الباحثين">${page > 1 ? `<a class="btn btn-ghost btn-sm" href="?view=researchers&relationship=${relationship}&page=${page - 1}">السابق</a>` : ''}<span>صفحة ${page} من ${pages}</span>${page < pages ? `<a class="btn btn-ghost btn-sm" href="?view=researchers&relationship=${relationship}&page=${page + 1}">التالي</a>` : ''}</nav>` : '';
+  const body = `<section class="researcher-hero social-card"><div><span class="eyebrow">المجتمع البحثي</span><h1>الباحثون المسجلون</h1><p>دليل الباحثين النشطين في سِجِل (${total}).</p></div><a class="btn btn-ghost" href="/researcher?feed=discover">العودة إلى اكتشف</a></section><nav class="researcher-directory-filters social-card" aria-label="تصفية الباحثين">${relationshipTabs}</nav><div class="researcher-directory-grid">${cards || '<div class="social-card empty-state">لا يوجد باحثون في هذا القسم.</div>'}</div>${pager}`;
   return researcherLayout({ title: 'الباحثون المسجلون', active: 'discussions', user, body });
 }
 
