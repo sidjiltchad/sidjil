@@ -1298,7 +1298,7 @@ function researcherLayout({ title, active, user, body }) {
   const nav = RESEARCHER_NAV.map(([key, href, label]) =>
     `<a href="${href}" class="nav-item${active === key ? ' active' : ''}">${esc(label)}</a>`
   ).join('');
-  const accountNav = RESEARCHER_NAV.map(([key, href, label]) => {
+  const accountNav = RESEARCHER_NAV.filter(([key]) => !['journal', 'discussions'].includes(key)).map(([key, href, label]) => {
     const icon = SJ_ICONS[RESEARCHER_NAV_ICONS[key]] || '';
     return `<a class="researcher-account-nav-link${active === key ? ' active' : ''}" href="${href}"><span class="ran-icon" aria-hidden="true">${icon}</span><span>${esc(label)}</span></a>`;
   }).join('');
@@ -1378,7 +1378,6 @@ ${csrfMeta}
   <button type="button" class="bn-bell" id="notifBell" aria-label="التنبيهات" aria-haspopup="true" aria-expanded="false"><span class="bn-icon">${SJ_ICONS.bell}<span class="notif-badge" id="notifBadge" hidden></span></span><span class="bn-label">التنبيهات</span></button>
   <a href="/researcher/discussions?view=community" class="${active === 'discussions' ? 'active' : ''}"><span class="bn-icon">${SJ_ICONS.chat}</span><span class="bn-label">المجتمع</span></a>
   <a href="/researcher/journal" class="${active === 'journal' ? 'active' : ''}"><span class="bn-icon">${SJ_ICONS.journal}</span><span class="bn-label">المجلة</span></a>
-  <a href="/researcher/profile/${encodeURIComponent(user?.id || '')}" class="${active === 'profile' ? 'active' : ''}"><span class="bn-icon">${SJ_ICONS.user}</span><span class="bn-label">صفحتي</span></a>
   <div class="notif-panel" id="notifPanel" hidden><div class="notif-panel-head"><strong>التنبيهات</strong><button type="button" class="notif-panel-close" id="notifPanelClose" aria-label="إغلاق اللوحة">×</button></div><div id="notifList"></div></div>
 </nav>
 <div class="researcher-modal-veil" id="researcherMaterialModal" hidden>
