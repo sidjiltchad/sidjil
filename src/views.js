@@ -114,7 +114,7 @@ ${ogUrl}
 <meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=20261010-reader-layout">
+<link rel="stylesheet" href="/style.css?v=20261011-reader-layout-fix">
 </head>`;
 }
 
@@ -817,7 +817,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
               <strong>${esc(documentTitle || t(lang, 'pdf_viewer_label'))}</strong>
               <span><span data-reading-current>1</span> / <span data-reading-count>…</span></span>
             </div>
-            <div class="pdf-reading-actions" data-reading-actions></div>
+            <div class="pdf-reading-actions" data-reading-actions><button type="button" class="pdf-reading-cycle" data-reading-view-cycle aria-label="عرض الترجمة" title="عرض الترجمة">◐</button></div>
           </div>
           <div class="pdf-reading-columns">
             <section class="pdf-reading-column" data-reading-original-pane>
@@ -832,7 +832,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
         <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
-    <script type="module" src="/js/pdf-viewer.js?v=20261009-bilingual-reader"></script>
+    <script type="module" src="/js/pdf-viewer.js?v=20261011-reader-view-cycle"></script>
     <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
     <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
     <script src="/js/docx-reader.js?v=20261008-cache-safe" defer></script>`;

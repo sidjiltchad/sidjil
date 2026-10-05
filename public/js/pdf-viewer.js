@@ -30,6 +30,8 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var readingClose = box.querySelector('[data-reading-close]');
   var readingActions = box.querySelector('[data-reading-actions]');
   var readingTranslationPane = box.querySelector('[data-reading-translation-pane]');
+  var readingOriginalPane = box.querySelector('[data-reading-original-pane]');
+  var readingCycle = box.querySelector('[data-reading-view-cycle]');
   var readingCurrent = box.querySelector('[data-reading-current]');
   var readingCount = box.querySelector('[data-reading-count]');
   var readBtn = box.querySelector('[data-pdf-read]');
@@ -45,6 +47,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var readingObserver = null;
   var readingScrollHandlers = [];
   var readingSyncBusy = false;
+  var readingViewMode = 0; // 0 الأصل، 1 الترجمة، 2 العرض الثنائي
   var pdfLoadPromise = null;
 
   function showError() {
@@ -216,8 +219,11 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       readingTranslationPane.classList.remove('hidden');
       readingTranslationPane.appendChild(docxView);
       docxView.classList.remove('hidden');
+      readingViewMode = 2;
       bindReadingSync();
     }
+    if (readingOriginalPane) readingOriginalPane.classList.remove('hidden');
+    updateReadingCycle();
     var current = readingPages.querySelector('[data-page="' + pageNum + '"]');
     if (current) current.scrollIntoView({ block: 'start' });
   }
@@ -233,6 +239,8 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       docxView.classList.toggle('hidden', !activeDocxBtn);
     }
     if (readingTranslationPane) readingTranslationPane.classList.add('hidden');
+    if (readingOriginalPane) readingOriginalPane.classList.remove('hidden');
+    readingViewMode = 0;
     if (toolbar) toggleBtns.forEach(function (btn) { toolbar.appendChild(btn); });
     readingShell.classList.add('hidden');
     box.classList.remove('is-reading');
@@ -367,10 +375,56 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     }
   }
 
+  function updateReadingCycle() {
+    if (!readingCycle) return;
+    var labels = pageLang === 'fr'
+      ? ['Lire la traduction', 'Afficher les deux', "Lire l'original"]
+      : ['عرض الترجمة', 'عرض ثنائي متزامن', 'قراءة الأصل'];
+    var icons = ['🌐', '◐', '📄'];
+    var label = labels[readingViewMode] || labels[0];
+    readingCycle.textContent = icons[readingViewMode] || icons[0];
+    readingCycle.title = label;
+    readingCycle.setAttribute('aria-label', label);
+    readingCycle.setAttribute('aria-pressed', readingViewMode === 2 ? 'true' : 'false');
+  }
+
+  async function setReadingView(mode) {
+    if (!readingMode) return;
+    if (mode === 0) {
+      readingViewMode = 0;
+      showOriginal();
+      if (readingOriginalPane) readingOriginalPane.classList.remove('hidden');
+      if (readingTranslationPane) readingTranslationPane.classList.add('hidden');
+    } else {
+      if (!activeDocxBtn) {
+        if (!toggleBtns.length) return;
+        await showDocx(toggleBtns[0]);
+      }
+      readingViewMode = mode === 1 ? 1 : 2;
+      if (readingOriginalPane) readingOriginalPane.classList.toggle('hidden', readingViewMode === 1);
+      if (readingTranslationPane) readingTranslationPane.classList.remove('hidden');
+      if (docxView) docxView.classList.remove('hidden');
+      bindReadingSync();
+    }
+    updateReadingCycle();
+  }
+
   toggleBtns.forEach(function (btn) {
     btn.setAttribute('aria-pressed', 'false');
-    btn.addEventListener('click', function () { showDocx(btn); });
+    btn.addEventListener('click', async function () {
+      var wasActive = activeDocxBtn === btn;
+      await showDocx(btn);
+      if (readingMode) await setReadingView(wasActive ? 0 : 2);
+    });
   });
+  if (readingCycle) {
+    readingCycle.hidden = !toggleBtns.length;
+    readingCycle.addEventListener('click', async function () {
+      if (!readingMode || !toggleBtns.length) return;
+      await setReadingView((readingViewMode + 1) % 3);
+    });
+    updateReadingCycle();
+  }
 
   /* ---------- طلب ترجمة عند غياب النظير ---------- */
   var requestBtn = box.querySelector('[data-request-translation]');
