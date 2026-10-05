@@ -50,7 +50,7 @@ export async function mount(container, options = {}) {
   const state = { doc: null, pagesObserver: null, currentObserver: null, cancelled: false, zoom: 1, renderedZoom: 1, activeTranslation: null, viewMode: 0, currentPage: 1, controlsTimer: null, docxHandles: {}, quote: null, pointers: new Map(), pinchDistance: 0, pinchZoom: 1, lastTap: 0 };
   const trs = Array.isArray(translations) ? translations.filter((x) => x?.translation_file_id) : [];
 
-  function setControlsVisible(visible = true) { controls.classList.toggle('is-visible', visible); controls.setAttribute('aria-hidden', visible ? 'false' : 'true'); clearTimeout(state.controlsTimer); if (visible) state.controlsTimer = setTimeout(() => setControlsVisible(false), 3000); }
+  function setControlsVisible(visible = true) { controls.classList.toggle('is-visible', visible); controls.setAttribute('aria-hidden', visible ? 'false' : 'true'); surface.classList.toggle('is-ui-visible', visible); if (!visible) { const menu = container.querySelector('[data-rpdf-lang-menu]'); if (menu) menu.hidden = true; } clearTimeout(state.controlsTimer); if (visible) state.controlsTimer = setTimeout(() => setControlsVisible(false), 3000); }
   function interaction() { setControlsVisible(true); }
   function updateLayout() {
     const hasTranslation = !!state.activeTranslation;
