@@ -1077,6 +1077,7 @@ input[type="checkbox"], input[type="radio"] {
 }
 
 /* وضع التطبيق الكامل: يملأ مساحة العرض المتاحة ويحترم نتوءات الهاتف. */
+body.researcher-fullscreen { position: fixed; inset: 0; width: 100%; overflow: auto; }
 body.researcher-fullscreen,
 body.researcher-fullscreen .researcher-shell { min-height: 100dvh; min-height: 100svh; }
 body.researcher-fullscreen .researcher-shell .topbar { padding-top: max(10px, env(safe-area-inset-top, 0px)); }

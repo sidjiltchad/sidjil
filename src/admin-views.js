@@ -1787,23 +1787,28 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
     if (fullscreenToggle && !fullscreenToggle.dataset.sjBound) {
       fullscreenToggle.dataset.sjBound = '1';
       const label = fullscreenToggle.querySelector('[data-fullscreen-label]');
+      let fallbackFullscreen = false;
       const setFullscreenState = () => {
-        const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+        const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement || fallbackFullscreen);
         fullscreenToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
         if (label) label.textContent = active ? 'الخروج من ملء الشاشة' : 'ملء الشاشة';
         document.body.classList.toggle('researcher-fullscreen', active);
       };
       fullscreenToggle.addEventListener('click', async () => {
         try {
-          if (document.fullscreenElement || document.webkitFullscreenElement) {
+          if (document.fullscreenElement || document.webkitFullscreenElement || fallbackFullscreen) {
             if (document.exitFullscreen) await document.exitFullscreen();
             else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            fallbackFullscreen = false;
           } else if (document.documentElement.requestFullscreen) {
             await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
           } else if (document.documentElement.webkitRequestFullscreen) {
             document.documentElement.webkitRequestFullscreen();
+          } else {
+            // بعض المتصفحات المضمنة لا تعرض Fullscreen API؛ يبقى التطبيق ممتدًا داخل مساحة العرض.
+            fallbackFullscreen = true;
           }
-        } catch { /* يتطلب المتصفح نقرة المستخدم للسماح بملء الشاشة */ }
+        } catch { fallbackFullscreen = true; /* يتطلب المتصفح نقرة المستخدم للسماح بملء الشاشة */ }
         setFullscreenState();
       });
       document.addEventListener('fullscreenchange', setFullscreenState);
