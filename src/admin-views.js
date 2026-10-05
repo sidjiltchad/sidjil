@@ -1585,6 +1585,12 @@ const SJ_ICONS = {
   fullscreen: SJ_SVG('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
   image: SJ_SVG('<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'),
   file: SJ_SVG('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>'),
+  useful: SJ_SVG('<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L1 9.6l6.2-.9z"/>'),
+  bookmark: SJ_SVG('<path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-3.5L6 22z"/>'),
+  flag: SJ_SVG('<path d="M5 21V4"/><path d="M5 5c4-3 7 3 14 0v9c-7 3-10-3-14 0"/>'),
+  comment: SJ_SVG('<path d="M4 5h16v11H9l-5 4z"/>'),
+  summary: SJ_SVG('<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h4M8.5 12h7M8.5 16h5"/>'),
+  review: SJ_SVG('<circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/>'),
 };
 
 function researcherUploadFields(prefix, { article = false, coverExists = false, imageCount = 0, fileExists = false } = {}) {
@@ -1974,12 +1980,12 @@ function researcherMaterialCard(m, feed, verified) {
     ${detailsButton}
     ${excerpt ? `<p class="researcher-feed-excerpt">${esc(String(excerpt).slice(0, 420))}</p>` : ''}
     <div class="researcher-feed-actions">
-      <button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="material" data-target-id="${esc(m.id)}" data-reaction-kind="useful" aria-pressed="false" aria-label="مفيد"><span class="researcher-action-icon" aria-hidden="true">✦</span><span data-social-label>مفيد</span><span data-social-count>0</span></button>
-      <button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="material" data-target-id="${esc(m.id)}" aria-pressed="false" aria-label="حفظ"><span class="researcher-action-icon" aria-hidden="true">🔖</span><span data-social-label>حفظ</span></button>
-      <button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="material" data-target-id="${esc(m.id)}" aria-label="الإبلاغ"><span class="researcher-action-icon" aria-hidden="true">⚑</span><span data-social-label>بلّغ</span></button>
-      ${discussionAction('comment', '<span class="researcher-action-icon" aria-hidden="true">💬</span><span>علّق</span>')}
-      ${discussionAction('text', '<span class="researcher-action-icon" aria-hidden="true">📝</span><span>لخّص</span>')}
-      ${discussionAction('review', '<span class="researcher-action-icon" aria-hidden="true">✦</span><span>راجع</span>')}
+      <button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="material" data-target-id="${esc(m.id)}" data-reaction-kind="useful" aria-pressed="false" aria-label="مفيد"><span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.useful}</span><span data-social-label>مفيد</span><span data-social-count>0</span></button>
+      <button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="material" data-target-id="${esc(m.id)}" aria-pressed="false" aria-label="حفظ"><span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.bookmark}</span><span data-social-label>حفظ</span></button>
+      <button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="material" data-target-id="${esc(m.id)}" aria-label="الإبلاغ"><span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.flag}</span><span data-social-label>بلّغ</span></button>
+      ${discussionAction('comment', `<span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.comment}</span><span>علّق</span>`)}
+      ${discussionAction('text', `<span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.summary}</span><span>لخّص</span>`)}
+      ${discussionAction('review', `<span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.review}</span><span>راجع</span>`)}
       <span class="feed-discussion-count">${Number(m.discussions_count || 0)} نقاش</span>
     </div>
     ${inlineComposer}
@@ -2012,7 +2018,7 @@ function researcherDiscussionCard(d) {
     <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3><p>${esc(String(d.body || '').slice(0, 360))}</p>
     ${researcherDiscussionImagesMarkup(d)}
     ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
-    <div class="researcher-feed-actions"><button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="discussion" data-target-id="${esc(d.id)}" data-reaction-kind="useful" aria-pressed="false" aria-label="مفيد"><span class="researcher-action-icon" aria-hidden="true">✦</span><span data-social-label>مفيد</span><span data-social-count>0</span></button><button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="discussion" data-target-id="${esc(d.id)}" aria-pressed="false" aria-label="حفظ"><span class="researcher-action-icon" aria-hidden="true">🔖</span><span data-social-label>حفظ</span></button><button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="discussion" data-target-id="${esc(d.id)}" aria-label="الإبلاغ"><span class="researcher-action-icon" aria-hidden="true">⚑</span><span data-social-label>بلّغ</span></button><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}"><span class="researcher-action-icon" aria-hidden="true">💬</span><span>فتح والرد</span></a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
+    <div class="researcher-feed-actions"><button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="discussion" data-target-id="${esc(d.id)}" data-reaction-kind="useful" aria-pressed="false" aria-label="مفيد"><span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.useful}</span><span data-social-label>مفيد</span><span data-social-count>0</span></button><button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="discussion" data-target-id="${esc(d.id)}" aria-pressed="false" aria-label="حفظ"><span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.bookmark}</span><span data-social-label>حفظ</span></button><button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="discussion" data-target-id="${esc(d.id)}" aria-label="الإبلاغ"><span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.flag}</span><span data-social-label>بلّغ</span></button><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}"><span class="researcher-action-icon" aria-hidden="true">${SJ_ICONS.comment}</span><span>فتح والرد</span></a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
   </article>`;
 }
 

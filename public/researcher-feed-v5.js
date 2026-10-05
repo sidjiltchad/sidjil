@@ -1048,18 +1048,40 @@ function initResearcherPage() {
       const report = event.target.closest('[data-social-report]');
       if (report && feedRoot.contains(report)) {
         event.preventDefault();
-        if (report.disabled) return;
-        const reason = window.prompt('اذكر سبب البلاغ باختصار:');
-        if (!reason || !reason.trim()) return;
-        report.disabled = true;
-        socialRequest('/api/v1/social/report', {
-          target_type: report.dataset.targetType,
-          target_id: Number(report.dataset.targetId),
-          reason: reason.trim().slice(0, 80),
-        })
-          .then(() => { const icon = report.querySelector('.researcher-action-icon'); if (icon) icon.textContent = '✓'; const label = report.querySelector('[data-social-label]'); if (label) label.textContent = 'تم البلاغ'; report.classList.add('is-active'); })
-          .catch((error) => toast(error.message, false))
-          .finally(() => { report.disabled = false; });
+        if (report.disabled || report.dataset.reportSent === '1') return;
+        const current = [...feedRoot.querySelectorAll('.researcher-report-form')].find((form) => form.dataset.targetType === report.dataset.targetType && form.dataset.targetId === report.dataset.targetId);
+        if (current) { current.hidden = !current.hidden; report.setAttribute('aria-expanded', current.hidden ? 'false' : 'true'); return; }
+        feedRoot.querySelectorAll('.researcher-report-form').forEach((form) => form.remove());
+        const form = document.createElement('form');
+        form.className = 'researcher-report-form';
+        form.dataset.targetType = report.dataset.targetType || '';
+        form.dataset.targetId = report.dataset.targetId || '';
+        form.innerHTML = '<label><span>سبب البلاغ</span><textarea name="reason" rows="2" maxlength="80" required placeholder="اكتب سببًا مختصرًا..."></textarea></label><div class="researcher-report-form-actions"><button class="btn btn-primary btn-sm" type="submit">إرسال البلاغ</button><button class="btn btn-ghost btn-sm" type="button" data-report-cancel>إلغاء</button></div>';
+        report.insertAdjacentElement('afterend', form);
+        report.setAttribute('aria-expanded', 'true');
+        form.querySelector('textarea')?.focus();
+        form.querySelector('[data-report-cancel]')?.addEventListener('click', () => { form.remove(); report.setAttribute('aria-expanded', 'false'); });
+        form.addEventListener('submit', async (submitEvent) => {
+          submitEvent.preventDefault();
+          const reason = form.elements.reason.value.trim();
+          if (!reason) return;
+          const submit = form.querySelector('[type="submit"]');
+          report.disabled = true;
+          if (submit) submit.disabled = true;
+          try {
+            await socialRequest('/api/v1/social/report', { target_type: report.dataset.targetType, target_id: Number(report.dataset.targetId), reason: reason.slice(0, 80) });
+            const icon = report.querySelector('.researcher-action-icon'); if (icon) icon.textContent = '✓';
+            const label = report.querySelector('[data-social-label]'); if (label) label.textContent = 'تم البلاغ';
+            report.classList.add('is-active');
+            report.dataset.reportSent = '1';
+            report.setAttribute('aria-expanded', 'false');
+            form.remove();
+          } catch (error) {
+            toast(error.message, false);
+            report.disabled = false;
+            if (submit) submit.disabled = false;
+          }
+        });
         return;
       }
       const trigger = event.target.closest('[data-discussion-open]');
