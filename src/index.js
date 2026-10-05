@@ -64,7 +64,10 @@ function withCapacitorCors(request, env, response) {
   const origin = capacitorOrigin(request, env);
   const pathname = new URL(request.url).pathname;
   const allowedPath = pathname.startsWith('/api/v1/admin/')
-    || pathname === '/researcher/feed';
+    || pathname === '/researcher/feed'
+    || pathname === '/researcher/search'
+    || pathname.startsWith('/researcher/profile/')
+    || pathname.startsWith('/researcher/avatar');
   if (!origin || !allowedPath) return response;
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', origin);
@@ -105,7 +108,7 @@ async function handleRequest(request, env, ctx) {
 
     // Capacitor's bundled shell uses a controlled HTTPS localhost origin.
     // Reply to its preflight without touching authentication or the database.
-    if (request.method === 'OPTIONS' && (pathname.startsWith('/api/v1/admin/') || pathname === '/researcher/feed') && capacitorOrigin(request, env)) {
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/api/v1/admin/') || pathname === '/researcher/feed' || pathname === '/researcher/search' || pathname.startsWith('/researcher/profile/')) && capacitorOrigin(request, env)) {
       return new Response(null, {
         status: 204,
         headers: {
@@ -309,7 +312,8 @@ async function handleRequest(request, env, ctx) {
       if (!user) {
         // الـShell يتعامل مع موجز الباحث كـJSON؛ لا نعيده إلى صفحة HTML
         // عند انتهاء الجلسة حتى يستطيع العميل عرض حالة تسجيل الدخول مباشرة.
-        if (pathname === '/researcher/feed' && capacitorOrigin(request, env)) {
+        const jsonPath = pathname === '/researcher/feed' || pathname === '/researcher/search' || pathname.startsWith('/researcher/profile/');
+        if (jsonPath && capacitorOrigin(request, env)) {
           return researcherSessionJsonError();
         }
         const loginUrl = new URL('/discussions', request.url);
