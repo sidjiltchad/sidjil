@@ -87,7 +87,7 @@ export function setupNativeUx({ documentLike = globalThis.document, windowLike =
 
   listen(app, 'backButton', event => onBack?.(event || { canGoBack: false }), handles);
   listen(app, 'appStateChange', state => {
-    root?.dataset.sidjilAppState = state?.isActive ? 'active' : 'background';
+    if (root) root.dataset.sidjilAppState = state?.isActive ? 'active' : 'background';
     windowLike?.dispatchEvent?.(new CustomEvent('sidjil:app-state', { detail: state }));
   }, handles);
   listen(keyboard, 'keyboardWillShow', info => setKeyboard(true, Number(info?.keyboardHeight || 0)), handles);
