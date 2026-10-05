@@ -135,7 +135,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261005-translation-batch-v1">
+<link rel="stylesheet" href="/admin.css?v=20261005-content-health-v1">
 ${head}
 </head>
 <body>
@@ -294,28 +294,54 @@ async function contentHealthPage(env, user, req) {
   const status = ['all', 'published', 'draft'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'published';
   const type = String(url.searchParams.get('type') || '').trim();
   const q = String(url.searchParams.get('q') || '').trim().slice(0, 120);
+  const issuesOnly = url.searchParams.get('issues') === 'only';
   const where = [];
   const binds = [];
   if (status !== 'all') { where.push('m.publish_status = ?'); binds.push(status); }
   if (type) { where.push('m.type = ?'); binds.push(type); }
   if (q) { where.push('(m.ark LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ?)'); binds.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  if (issuesOnly) {
+    where.push(`(
+      (a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> 'image') OR
+      (m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL) OR
+      (m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
+        AND COALESCE(length(trim(m.full_text)), 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)) OR
+      a.integrity_status = 'missing'
+    )`);
+  }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const [summary, rows] = await Promise.all([
     Promise.all([
       db.prepare(`SELECT COUNT(*) AS c FROM materials m ${status === 'all' ? '' : 'WHERE m.publish_status = ?'}`).bind(...(status === 'all' ? [] : [status])).first(),
-      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.cover_file_id IS NULL' : 'WHERE m.publish_status = ? AND a.cover_file_id IS NULL'}`).bind(...(status === 'all' ? [] : [status])).first(),
-      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE' : 'AND'} a.pdf_file_id IS NULL AND m.type IN ('book','article','journal')`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> \'image\'' : 'WHERE m.publish_status = ? AND a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> \'image\''}`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.pdf_file_id IS NULL AND m.type IN (\'book\',\'article\',\'journal\')' : 'WHERE m.publish_status = ? AND a.pdf_file_id IS NULL AND m.type IN (\'book\',\'article\',\'journal\')'}`).bind(...(status === 'all' ? [] : [status])).first(),
       db.prepare(`SELECT COUNT(*) AS c FROM materials m ${status === 'all' ? 'WHERE' : 'WHERE m.publish_status = ? AND'} m.type IN ('document','article','excerpt','correspondence','manuscript') AND COALESCE(length(trim(m.full_text)), 0) = 0 AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)`).bind(...(status === 'all' ? [] : [status])).first(),
-      db.prepare(`SELECT COUNT(*) AS c FROM material_assets_index WHERE integrity_status = 'missing'`).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.integrity_status = \'missing\'' : 'WHERE m.publish_status = ? AND a.integrity_status = \'missing\''}`).bind(...(status === 'all' ? [] : [status])).first(),
       db.prepare(`SELECT COUNT(*) AS c FROM translation_pages WHERE status = 'failed'`).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE' : 'WHERE m.publish_status = ? AND'} (
+        (a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> 'image') OR
+        (m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL) OR
+        (m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
+          AND COALESCE(length(trim(m.full_text)), 0) = 0
+          AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)) OR
+        a.integrity_status = 'missing'
+      )`).bind(...(status === 'all' ? [] : [status])).first(),
     ]),
     db.prepare(`SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.publish_status, m.updated_at,
-      a.cover_file_id, a.pdf_file_id, a.image_file_id, a.text_file_id, a.integrity_status,
+      a.cover_file_id, a.pdf_file_id, a.image_file_id, a.text_file_id, a.integrity_status, a.checked_at,
       CASE WHEN COALESCE(length(trim(m.full_text)), 0) > 0 OR EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0) THEN 1 ELSE 0 END AS has_text
       FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${whereSql}
-      ORDER BY m.updated_at DESC, m.id DESC LIMIT 250`).bind(...binds).all(),
+      ORDER BY CASE WHEN (
+        (a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> 'image') OR
+        (m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL) OR
+        (m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
+          AND COALESCE(length(trim(m.full_text)), 0) = 0
+          AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)) OR
+        a.integrity_status = 'missing'
+      ) THEN 0 ELSE 1 END, m.updated_at DESC, m.id DESC LIMIT 250`).bind(...binds).all(),
   ]);
-  const [allCount, missingCovers, missingPdfs, missingText, missingR2, failedPages] = summary;
+  const [allCount, missingCovers, missingPdfs, missingText, missingR2, failedPages, issueSummary] = summary;
   const cards = [
     ['المواد المفحوصة', allCount?.c || 0, 'k-total'],
     ['بلا غلاف', missingCovers?.c || 0, 'k-img'],
@@ -326,18 +352,34 @@ async function contentHealthPage(env, user, req) {
   ].map(([label, value, cls]) => `<div class="stat-card ${cls}"><div class="stat-num">${esc(value)}</div><div class="stat-label">${esc(label)}</div></div>`).join('');
   const rowsHtml = (rows.results || []).map((m) => {
     const issues = [];
-    if (!m.cover_file_id) issues.push('غلاف');
+    if (!m.cover_file_id && !m.image_file_id && m.type !== 'image') issues.push('غلاف/صورة');
     if (['book', 'article', 'journal'].includes(m.type) && !m.pdf_file_id) issues.push('PDF');
-    if (!Number(m.has_text) && ['document', 'article', 'excerpt', 'correspondence'].includes(m.type)) issues.push('نص');
+    if (!Number(m.has_text) && ['document', 'article', 'excerpt', 'correspondence', 'manuscript'].includes(m.type)) issues.push('نص');
     if (m.integrity_status === 'missing') issues.push('R2');
-    const integrity = m.integrity_status === 'ok' ? '<span class="badge b-pub">R2 سليم</span>' : m.integrity_status === 'missing' ? '<span class="badge b-review">R2 مفقود</span>' : '<span class="badge b-draft">لم يُفحص</span>';
-    return `<tr><td class="mono small">${esc(m.ark)}</td><td><a href="/admin/materials/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a></td><td>${esc(TYPE_LABELS[m.type] || m.type)}</td><td>${issues.length ? `<span class="badge b-review">${esc(issues.join(' · '))}</span>` : '<span class="badge b-pub">سليمة مبدئيًا</span>'} ${integrity}</td><td class="muted">${fmtDate(m.updated_at)}</td><td><button class="btn btn-sm btn-ghost" type="button" data-integrity-check="${esc(m.id)}">فحص R2</button> <a class="btn btn-sm btn-ghost" href="/admin/materials/${m.id}">فحص وإصلاح</a></td></tr>`;
+    const integrity = m.integrity_status === 'ok' ? '<span class="badge b-pub">R2 سليم</span>' : m.integrity_status === 'missing' ? '<span class="badge b-review">R2 مفقود</span>' : '<span class="badge b-draft">R2 غير مفحوص</span>';
+    const checks = (m.type === 'image' ? 0 : 1) + (['book', 'article', 'journal'].includes(m.type) ? 1 : 0) + (['document', 'article', 'excerpt', 'correspondence', 'manuscript'].includes(m.type) ? 1 : 0);
+    const passed = checks - issues.length;
+    const score = checks ? Math.max(0, Math.min(100, Math.round((passed / checks) * 100))) : 100;
+    const scoreClass = score >= 100 ? 'health-good' : score >= 60 ? 'health-warn' : 'health-bad';
+    const issueText = issues.length ? `<span class="health-issues">${esc(issues.join(' · '))}</span>` : '<span class="health-ok">سليمة مبدئيًا</span>';
+    return `<tr><td class="mono small">${esc(m.ark)}</td><td><a href="/admin/materials/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a><br><span class="muted small">${esc(TYPE_LABELS[m.type] || m.type)} · آخر تعديل ${esc(fmtDate(m.updated_at))}</span></td><td><div class="health-score ${scoreClass}"><strong>${score}%</strong><span><i style="width:${score}%"></i></span></div></td><td>${issueText}<div class="health-badges">${integrity}${m.checked_at ? `<span class="muted tiny">فُحص ${esc(fmtDate(m.checked_at))}</span>` : ''}</div></td><td><button class="btn btn-sm btn-ghost" type="button" data-integrity-check="${esc(m.id)}">فحص R2</button> <a class="btn btn-sm btn-ghost" href="/admin/materials/${m.id}">فحص وإصلاح</a></td></tr>`;
   }).join('');
   const typeOpts = Object.entries(TYPE_LABELS).map(([value, label]) => `<option value="${esc(value)}"${type === value ? ' selected' : ''}>${esc(label)}</option>`).join('');
+  const issueCount = Number(issueSummary?.c || 0);
+  const cleanCount = Math.max(0, Number(allCount?.c || 0) - issueCount);
+  const healthScore = Number(allCount?.c || 0) ? Math.round((cleanCount / Number(allCount.c)) * 100) : 100;
+  const coverage = Object.entries(TYPE_LABELS).map(([kind, label]) => {
+    const items = (rows.results || []).filter((m) => m.type === kind);
+    if (!items.length) return '';
+    const complete = items.filter((m) => !((!m.cover_file_id && !m.image_file_id && m.type !== 'image') || (['book', 'article', 'journal'].includes(m.type) && !m.pdf_file_id) || (['document', 'article', 'excerpt', 'correspondence', 'manuscript'].includes(m.type) && !Number(m.has_text)) || m.integrity_status === 'missing')).length;
+    const percent = Math.round((complete / items.length) * 100);
+    return `<div class="health-coverage-row"><span>${esc(label)} <small>${items.length}</small></span><div class="health-coverage-track"><i style="width:${percent}%"></i></div><strong>${percent}%</strong></div>`;
+  }).filter(Boolean).join('');
   const body = `${pageHead('صحة المحتوى', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div>
-  <section class="card"><div class="section-head"><div><h2>طابور المواد التي تحتاج معالجة</h2><p class="muted">الفحص يحدد النقص في قاعدة البيانات. فحص وجود كائن R2 يحدّثه العامل الدوري ولا يُنفذ داخل كل زيارة.</p></div></div>
-  <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><button class="btn btn-primary" type="submit">تصفية</button></form>
-  <div class="table-wrap"><table class="tbl"><thead><tr><th>الرمز</th><th>المادة</th><th>النوع</th><th>الحالة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="6" class="muted">لا توجد مواد مطابقة.</td></tr>'}</tbody></table></div></section>`;
+  <section class="health-overview"><div class="health-score-card"><div class="health-score-ring ${healthScore >= 90 ? 'health-good' : healthScore >= 60 ? 'health-warn' : 'health-bad'}"><strong>${healthScore}%</strong><span>سلامة مبدئية</span></div><div><h2>حالة الأرشيف</h2><p>تم فحص ${esc(allCount?.c || 0)} مادة، وتحتاج ${esc(issueCount)} مادة إلى متابعة أو إصلاح.</p><a class="btn btn-sm btn-primary" href="/admin/content-repair">فتح طابور الإصلاح</a></div></div><div class="card health-coverage"><h2>التغطية حسب النوع</h2>${coverage || '<p class="muted">لا توجد مواد في هذا العرض.</p>'}</div></section>
+  <section class="card"><div class="section-head"><div><h2>فحص المواد</h2><p class="muted">تُعرض المواد التي ينقصها غلاف أو PDF أو نص موثق أو ملف R2 أولًا. فحص R2 يقرأ الكائن المرتبط فقط.</p></div><a class="btn btn-ghost" href="/admin/content-health?status=${encodeURIComponent(status)}&issues=only">عرض النواقص فقط</a></div>
+  <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><label class="checkbox-field"><input type="checkbox" name="issues" value="only"${issuesOnly ? ' checked' : ''}><span>النواقص فقط</span></label><button class="btn btn-primary" type="submit">تصفية</button></form>
+  <div class="table-wrap"><table class="tbl content-health-table"><thead><tr><th>الرمز</th><th>المادة</th><th>النتيجة</th><th>النواقص والفحص</th><th>إجراء</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="5" class="muted">لا توجد مواد مطابقة.</td></tr>'}</tbody></table></div></section>`;
   return layout({ title: 'صحة المحتوى', active: 'quality', user, body });
 }
 

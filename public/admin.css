@@ -2097,3 +2097,47 @@ textarea { border-radius: var(--shape-control); }
   .researcher-story { flex-basis: 104px; width: 104px; }
   .researcher-story-name, .researcher-story small { max-width: 104px; }
 }
+
+/* ---------- صحة المحتوى: مؤشرات وفحص قابل للتنفيذ ---------- */
+.health-overview { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(320px, .95fr); gap: 1rem; margin: 1rem 0; }
+.health-score-card { display: flex; align-items: center; gap: 1.15rem; min-height: 190px; padding: 1.15rem; border: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line)); border-radius: var(--shape-card); background: linear-gradient(135deg, color-mix(in srgb, var(--teal-soft) 70%, var(--card)), var(--card)); box-shadow: 0 8px 24px rgba(31,66,118,.06); }
+.health-score-card h2 { margin: 0 0 .3rem; font-size: 1.1rem; }
+.health-score-card p { margin: 0 0 .85rem; color: var(--muted); line-height: 1.7; }
+.health-score-ring { display: grid; place-items: center; flex: 0 0 132px; width: 132px; height: 132px; border: 10px solid color-mix(in srgb, var(--teal) 14%, var(--line-soft)); border-radius: 50%; background: var(--card); text-align: center; }
+.health-score-ring strong { display: block; font-size: 1.75rem; line-height: 1; }
+.health-score-ring span { display: block; margin-top: .25rem; color: var(--muted); font-size: .72rem; }
+.health-score-ring.health-good { border-color: color-mix(in srgb, #258b63 60%, var(--line-soft)); color: #16704e; }
+.health-score-ring.health-warn { border-color: color-mix(in srgb, #c48b1e 62%, var(--line-soft)); color: #956512; }
+.health-score-ring.health-bad { border-color: color-mix(in srgb, #c24b4b 62%, var(--line-soft)); color: #a12f35; }
+.health-coverage { margin: 0; padding: 1.15rem; }
+.health-coverage h2 { margin: 0 0 .85rem; font-size: 1.05rem; }
+.health-coverage-row { display: grid; grid-template-columns: minmax(125px, 1fr) minmax(90px, 1.35fr) 42px; align-items: center; gap: .65rem; margin: .65rem 0; color: var(--ink); font-size: .82rem; }
+.health-coverage-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.health-coverage-row small { color: var(--muted); }
+.health-coverage-row strong { text-align: end; font-size: .78rem; }
+.health-coverage-track { height: 8px; overflow: hidden; border-radius: 99px; background: var(--surface-2); }
+.health-coverage-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--teal), var(--gold)); }
+.health-score { display: grid; grid-template-columns: 42px 56px; align-items: center; gap: .45rem; min-width: 104px; }
+.health-score strong { font-size: .82rem; }
+.health-score > span { display: block; height: 7px; overflow: hidden; border-radius: 99px; background: var(--surface-2); }
+.health-score > span i { display: block; height: 100%; border-radius: inherit; background: var(--teal); }
+.health-score.health-warn > span i { background: #c48b1e; }
+.health-score.health-bad > span i { background: #c24b4b; }
+.health-issues { color: #a12f35; font-weight: 750; }
+.health-ok { color: #16704e; font-weight: 700; }
+.health-badges { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin-top: .4rem; }
+.health-badges .badge { margin: 0; }
+.content-health-table th:nth-child(3), .content-health-table td:nth-child(3) { min-width: 112px; }
+.content-health-table th:last-child, .content-health-table td:last-child { min-width: 185px; }
+.checkbox-field { display: inline-flex; align-items: center; gap: .5rem; min-height: 42px; padding: .55rem .75rem; border: 1px solid var(--line); border-radius: var(--shape-control); color: var(--ink); background: var(--surface-2); font-size: .82rem; cursor: pointer; }
+.checkbox-field input { width: 1rem; height: 1rem; accent-color: var(--teal); }
+@media (max-width: 800px) {
+  .health-overview { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .health-score-card { align-items: flex-start; flex-direction: column; min-height: 0; }
+  .health-score-ring { align-self: center; flex-basis: 116px; width: 116px; height: 116px; }
+  .health-score-ring strong { font-size: 1.55rem; }
+  .health-coverage-row { grid-template-columns: minmax(105px, 1fr) minmax(70px, 1.1fr) 38px; gap: .45rem; font-size: .76rem; }
+  .content-health-table { min-width: 720px; }
+}
