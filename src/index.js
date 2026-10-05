@@ -9,7 +9,6 @@ import { renderAdmin, renderResearcher } from './admin-views.js';
 import { getSessionUser, setSessionCookie } from './lib/auth.js';
 import { rateLimitCheck, rateLimitResponse } from './lib/ratelimit.js';
 import { googleStart, googleCallback } from './lib/google-auth.js';
-import { routeTranslationApi } from './translation.js';
 
 function json404() {
   return new Response(JSON.stringify({ error: 'غير موجود' }), {
@@ -83,10 +82,9 @@ async function handleRequest(request, env, ctx) {
       return res ?? json404();
     }
 
-    // ترجمة المحتوى: API خفيف داخل العامل، ومعالجة PDF/OCR في خدمة منفصلة.
+    // مسارات الترجمة الآلية القديمة أزيلت لصالح نظائر Word المرفوعة يدويًا.
     if (pathname.startsWith('/api/v1/translate/') || pathname.startsWith('/api/v1/documents/') || pathname.startsWith('/api/v1/manual-translations/')) {
-      const res = await routeTranslationApi(request, env);
-      if (res) return res;
+      return new Response(JSON.stringify({ error: 'مسار الترجمة القديم غير متاح' }), { status: 410, headers: { 'content-type': 'application/json; charset=utf-8' } });
     }
 
     // صور حسابات الباحثين المخزنة في R2 — لا تُعرض إلا لجلسة باحث صالحة.

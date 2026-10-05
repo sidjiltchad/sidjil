@@ -221,7 +221,7 @@ function footer(ctx) {
 
 export function layout(ctx, { title, description, ogImage, canonical, active, content }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n<script src="/translate-inline.js?v=20261005-translation-speed-v1" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
 }
 
 // شريط سفلي يظهر فقط في وضع التطبيق (standalone)
@@ -775,14 +775,25 @@ export function shareHTML(ctx, m, override) {
 }
 
 /* ---------- كتلة عارض PDF (تُستخدم في صفحة المادة وصفحة العدد) ---------- */
-function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '') {
+function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', fileTranslations = []) {
   const { lang } = ctx;
   if (!pdfFiles || !pdfFiles.length) return '';
   const pf = pdfFiles[0];
+  const counterparts = (fileTranslations || []).filter(
+    (x) => Number(x.source_file_id) === Number(pf.id) && x.translation_file_id
+  );
+  const langName = (l) => l === 'ar' ? (lang === 'fr' ? 'Arabe' : 'العربية') : (lang === 'fr' ? 'Français' : 'الفرنسية');
+  const toggleBtns = counterparts.map((c) => {
+    const label = lang === 'fr' ? `Lire en ${langName(c.target_lang)}` : `اقرأ بـ${langName(c.target_lang)}`;
+    const back = lang === 'fr' ? 'Lire l’original' : 'اقرأ الأصل';
+    return `<button type="button" class="btn btn-small btn-translate" data-doc-toggle data-docx="/file/${c.translation_file_id}" data-docx-lang="${esc(c.target_lang)}" data-label-read="${esc(label)}" data-label-back="${esc(back)}">${esc(label)}</button>`;
+  }).join('');
+  const requestBtn = counterparts.length ? '' :
+    `<button type="button" class="btn btn-small btn-ghost" data-request-translation data-material-id="${esc(String(materialId))}" data-file-id="${esc(String(pf.id))}">${esc(t(lang, 'request_translation'))}</button>`;
   return `
     <section class="doc-section" id="pdfViewer">
       <h2 class="doc-section-title">${esc(t(lang, 'pdf_viewer_label'))}</h2>
-      <div class="pdf-viewer" id="pdfViewerBox" data-pdf="/file/${pf.id}" data-translate-pdf="/file/${pf.id}" data-translate-title="${esc(documentTitle || pf.filename || '')}" data-translate-original-download="/file/${pf.id}?download=1">
+      <div class="pdf-viewer" id="pdfViewerBox" data-pdf="/file/${pf.id}" data-pdf-file-id="${esc(String(pf.id))}" data-material-id="${esc(String(materialId))}">
         <div class="pdf-toolbar" role="toolbar" aria-label="${esc(t(lang, 'pdf_viewer_label'))}">
           <button type="button" class="btn btn-small" data-pdf-prev>${esc(t(lang, 'prev'))}</button>
           <span class="pdf-pageinfo"><span data-pdf-num>1</span> / <span data-pdf-count>…</span></span>
@@ -793,15 +804,20 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '') {
           <button type="button" class="btn btn-small" data-pdf-fit>${esc(t(lang, 'fit_width'))}</button>
           <button type="button" class="btn btn-small" data-pdf-full>${esc(t(lang, 'fullscreen'))}</button>
           <button type="button" class="btn btn-small btn-primary" data-pdf-read data-read-label="${esc(t(lang, 'read_full_book'))}" data-close-label="${esc(t(lang, 'close_full_book'))}">${esc(t(lang, 'read_full_book'))}</button>
-          <button type="button" class="btn btn-small btn-translate" data-translate-document="${esc(String(materialId))}" data-translate-pdf="/file/${pf.id}" data-translate-title="${esc(documentTitle || pf.filename || '')}" data-translate-original-download="/file/${pf.id}?download=1">${esc(t(lang, 'translate_action'))}</button>
+          ${toggleBtns}
+          ${requestBtn}
           <a class="btn btn-small btn-ghost" href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a>
         </div>
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap"><canvas data-pdf-canvas></canvas></div>
+        <div class="docx-view hidden" data-docx-view aria-live="polite"></div>
         <div class="pdf-reading-pages hidden" data-pdf-reading-pages aria-live="polite"></div>
         <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
-    <script type="module" src="/js/pdf-viewer.js?v=20261004-mobile-pdf-reader-v1"></script>`;
+    <script type="module" src="/js/pdf-viewer.js?v=20261004-pdf-rtl-canvas"></script>
+    <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
+    <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
+    <script src="/js/docx-reader.js?v=20261005" defer></script>`;
 }
 
 /* ---------- صفحة المادة ---------- */
@@ -826,8 +842,6 @@ async function documentPage(ctx, ark) {
     m = null;
   }
   if (!m || m.publish_status !== 'published') return notFoundPage(ctx);
-  const manualTranslations = await db.prepare(`SELECT id, source_language, target_language, note, created_at
-    FROM manual_translations WHERE material_id = ? ORDER BY created_at DESC`).bind(m.id).all().catch(() => ({ results: [] }));
 
   // عدّاد المشاهدات (§views.js)
   try { await db.prepare(`UPDATE materials SET views = views + 1 WHERE id = ?`).bind(m.id).run(); } catch (e) {}
@@ -880,7 +894,7 @@ async function documentPage(ctx, ark) {
 
   /* --- عارض PDF داخل الصفحة (PDF.js — مكتبة وظيفية فقط، الأصل في R2 كما هو) --- */
   const pdfFiles = files.filter((f) => (f.mime || '') === 'application/pdf' || /\.pdf$/i.test(f.filename || ''));
-  const pdfViewerHTML = pdfViewerBlock(ctx, pdfFiles, m.id, title);
+  const pdfViewerHTML = pdfViewerBlock(ctx, pdfFiles, m.id, title, m.file_translations);
 
   /* --- معرض الصور: النسخ + مقارنة قبل/بعد --- */
   const versions = (m.image_versions || []).filter(v => versionFileId(v));
@@ -932,64 +946,13 @@ async function documentPage(ctx, ark) {
       <h2 class="doc-section-title">${esc(t(lang, 'transcription_label'))}</h2>
       ${tManual ? `<h3 class="sub-title">${esc(t(lang, 'transcription_manual'))}</h3><div class="text-block" dir="auto" data-translation-source>${esc(tManual.text)}</div>` : ''}
       ${tAuto ? `<h3 class="sub-title">${esc(t(lang, 'transcription_auto'))}</h3><div class="text-block text-auto" dir="auto" data-translation-source>${esc(tAuto.text)}</div>` : ''}
-      <div class="content-translate-actions"><button type="button" class="btn btn-small btn-translate" data-translate-text="${esc(String(m.id))}" data-translate-selector="[data-translation-source]">${esc(t(lang, 'translate_action'))}</button><span class="translate-inline-status" data-translate-status aria-live="polite"></span></div>
     </section>`;
   }
 
-  /* --- الترجمة جنبًا إلى جنب --- */
-  const trs = (m.translations || []);
-  const tr = trs[0];
-  const segs = (m.translation_segments || []);
-  let translationHTML = '';
-  if (segs.length) {
-    // عرض موازٍ للمقاطع بالترتيب: المراجعة البشرية تُفضَّل على الآلية
-    const segRows = segs.map((s) => {
-      const ar = s.reviewed_translation || s.machine_translation || '';
-      const segBadge = s.status === 'reviewed'
-        ? `<span class="status-badge status-reviewed">${esc(t(lang, 'segment_reviewed'))}</span>`
-        : `<span class="status-badge status-machine">${esc(t(lang, 'segment_machine'))}</span>`;
-      const pg = s.page_number != null
-        ? `<span class="seg-page">${esc(t(lang, 'page_number_label'))} ${esc(String(s.page_number))}</span>` : '';
-      return `<div class="seg-row">
-        <div class="seg-col seg-src"><div class="seg-meta"><span class="seg-num" dir="ltr">#${esc(String(s.sequence_number))}</span>${pg}</div><div class="text-block" dir="auto" lang="${esc(tr.source_lang || m.language || 'fr')}">${esc(s.source_text)}</div></div>
-        <div class="seg-col seg-ar"><div class="seg-meta">${segBadge}</div><div class="text-block" dir="rtl" lang="ar">${esc(ar) || '—'}</div></div>
-      </div>`;
-    }).join('');
-    translationHTML = `<section class="doc-section" id="translation">
-      <h2 class="doc-section-title">${esc(t(lang, 'parallel_translation'))}
-        <span class="status-badge status-${esc(tr.status || 'machine')}">${esc(translationStatusLabel(lang, tr.status))}</span>
-      </h2>
-      <p class="hint">${esc(t(lang, 'translation_label'))} · ${segs.length} مقطعًا</p>
-      <div class="seg-table">${segRows}</div>
-      ${tr.translator ? `<p class="hint">${esc(t(lang, 'translator_label'))}: ${esc(tr.translator)}</p>` : ''}
-    </section>`;
-  } else if (tr) {
-    const srcText = (tManual && tManual.text) || (tAuto && tAuto.text) || m.full_text || '';
-    translationHTML = `<section class="doc-section" id="translation">
-      <h2 class="doc-section-title">${esc(t(lang, 'translation_label'))}
-        <span class="status-badge status-${esc(tr.status || 'machine')}">${esc(translationStatusLabel(lang, tr.status))}</span>
-      </h2>
-      <div class="side-by-side">
-        <div class="sbs-col"><h3 class="sub-title">${esc(t(lang, 'original_text'))}${tr.source_lang ? ` <span class="latin">(${esc(tr.source_lang)})</span>` : ''}</h3><div class="text-block" dir="auto">${esc(srcText) || '—'}</div></div>
-        <div class="sbs-col"><h3 class="sub-title">${esc(t(lang, 'arabic_translation'))}</h3><div class="text-block" dir="rtl" lang="ar">${esc(tr.text)}</div>
-        ${tr.translator ? `<p class="hint">${esc(t(lang, 'translator_label'))}: ${esc(tr.translator)}</p>` : ''}</div>
-      </div>
-    </section>`;
-  } else if (m.translation_status && m.translation_status !== 'none') {
-    translationHTML = `<section class="doc-section" id="translation">
-      <h2 class="doc-section-title">${esc(t(lang, 'translation_label'))}
-        <span class="status-badge status-${esc(m.translation_status)}">${esc(translationStatusLabel(lang, m.translation_status))}</span>
-      </h2><p class="empty">${esc(t(lang, 'no_translation'))}</p></section>`;
-  }
-  if (manualTranslations.results?.length) {
-    const cards = manualTranslations.results.map((tr) => `<article class="manual-translation-card">
-      <h3>${esc(tr.source_language.toUpperCase())} → ${esc(tr.target_language.toUpperCase())}</h3>
-      ${tr.note ? `<p>${esc(tr.note)}</p>` : ''}
-      <div class="manual-translation-actions"><a class="btn btn-primary" href="/api/v1/manual-translations/${esc(tr.id)}/file?format=pdf" target="_blank" rel="noopener">قراءة الترجمة PDF</a><a class="btn btn-ghost" href="/api/v1/manual-translations/${esc(tr.id)}/file?format=pdf&download=1">تنزيل PDF المنسق</a><a class="btn btn-ghost" href="/api/v1/manual-translations/${esc(tr.id)}/file?format=docx">تنزيل Word</a></div>
-      <iframe class="manual-translation-pdf" src="/api/v1/manual-translations/${esc(tr.id)}/file?format=pdf" title="ترجمة ${esc(title)}" loading="lazy"></iframe>
-    </article>`).join('');
-    translationHTML = `<section class="doc-section" id="translation"><h2 class="doc-section-title">الترجمات المنسقة</h2><p class="hint">نسخ بشرية مرفوعة من الإدارة، متاحة للقراءة والتنزيل إلى جانب المادة الأصلية.</p><div class="manual-translation-list">${cards}</div></section>` + translationHTML;
-  }
+  /* --- نظائر الترجمة اليدوية --- */
+  const translationHTML = (m.file_translations || []).length
+    ? '<p class="hint translation-availability">تتوفر نظائر ترجمة منسقة داخل القارئ أعلاه.</p>'
+    : '';
 
   /* --- مواد ذات صلة --- */
   let related = (m.relations || []).map(r => r.material || r).filter(Boolean);
@@ -1045,7 +1008,7 @@ async function documentPage(ctx, ark) {
       <section class="doc-section">
         <h2 class="doc-section-title">${esc(t(lang, 'description_label'))}</h2>
         <dl class="meta-grid">${metaHTML}</dl>
-        ${m.description ? `<div class="doc-desc" dir="auto" data-translation-description>${esc(m.description)}</div><div class="content-translate-actions"><button type="button" class="btn btn-small btn-translate" data-translate-text="${esc(String(m.id))}" data-translate-selector="[data-translation-description]">${esc(t(lang, 'translate_action'))}</button><span class="translate-inline-status" data-translate-status aria-live="polite"></span></div>` : `<p class="empty">${esc(t(lang, 'no_description'))}</p>`}
+        ${m.description ? `<div class="doc-desc" dir="auto" data-translation-description>${esc(m.description)}</div>` : `<p class="empty">${esc(t(lang, 'no_description'))}</p>`}
         ${(people || places || sections || collections) ? `<div class="chip-groups">
           ${people ? `<div class="chip-group"><span class="chip-group-label">${esc(t(lang, 'nav_people'))}:</span> ${people}</div>` : ''}
           ${places ? `<div class="chip-group"><span class="chip-group-label">${esc(t(lang, 'nav_places'))}:</span> ${places}</div>` : ''}
@@ -1479,7 +1442,7 @@ async function journalIssuePage(ctx, ark) {
 
       ${shareHTML(ctx, m)}
 
-      ${pdfViewerBlock(ctx, pdfFiles, m.id, title)}
+      ${pdfViewerBlock(ctx, pdfFiles, m.id, title, m.file_translations)}
 
       ${m.description ? `<section class="doc-section"><h2 class="doc-section-title">${esc(t(lang, 'description_label'))}</h2><div class="doc-desc" dir="auto">${esc(m.description)}</div></section>` : ''}
 

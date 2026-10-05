@@ -1,21 +1,17 @@
-const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
-for (const form of document.querySelectorAll('[data-manual-translation-form]')) {
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const status = form.querySelector('[data-upload-status]');
-    const button = form.querySelector('button[type="submit"]');
-    button.disabled = true;
-    status.textContent = 'جارٍ الرفع…';
-    try {
-      const response = await fetch('/api/v1/admin/manual-translations', {
-        method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: new FormData(form),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'تعذر رفع الملفين');
-      status.textContent = 'تم الرفع. حدّث الصفحة لمراجعة القائمة.';
-      form.reset();
-    } catch (error) {
-      status.textContent = error.message || 'تعذر رفع الملفين';
-    } finally { button.disabled = false; }
-  });
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || sessionStorage.getItem('csrfToken') || '';
+const api = async (url, opts = {}) => { const headers = new Headers(opts.headers || {}); if (opts.method && opts.method !== 'GET') headers.set('X-CSRF-Token', csrf()); const r = await fetch(url, { ...opts, headers }); const data = await r.json().catch(() => ({})); if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`); return data; };
+const filesBody = document.querySelector('[data-translation-files]');
+const stats = document.querySelector('[data-translation-stats]');
+async function loadFiles() {
+  if (!filesBody) return;
+  try { const d = await api('/api/v1/admin/translations/overview?perPage=100'); stats.innerHTML = `<span>الملفات: <b>${d.stats.total}</b></span><span>مترجمة: <b>${d.stats.ready}</b></span><span>بانتظار: <b>${d.stats.awaiting}</b></span><span>طلبات جديدة: <b>${d.stats.newRequests}</b></span>`; filesBody.innerHTML = (d.items || []).map((x) => `<tr><td>${esc(x.title_ar || x.title_orig || x.ark)}<br><small>${esc(x.ark)}</small></td><td><code>${esc(x.filename)}</code><br><small>#${x.id}</small></td><td><select data-file-lang="${x.id}"><option value="undetermined"${x.lang === 'undetermined' ? ' selected' : ''}>غير محددة</option><option value="ar"${x.lang === 'ar' ? ' selected' : ''}>العربية</option><option value="fr"${x.lang === 'fr' ? ' selected' : ''}>الفرنسية</option><option value="en"${x.lang === 'en' ? ' selected' : ''}>الإنجليزية</option></select></td><td>${(x.counterparts || []).map((c) => `<span>${esc(c.target_lang)} <button type="button" class="btn btn-sm btn-danger" data-translation-delete="${c.id}">حذف</button></span>`).join('<br>') || '—'}</td><td><button type="button" class="btn btn-sm" data-use-file="${x.id}">رفع نظير</button></td></tr>`).join('') || '<tr><td colspan="5">لا توجد ملفات.</td></tr>'; } catch (e) { filesBody.innerHTML = `<tr><td colspan="5">${esc(e.message)}</td></tr>`; }
 }
+async function loadRequests() { const body = document.querySelector('[data-translation-requests]'); if (!body) return; try { const d = await api('/api/v1/admin/translation-requests?status=all'); body.innerHTML = (d.items || []).map((r) => `<tr><td>${esc(r.title_ar || r.title_orig || r.ark)}</td><td>${esc(r.source_filename || '—')}</td><td>${esc(r.target_lang || '—')}</td><td>${esc(r.created_at || '')}</td><td><select data-request-status="${r.id}"><option value="new"${r.status === 'new' ? ' selected' : ''}>جديد</option><option value="done"${r.status === 'done' ? ' selected' : ''}>منجز</option><option value="dismissed"${r.status === 'dismissed' ? ' selected' : ''}>مرفوض</option></select></td></tr>`).join('') || '<tr><td colspan="5">لا توجد طلبات.</td></tr>'; } catch (e) { body.innerHTML = `<tr><td colspan="5">${esc(e.message)}</td></tr>`; } }
+document.querySelectorAll('[data-translation-tab]').forEach((b) => b.addEventListener('click', () => { document.querySelectorAll('[data-translation-tab]').forEach((x) => x.classList.toggle('is-active', x === b)); document.querySelectorAll('[data-translation-panel]').forEach((p) => { p.hidden = p.dataset.translationPanel !== b.dataset.translationTab; }); if (b.dataset.translationTab === 'requests') loadRequests(); }));
+document.querySelector('[data-translation-refresh]')?.addEventListener('click', loadFiles);
+document.querySelector('[data-translation-requests-refresh]')?.addEventListener('click', loadRequests);
+document.querySelector('[data-translation-upload]')?.addEventListener('submit', async (e) => { e.preventDefault(); const status = document.querySelector('[data-translation-upload-status]'); status.textContent = 'جارٍ الرفع…'; try { await api('/api/v1/admin/translations/upload', { method: 'POST', body: new FormData(e.currentTarget) }); status.textContent = 'تم رفع النظير.'; e.currentTarget.reset(); loadFiles(); } catch (err) { status.textContent = err.message; } });
+document.addEventListener('change', async (e) => { const lang = e.target.closest('[data-file-lang]'); if (lang) { try { await api(`/api/v1/admin/translations/file-lang/${lang.dataset.fileLang}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ lang: lang.value }) }); } catch (err) { alert(err.message); } } const rs = e.target.closest('[data-request-status]'); if (rs) { try { await api(`/api/v1/admin/translation-requests/${rs.dataset.requestStatus}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: rs.value }) }); } catch (err) { alert(err.message); } } });
+document.addEventListener('click', async (e) => { const use = e.target.closest('[data-use-file]'); if (use) { document.querySelector('[data-translation-tab="upload"]')?.click(); document.querySelector('[data-translation-upload] [name="source_file_id"]').value = use.dataset.useFile; } const del = e.target.closest('[data-translation-delete]'); if (del && confirm('حذف نظير الترجمة؟')) { try { await api(`/api/v1/admin/translations/file/${del.dataset.translationDelete}`, { method: 'DELETE' }); loadFiles(); } catch (err) { alert(err.message); } } });
+loadFiles();

@@ -267,8 +267,8 @@ async function dashboardPage(env, user, req) {
     db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='published'").first(),
     db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='in_review'").first(),
     db.prepare("SELECT COUNT(*) c FROM content_repair_queue WHERE status IN ('pending','processing','blocked')").first(),
-    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status NOT IN ('COMPLETED','FAILED','CANCELLED')").first(),
-    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status='FAILED'").first(),
+    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status NOT IN ('COMPLETED','FAILED','CANCELLED')").first().catch(() => ({ c: 0 })),
+    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status='FAILED'").first().catch(() => ({ c: 0 })),
     db.prepare("SELECT COUNT(*) c FROM social_reports WHERE status IN ('open','reviewing')").first(),
     db.prepare("SELECT COUNT(DISTINCT visitor_hash) c FROM visitor_daily WHERE day=date('now')").first(),
     db.prepare(`SELECT id, ark, type, material_level, title_ar, publish_status, created_at
@@ -469,7 +469,7 @@ async function metricsPage(env, user, req) {
   const [metrics, translation, reports, assets, jobs] = await Promise.all([
     db.prepare(`SELECT route, query_key, SUM(calls) AS calls, SUM(errors) AS errors, SUM(total_duration_ms) AS duration_ms, MAX(max_duration_ms) AS max_duration_ms, SUM(total_rows) AS rows_read
       FROM query_metrics_daily WHERE day >= date('now', ?) GROUP BY route, query_key ORDER BY rows_read DESC, duration_ms DESC LIMIT 100`).bind(`-${days} day`).all().catch(() => ({ results: [] })),
-    db.prepare(`SELECT status, COUNT(*) AS c FROM translation_jobs GROUP BY status`).all(),
+    db.prepare(`SELECT status, COUNT(*) AS c FROM translation_jobs GROUP BY status`).all().catch(() => ({ results: [] })),
     db.prepare(`SELECT status, COUNT(*) AS c FROM social_reports GROUP BY status`).all(),
     db.prepare(`SELECT integrity_status, COUNT(*) AS c FROM material_assets_index GROUP BY integrity_status`).all(),
     db.prepare(`SELECT status, COUNT(*) AS c FROM translation_pages GROUP BY status`).all(),
@@ -490,80 +490,7 @@ async function metricsPage(env, user, req) {
 
 // ---------- الترجمة: مؤشرات الكاش والـJobs ----------
 async function translationPage(env, user, req) {
-  const db = env.DB;
-  const url = new URL(req.url);
-  const search = String(url.searchParams.get('q') || '').trim();
-  const tabIds = ['engine', 'manual', 'jobs', 'glossary'];
-  const activeTab = tabIds.includes(url.searchParams.get('tab')) ? url.searchParams.get('tab') : 'engine';
-  const [today, hits, misses, active, failed, pages, settings, pdfMaterials, recentJobs, manualRows] = await Promise.all([
-    db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE created_at >= date('now')").first(),
-    db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE event = 'cache_hit'").first(),
-    db.prepare("SELECT COUNT(*) c FROM translation_usage WHERE event = 'cache_miss'").first(),
-    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status NOT IN ('COMPLETED','FAILED','CANCELLED')").first(),
-    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status = 'FAILED'").first(),
-    db.prepare('SELECT COALESCE(SUM(processed_pages),0) c FROM translation_jobs').first(),
-    db.prepare('SELECT * FROM translation_settings WHERE id = 1').first(),
-    db.prepare(`SELECT DISTINCT m.id, m.ark, m.title_ar, m.title_orig, m.type, m.publish_status
-      FROM materials m JOIN files f ON f.material_id = m.id
-      WHERE (f.mime = 'application/pdf' OR lower(f.filename) LIKE '%.pdf') AND f.kind <> 'thumbnail'
-      ORDER BY m.updated_at DESC, m.id DESC LIMIT 300`).all(),
-    db.prepare(`SELECT j.id, j.material_id, j.source_language, j.target_language, j.output_mode,
-      j.ocr_mode, j.status, j.progress, j.current_stage, j.page_count, j.processed_pages,
-      j.error_message, j.created_at, j.updated_at, j.completed_at, j.output_size,
-      m.ark, m.title_ar, m.title_orig
-      FROM translation_jobs j LEFT JOIN materials m ON m.id = j.material_id
-      ORDER BY j.created_at DESC LIMIT 100`).all(),
-    db.prepare(`SELECT mt.id, mt.material_id, mt.source_language, mt.target_language, mt.created_at,
-      m.ark, m.title_ar, m.title_orig FROM manual_translations mt
-      JOIN materials m ON m.id = mt.material_id ORDER BY mt.created_at DESC LIMIT 100`).all(),
-  ]);
-  let engine = null;
-  if (env.TRANSLATION_SERVICE_URL && env.TRANSLATION_SERVICE_TOKEN) {
-    try {
-      const response = await fetch(`${String(env.TRANSLATION_SERVICE_URL).replace(/\/$/, '')}/engine`, { headers: { 'X-Sidjil-Service-Token': env.TRANSLATION_SERVICE_TOKEN } });
-      if (response.ok) engine = await response.json();
-    } catch (_) {}
-  }
-  const total = Number(hits?.c || 0) + Number(misses?.c || 0);
-  const hitRate = total ? Math.round(Number(hits?.c || 0) / total * 100) : 0;
-  const cards = [['طلبات اليوم', today?.c || 0], ['Cache Hit Rate', `${hitRate}%`], ['Jobs الجارية', active?.c || 0], ['Jobs الفاشلة', failed?.c || 0], ['الصفحات المعالجة', pages?.c || 0]].map(([label, value]) => `<div class="stat-card"><div class="stat-num">${esc(value)}</div><div class="stat-label">${esc(label)}</div></div>`).join('');
-  const engineStatus = engine?.ollama?.available && engine?.ollama?.modelAvailable ? 'متصل' : 'غير متصل أو النموذج غير متاح';
-  const materialOptions = (pdfMaterials.results || []).map((m) => `<option value="${esc(m.id)}">${esc(m.title_ar || m.title_orig || m.ark)} · ${esc(m.ark)}</option>`).join('');
-  const langOptions = '<option value="auto">اكتشاف تلقائي</option><option value="ar">العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option>';
-  const targetOptions = '<option value="ar" selected>العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option>';
-  const jobRows = (recentJobs.results || []).map((j) => {
-    const title = j.title_ar || j.title_orig || j.ark || j.material_id || '—';
-    const state = { QUEUED: 'في الانتظار', ANALYZING: 'تحليل', EXTRACTING: 'استخراج', OCR_PROCESSING: 'OCR', TRANSLATING: 'ترجمة', REBUILDING: 'إعادة بناء', UPLOADING: 'رفع', COMPLETED: 'مكتملة', FAILED: 'فاشلة', CANCELLED: 'ملغاة' }[j.status] || j.status;
-    const percent = Math.max(0, Math.min(100, Number(j.progress || 0)));
-     const canCancel = !['COMPLETED', 'FAILED', 'CANCELLED'].includes(String(j.status));
-     const canRetry = ['FAILED', 'CANCELLED'].includes(String(j.status));
-     return `<tr data-translation-job-row="${esc(j.id)}"><td class="check-cell"><input type="checkbox" data-translation-job-check value="${esc(j.id)}" aria-label="تحديد وظيفة ${esc(j.id)}"></td><td><strong>${esc(title)}</strong><br><span class="mono small">${esc(j.ark || '')}</span></td><td dir="ltr">${esc(j.source_language)} → ${esc(j.target_language)}</td><td>${esc(j.output_mode)}</td><td><span class="translation-job-status status-${esc(String(j.status).toLowerCase())}">${esc(state)}</span><div class="admin-translation-progress"><i style="width:${percent}%"></i></div><span class="muted tiny">${percent}% · ${esc(j.current_stage || '')}</span></td><td class="muted small">${fmtDate(j.updated_at || j.created_at)}</td><td>${canCancel ? `<button class="btn btn-sm btn-ghost" type="button" data-translation-job-cancel="${esc(j.id)}">إيقاف</button>` : ''}${canRetry ? `<button class="btn btn-sm btn-primary" type="button" data-translation-job-retry="${esc(j.id)}">إعادة المحاولة</button>` : ''}<button class="btn btn-sm btn-danger" type="button" data-translation-job-delete="${esc(j.id)}">حذف</button></td></tr>`;
-  }).join('');
-  const matches = search ? await db.prepare(`SELECT id, ark, title_ar, title_orig FROM materials
-    WHERE publish_status = 'published' AND (title_ar LIKE ? OR title_orig LIKE ? OR ark LIKE ?)
-    ORDER BY updated_at DESC LIMIT 20`).bind(`%${search}%`, `%${search}%`, `%${search}%`).all() : { results: [] };
-  const manualMaterialRows = (matches.results || []).map((m) => `<article class="card"><strong>${esc(m.title_ar || m.title_orig || m.ark)}</strong> <span class="mono small">${esc(m.ark)}</span>
-    <form data-manual-translation-form data-material-id="${m.id}" enctype="multipart/form-data"><input type="hidden" name="material_id" value="${m.id}">
-      <label class="field"><span>من</span><select name="source_language" required><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option><option value="ar">العربية</option></select></label>
-      <label class="field"><span>إلى</span><select name="target_language" required><option value="ar">العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option></select></label>
-      <label class="field"><span>ملف Word المنسق (.docx)</span><input type="file" name="docx" accept=".docx" required></label>
-      <label class="field"><span>نسخة PDF المنسقة المطابقة</span><input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
-      <label class="field"><span>وصف اختياري</span><input name="note" maxlength="500"></label>
-      <button class="btn btn-primary" type="submit">رفع الترجمة</button><span data-upload-status aria-live="polite"></span>
-    </form></article>`).join('');
-  const manualList = (manualRows.results || []).map((r) => `<tr><td>${esc(r.title_ar || r.title_orig || r.ark)}<br><span class="mono small">${esc(r.ark)}</span></td><td dir="ltr">${esc(r.source_language)} → ${esc(r.target_language)}</td><td><a href="/api/v1/manual-translations/${esc(r.id)}/file?format=pdf" target="_blank" rel="noopener">PDF</a> · <a href="/api/v1/manual-translations/${esc(r.id)}/file?format=docx">Word</a></td><td>${esc(fmtDate(r.created_at))}</td></tr>`).join('');
-  const tabLabels = { engine: 'محرك الترجمة المحلي', manual: 'ترجمة الملفات يدويًا', jobs: 'الترجمة الآلية والوظائف', glossary: 'مسرد المصطلحات' };
-  const tabLinks = tabIds.map((id) => {
-    const params = new URLSearchParams({ tab: id });
-    if (id === 'manual' && search) params.set('q', search);
-    return `<a class="translation-admin-tab${activeTab === id ? ' is-active' : ''}" href="/admin/translation?${esc(params.toString())}" data-translation-tab-link="${id}" role="tab" aria-controls="translation-panel-${id}" aria-selected="${activeTab === id ? 'true' : 'false'}">${esc(tabLabels[id])}</a>`;
-  }).join('');
-  const panel = (id, content) => `<section id="translation-panel-${id}" class="card translation-tab-panel" data-translation-tab-panel="${id}" role="tabpanel"${activeTab === id ? '' : ' hidden'}>${content}</section>`;
-  const enginePanel = panel('engine', `<h2>${esc(tabLabels.engine)}</h2><dl class="meta-grid"><div><dt>المحرك</dt><dd>Ollama</dd></div><div><dt>النموذج</dt><dd>${esc(engine?.model || 'qwen3:8b')}</dd></div><div><dt>حالة Ollama</dt><dd>${esc(engineStatus)}</dd></div><div><dt>الطابور</dt><dd>${esc(engine?.queueLength ?? '—')} · النشط ${esc(engine?.activeAiJobs ?? '—')} / الحد ${esc(engine?.maxAiJobs ?? 1)}</dd></div><div><dt>الترجمات المكتملة</dt><dd>${esc(engine?.completedJobs ?? '—')}</dd></div><div><dt>المتوسط</dt><dd>${engine?.averageTranslationTimeSeconds != null ? `${esc(engine.averageTranslationTimeSeconds)} ثانية` : '—'}</dd></div><div><dt>ترجمة النصوص</dt><dd>${settings?.text_enabled ? 'مفعّلة' : 'معطلة'}</dd></div><div><dt>ترجمة المستندات</dt><dd>${settings?.document_enabled && env.TRANSLATION_SERVICE_URL ? 'مفعّلة' : 'بانتظار خدمة PDF'}</dd></div><div><dt>OCR</dt><dd>${settings?.ocr_enabled && env.TRANSLATION_SERVICE_URL ? 'مفعّل' : 'بانتظار خدمة المعالجة'}</dd></div><div><dt>سياسة الكاش</dt><dd>${esc(settings?.cache_retention_policy || 'PERSISTENT')}</dd></div></dl><p class="muted">تُترجم الكتب في الخلفية كاملة مع حفظ التقدم، ويستطيع الباحث متابعة النسبة وتنزيل الملف عند اكتماله. لا يُعرض Ollama للعامة.</p>`);
-  const manualPanel = panel('manual', `<h2>${esc(tabLabels.manual)}</h2><p class="muted">ارفع ملف Word منسقًا ونسخة PDF مطابقة له؛ تظهر ملفات الاتجاه اللغوي بجانب المادة ويُتاح PDF للقراءة والتنزيل.</p><form method="get" action="/admin/translation" class="translation-admin-options"><input type="hidden" name="tab" value="manual"><label class="field"><span>ابحث عن المادة المنشورة بعنوانها أو رمزها</span><input name="q" value="${esc(search)}" required></label><button class="btn" type="submit">بحث</button></form>${search ? (manualMaterialRows || '<p class="empty">لا توجد مواد منشورة مطابقة.</p>') : '<p class="hint">ابحث عن عنوان الكتاب أو رمز المادة لبدء رفع ترجمتها.</p>'}<h3>الترجمات المرفوعة</h3><div class="table-wrap"><table class="tbl"><thead><tr><th>المادة</th><th>الاتجاه</th><th>الملفات</th><th>تاريخ الرفع</th></tr></thead><tbody>${manualList || '<tr><td colspan="4" class="muted">لا توجد ملفات يدوية بعد.</td></tr>'}</tbody></table></div>`);
-  const jobsPanel = panel('jobs', `<div class="section-head"><div><h2>ترجمة ملفات جديدة</h2><p class="muted">اختر ملفًا أو عدة كتب، ولغة هدف واحدة أو عدة لغات، وابدأ وظائف مستقلة. يمكن اختيار لغة المصدر تلقائيًا أو تحديدها.</p></div></div><div class="translation-admin-grid" data-translation-manage><label class="field"><span>الملفات (PDF)</span><select id="translationBatchMaterials" multiple size="7">${materialOptions || '<option disabled>لا توجد ملفات PDF</option>'}</select></label><div class="translation-admin-options"><label class="field"><span>لغة المصدر</span><select id="translationBatchSource">${langOptions}</select></label><label class="field"><span>لغات الهدف (متعدد)</span><select id="translationBatchTargets" multiple size="3">${targetOptions}</select></label><label class="field"><span>صيغة الإخراج</span><select id="translationBatchMode"><option value="translated">PDF مترجم</option><option value="bilingual">PDF ثنائي اللغة</option><option value="text">نص مترجم</option></select></label><label class="field"><span>OCR</span><select id="translationBatchOcr"><option value="auto">تلقائي</option><option value="advanced">متقدم</option><option value="off">معطل</option></select></label><button class="btn btn-primary" type="button" data-translation-batch-start>بدء الترجمة المحددة</button></div></div><p class="muted tiny">تُرسل الوظائف بالتتابع من الواجهة مع بقاء كل نتيجة قابلة للمراجعة والحذف من تبويب الوظائف.</p><hr><div class="section-head"><div><h2>وظائف الترجمة</h2><p class="muted">الحالة والتقدم والملفات المولدة في مكان واحد.</p></div><div class="translation-cleanup"><label>حذف المكتمل الأقدم من <input id="translationCleanupDays" type="number" min="1" max="3650" value="30"> يومًا</label><button class="btn btn-sm btn-danger" type="button" data-translation-cleanup>تنظيف الوظائف القديمة</button></div></div><div class="table-wrap"><table class="tbl translation-jobs-table"><thead><tr><th><input type="checkbox" data-translation-select-all aria-label="تحديد الكل"></th><th>المادة</th><th>المسار</th><th>الصيغة</th><th>الحالة والتقدم</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${jobRows || '<tr><td colspan="7" class="muted">لا توجد وظائف ترجمة بعد.</td></tr>'}</tbody></table></div>`);
-  const glossaryPanel = panel('glossary', `<div data-glossary-manage><div class="section-head"><div><h2>${esc(tabLabels.glossary)}</h2><p class="muted">تثبيت ترجمة الأسماء والمصطلحات (أسماء تشاد، الأماكن، الشخصيات) قبل الترجمة الآلية — تُطبق تلقائيًا على ترجمة النصوص.</p></div></div><form class="translation-admin-options" data-glossary-form style="margin-bottom:1rem"><label class="field"><span>من لغة</span><select name="source_lang"><option value="fr">الفرنسية</option><option value="ar">العربية</option><option value="en">الإنجليزية</option></select></label><label class="field"><span>إلى لغة</span><select name="target_lang"><option value="ar">العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option></select></label><label class="field"><span>المصطلح الأصلي</span><input name="source_term" required maxlength="200" placeholder="مثال: Ouaddaï"></label><label class="field"><span>الترجمة المعتمدة</span><input name="target_term" required maxlength="200" placeholder="مثال: وداي"></label><label class="field"><span>ملاحظة (اختياري)</span><input name="notes" maxlength="500"></label><button class="btn btn-primary" type="submit">إضافة للمسرد</button></form><div class="table-wrap"><table class="tbl"><thead><tr><th>المسار</th><th>المصطلح</th><th>الترجمة</th><th>ملاحظة</th><th>إجراء</th></tr></thead><tbody data-glossary-rows><tr><td colspan="5" class="muted">جارٍ التحميل…</td></tr></tbody></table></div></div>`);
-  const body = `${pageHead('الترجمة', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div><nav class="translation-admin-tabs" data-translation-tabs role="tablist" aria-label="أقسام إدارة الترجمة">${tabLinks}</nav><div class="translation-admin-panels">${enginePanel}${manualPanel}${jobsPanel}${glossaryPanel}</div><script type="module" src="/js/admin-manual-translations.js?v=1"></script>`;
+  const body = `${pageHead('الترجمة', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<nav class="translation-admin-tabs" data-translation-tabs role="tablist"><button class="translation-admin-tab is-active" data-translation-tab="overview">نظرة عامة</button><button class="translation-admin-tab" data-translation-tab="upload">رفع نظير Word</button><button class="translation-admin-tab" data-translation-tab="requests">طلبات الترجمة</button></nav><section class="card translation-tab-panel" data-translation-panel="overview"><div class="section-head"><div><h2>ملفات الترجمة اليدوية</h2><p class="muted">تصنيف الملفات الأصلية وإدارة نظائر Word المرفوعة.</p></div><button class="btn btn-sm" data-translation-refresh>تحديث</button></div><div class="translation-stats" data-translation-stats></div><div class="table-wrap"><table class="tbl"><thead><tr><th>المادة</th><th>الملف</th><th>لغة الأصل</th><th>النظائر</th><th>إجراء</th></tr></thead><tbody data-translation-files><tr><td colspan="5" class="muted">جارٍ التحميل…</td></tr></tbody></table></div></section><section class="card translation-tab-panel" data-translation-panel="upload" hidden><h2>رفع نظير ترجمة</h2><p class="muted">اختر رقم الملف الأصلي من تبويب النظرة العامة، ثم ارفع ملف Word المنسق.</p><form data-translation-upload enctype="multipart/form-data"><label class="field"><span>معرف الملف الأصلي</span><input type="number" name="source_file_id" required></label><label class="field"><span>لغة الأصل</span><select name="source_lang"><option value="fr">الفرنسية</option><option value="ar">العربية</option><option value="en">الإنجليزية</option></select></label><label class="field"><span>لغة الترجمة</span><select name="target_lang"><option value="ar">العربية</option><option value="fr">الفرنسية</option></select></label><label class="field"><span>ملف Word (.docx)</span><input type="file" name="file" accept=".docx" required></label><button class="btn btn-primary" type="submit">رفع وحفظ</button><span data-translation-upload-status aria-live="polite"></span></form></section><section class="card translation-tab-panel" data-translation-panel="requests" hidden><div class="section-head"><h2>طلبات الترجمة</h2><button class="btn btn-sm" data-translation-requests-refresh>تحديث</button></div><div class="table-wrap"><table class="tbl"><thead><tr><th>المادة</th><th>الملف</th><th>اللغة المطلوبة</th><th>التاريخ</th><th>الحالة</th></tr></thead><tbody data-translation-requests><tr><td colspan="5" class="muted">جارٍ التحميل…</td></tr></tbody></table></div></section><script type="module" src="/js/admin-manual-translations.js?v=20261005"></script>`;
   return layout({ title: 'الترجمة', active: 'translation', user, body });
 }
 
@@ -691,7 +618,7 @@ async function materialFormPage(env, user, id) {
                   JOIN files f ON f.id = iv.file_id
                   WHERE iv.material_id = ? ORDER BY iv.sort_order, iv.created_at`).bind(m.id).all(),
       db.prepare('SELECT * FROM transcriptions WHERE material_id = ? ORDER BY layer').bind(m.id).all(),
-      db.prepare('SELECT * FROM translations WHERE material_id = ? ORDER BY updated_at DESC').bind(m.id).all(),
+      db.prepare('SELECT id FROM file_translations WHERE material_id = ? ORDER BY updated_at DESC').bind(m.id).all().catch(() => ({ results: [] })),
       db.prepare(`SELECT mr.id, mr.relation, mr.note, mm.ark, mm.title_ar
                   FROM material_relations mr
                   JOIN materials mm ON mm.id = CASE WHEN mr.material_a = ? THEN mr.material_b ELSE mr.material_a END
@@ -1810,7 +1737,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 </script>
 <script type="module" src="/js/researcher-pdf.js?v=20261004-page-translation-v6"></script>
 <script src="/researcher-feed-v5.js?v=20261004-reader-flow-v1" defer></script>
-<script src="/translate-inline.js?v=20261005-translation-speed-v1" defer></script>
+
 <script>
 (() => {
   const init = () => {

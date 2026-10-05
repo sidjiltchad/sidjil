@@ -43,6 +43,7 @@ async function inQuery(db, table, ids, cols = '*') {
 export async function routeApi(req, env) {
   const url = new URL(req.url);
   const path = normPath(url.pathname);
+  if (req.method === 'POST' && path === '/api/v1/translation-requests') return apiTranslationRequest(req, env);
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (path.startsWith('/api/v1/') || path.startsWith('/file/') || path.startsWith('/discussion-file/')) {
       return err('الطريقة غير مدعومة', 405);
@@ -73,6 +74,9 @@ export async function routeApi(req, env) {
   if (rest === 'stats') return apiStats(env);
   if (rest === 'glossary') return apiGlossary(env, url);
   if (rest === 'map-points') return apiMapPoints(env, url);
+
+  m = rest.match(/^materials\/(\d+)\/translations$/);
+  if (m) return apiMaterialTranslations(env, parseInt(m[1], 10));
 
   m = rest.match(/^document\/([^/]+)\/citation$/);
   if (m) return apiCitation(env, url, decodeURIComponent(m[1]));
@@ -109,6 +113,40 @@ async function serveDiscussionImage(env, id) {
   });
   if (object.size != null) headers.set('Content-Length', String(object.size));
   return new Response(object.body, { headers });
+}
+
+// ---------- طلبات نظائر الترجمة اليدوية ----------
+async function apiTranslationRequest(req, env) {
+  const db = env.DB;
+  let body;
+  try { body = await req.json(); } catch { return err('طلب غير صالح', 400); }
+  const materialId = parseInt(body.material_id, 10);
+  const rawFileId = body.source_file_id;
+  const fileId = rawFileId !== undefined && rawFileId !== '' ? parseInt(rawFileId, 10) : null;
+  const targetLang = ['ar', 'fr'].includes(body.target_lang) ? body.target_lang : null;
+  if (!Number.isFinite(materialId)) return err('المادة غير محددة', 400);
+  const mat = await db.prepare("SELECT id FROM materials WHERE id = ? AND publish_status = 'published'").bind(materialId).first();
+  if (!mat) return err('المادة غير موجودة', 404);
+  if (Number.isFinite(fileId)) {
+    const ready = await db.prepare("SELECT id FROM file_translations WHERE source_file_id = ? AND status = 'ready'").bind(fileId).first().catch(() => null);
+    if (ready) return err('الترجمة متوفرة بالفعل لهذا الملف', 409);
+  }
+  const ip = req.headers.get('cf-connecting-ip') || String(req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
+  const safeFileId = Number.isFinite(fileId) ? fileId : null;
+  const duplicate = await db.prepare(`SELECT id FROM translation_requests WHERE material_id = ? AND status = 'new' AND requester_ip = ? AND created_at >= datetime('now','-30 days') AND ((source_file_id = ?) OR (source_file_id IS NULL AND ? IS NULL))`).bind(materialId, ip, safeFileId, safeFileId).first().catch(() => null);
+  if (duplicate) return json({ ok: true, duplicate: true });
+  const count = await db.prepare("SELECT COUNT(*) AS c FROM translation_requests WHERE requester_ip = ? AND created_at >= datetime('now','-1 day')").bind(ip).first().catch(() => ({ c: 0 }));
+  if (Number(count?.c || 0) >= 5) return err('تجاوزت الحد اليومي لطلبات الترجمة', 429);
+  let requesterId = null; try { requesterId = (await getSessionUser(req, env))?.id || null; } catch {}
+  await db.prepare('INSERT INTO translation_requests (material_id, source_file_id, target_lang, requester_id, requester_ip) VALUES (?, ?, ?, ?, ?)').bind(materialId, safeFileId, targetLang, requesterId, ip).run();
+  return json({ ok: true }, 201);
+}
+
+async function apiMaterialTranslations(env, materialId) {
+  const mat = await env.DB.prepare("SELECT id FROM materials WHERE id = ? AND publish_status = 'published'").bind(materialId).first();
+  if (!mat) return err('المادة غير موجودة', 404);
+  const rows = await env.DB.prepare(`SELECT ft.source_file_id, ft.source_lang, ft.target_lang, ft.translation_file_id, f.filename AS translation_filename, f.size AS translation_size FROM file_translations ft JOIN files f ON f.id = ft.translation_file_id WHERE ft.material_id = ? AND ft.status = 'ready'`).bind(materialId).all().catch(() => ({ results: [] }));
+  return json({ items: rows.results || [] });
 }
 
 // ---------- البحث العام ----------

@@ -57,7 +57,7 @@ export async function getMaterialFull(db, ark) {
   const m = await db.prepare('SELECT * FROM materials WHERE ark = ?').bind(ark).first();
   if (!m) return null;
 
-  const [people, places, tags, collections, files, versions, transcriptions, translations, translationSegments] =
+  const [people, places, tags, collections, files, versions, transcriptions, fileTranslations] =
     await Promise.all([
       db
         .prepare(
@@ -108,20 +108,16 @@ export async function getMaterialFull(db, ark) {
         .bind(m.id)
         .all(),
       db
-        .prepare('SELECT * FROM translations WHERE material_id = ? ORDER BY updated_at DESC')
-        .bind(m.id)
-        .all(),
-      // مقاطع الترجمة الأحدث (للعرض الموازي)
-      db
         .prepare(
-          `SELECT ts.* FROM translation_segments ts
-           JOIN translations t ON t.id = ts.translation_id
-           WHERE t.material_id = ?
-             AND t.id = (SELECT id FROM translations WHERE material_id = ? AND target_lang = 'ar' ORDER BY updated_at DESC LIMIT 1)
-           ORDER BY ts.sequence_number`
+          `SELECT ft.*, f.filename AS translation_filename, f.size AS translation_size
+           FROM file_translations ft
+           LEFT JOIN files f ON f.id = ft.translation_file_id
+           WHERE ft.material_id = ? AND ft.status = 'ready' AND ft.translation_file_id IS NOT NULL
+           ORDER BY ft.target_lang`
         )
-        .bind(m.id, m.id)
-        .all(),
+        .bind(m.id)
+        .all()
+        .catch(() => ({ results: [] })),
     ]);
 
   // علاقات مادة↔مادة في الاتجاهين
@@ -152,8 +148,7 @@ export async function getMaterialFull(db, ark) {
     files: files.results,
     image_versions: versions.results,
     transcriptions: transcriptions.results,
-    translations: translations.results,
-    translation_segments: translationSegments.results,
+    file_translations: fileTranslations.results,
     relations: relations.results,
     place,
     source,
@@ -177,18 +172,8 @@ export async function rebuildSearchBlob(db, materialId) {
   const m = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(materialId).first();
   if (!m) return;
 
-  const [trRows, tlRows, segRows, pRows, plRows, tRows, srcRow] = await Promise.all([
+  const [trRows, pRows, plRows, tRows, srcRow] = await Promise.all([
     db.prepare('SELECT text FROM transcriptions WHERE material_id = ?').bind(materialId).all(),
-    db.prepare('SELECT text FROM translations WHERE material_id = ?').bind(materialId).all(),
-    db
-      .prepare(
-        `SELECT ts.source_text, ts.machine_translation, ts.reviewed_translation
-         FROM translation_segments ts
-         JOIN translations t ON t.id = ts.translation_id
-         WHERE t.material_id = ?`
-      )
-      .bind(materialId)
-      .all(),
     db
       .prepare(
         `SELECT p.name_ar, p.name_orig FROM people p
@@ -224,11 +209,6 @@ export async function rebuildSearchBlob(db, materialId) {
     m.description,
     m.full_text,
     trRows.results.map((r) => r.text).join(' '),
-    tlRows.results.map((r) => r.text).join(' '),
-    // مقاطع الترجمة: تُفضَّل المراجعة البشرية على الآلية في الفهرسة
-    segRows.results
-      .map((r) => `${r.source_text || ''} ${r.reviewed_translation || r.machine_translation || ''}`)
-      .join(' '),
     names(pRows, 'name_ar', 'name_orig'),
     names(plRows, 'name_ar', 'name_orig'),
     names(tRows, 'name_ar', 'name_orig'),

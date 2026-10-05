@@ -28,9 +28,6 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var readingPages = box.querySelector('[data-pdf-reading-pages]');
   var readBtn = box.querySelector('[data-pdf-read]');
   var hasReadingMode = !!(readingPages && readBtn);
-  var pdfFragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  var requestedPage = Math.max(0, parseInt(pdfFragment.get('pdf-page'), 10) || 0);
-  var requestedAnchor = (pdfFragment.get('pdf-anchor') || '').split(',').map(Number);
 
   var pdfDoc = null;
   var pageNum = 1;
@@ -39,8 +36,6 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var rendering = false;
   var readingMode = false;
   var readingObserver = null;
-  var pinchStart = null;
-  var lastTapAt = 0;
 
   function showError() {
     errEl.classList.remove('hidden');
@@ -124,16 +119,6 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
       }).promise;
     }).then(function () {
-      if (requestedPage === pageNumber && requestedAnchor.length === 4 && requestedAnchor.every(Number.isFinite)) {
-        var pageBox = pageCanvas.parentElement;
-        pageBox.style.position = 'relative';
-        var marker = pageBox.querySelector('.pdf-quote-anchor');
-        if (!marker) { marker = document.createElement('div'); marker.className = 'pdf-quote-anchor'; marker.setAttribute('aria-label', 'موضع التعليق'); pageBox.appendChild(marker); }
-        marker.style.left = (Math.max(0, Math.min(1, requestedAnchor[0])) * 100) + '%';
-        marker.style.top = (Math.max(0, Math.min(1, requestedAnchor[1])) * 100) + '%';
-        marker.style.width = (Math.max(0, Math.min(1, requestedAnchor[2])) * 100) + '%';
-        marker.style.height = (Math.max(0, Math.min(1, requestedAnchor[3])) * 100) + '%';
-      }
       pageCanvas.dataset.loading = '0';
       pageCanvas.dataset.rendered = '1';
     }).catch(function () {
@@ -204,38 +189,8 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       if (document.fullscreenElement) document.exitFullscreen();
       else if (el.requestFullscreen) el.requestFullscreen();
       else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      else el.classList.toggle('pdf-mobile-fullscreen');
-    } catch (e) { el.classList.toggle('pdf-mobile-fullscreen'); }
+    } catch (e) { /* غير مدعوم — يُتجاهل */ }
   });
-  document.addEventListener('fullscreenchange', function () {
-    if (document.fullscreenElement === box) box.classList.remove('pdf-mobile-fullscreen');
-  });
-
-  wrap.addEventListener('touchstart', function (event) {
-    if (event.touches.length === 2) {
-      var a = event.touches[0]; var b = event.touches[1];
-      pinchStart = { distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), scale: scale };
-    } else if (event.touches.length === 1) {
-      var now = Date.now();
-      if (now - lastTapAt < 280 && !readingMode) {
-        fitMode = !fitMode;
-        if (!fitMode) scale = Math.min(3, Math.max(1.25, scale * 1.5));
-        renderPage(); lastTapAt = 0;
-      } else lastTapAt = now;
-    }
-  }, { passive: true });
-  wrap.addEventListener('touchmove', function (event) {
-    if (!pinchStart || event.touches.length !== 2 || readingMode) return;
-    event.preventDefault();
-    var a = event.touches[0]; var b = event.touches[1];
-    pinchStart.nextScale = Math.min(5, Math.max(.4, pinchStart.scale * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinchStart.distance));
-  }, { passive: false });
-  wrap.addEventListener('touchend', function (event) {
-    if (!pinchStart) return;
-    if (event.touches.length) return;
-    if (pinchStart.nextScale && !readingMode) { fitMode = false; scale = pinchStart.nextScale; renderPage(); }
-    pinchStart = null;
-  }, { passive: true });
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
@@ -247,12 +202,98 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   pdfjsLib.getDocument({ url: url, withCredentials: true, ...pdfRenderOptions }).promise.then(function (doc) {
     pdfDoc = doc;
     countEl.textContent = String(doc.numPages);
-    if (hasReadingMode && (requestedPage > 0 || window.matchMedia('(max-width: 640px)').matches)) {
-      if (requestedPage > 0) pageNum = Math.min(doc.numPages, requestedPage);
-      enterReadingMode();
-      if (requestedPage > 0) requestAnimationFrame(function () { goTo(pageNum); });
-    } else renderPage();
+    renderPage();
   }).catch(function () {
     showError();
   });
+
+  /* ---------- تبديل لغة القراءة: نظير Word المترجم ---------- */
+  var docxView = box.querySelector('[data-docx-view]');
+  var toggleBtns = Array.prototype.slice.call(box.querySelectorAll('[data-doc-toggle]'));
+  var docxHandles = {}; // docxUrl -> handle
+  var activeDocxBtn = null;
+  var pageLang = document.documentElement.lang === 'fr' ? 'fr' : 'ar';
+
+  function setPdfControlsEnabled(on) {
+    box.classList.toggle('is-docx-mode', !on);
+  }
+
+  function showOriginal() {
+    if (activeDocxBtn) {
+      activeDocxBtn.textContent = activeDocxBtn.getAttribute('data-label-read');
+      activeDocxBtn.setAttribute('aria-pressed', 'false');
+      activeDocxBtn = null;
+    }
+    if (docxView) docxView.classList.add('hidden');
+    if (wrap) wrap.classList.remove('hidden');
+    setPdfControlsEnabled(true);
+    if (!readingMode) renderPage();
+  }
+
+  async function showDocx(btn) {
+    var docxUrl = btn.getAttribute('data-docx');
+    var docxLang = btn.getAttribute('data-docx-lang') || 'ar';
+    if (activeDocxBtn === btn) { showOriginal(); return; }
+    toggleBtns.forEach(function (b) {
+      b.textContent = b.getAttribute('data-label-read');
+      b.setAttribute('aria-pressed', 'false');
+    });
+    btn.textContent = btn.getAttribute('data-label-back');
+    btn.setAttribute('aria-pressed', 'true');
+    activeDocxBtn = btn;
+    if (readingMode) leaveReadingMode();
+    if (wrap) wrap.classList.add('hidden');
+    if (readingPages) readingPages.classList.add('hidden');
+    setPdfControlsEnabled(false);
+    if (docxView) {
+      docxView.classList.remove('hidden');
+      if (!docxHandles[docxUrl]) {
+        if (window.SidjilDocxReader && window.SidjilDocxReader.mount) {
+          try {
+            docxHandles[docxUrl] = await window.SidjilDocxReader.mount(docxView, { url: docxUrl, lang: docxLang });
+          } catch (e) { /* يعرض القارئ رسالة الخطأ بنفسه */ }
+        } else {
+          docxView.innerHTML = '<p class="docx-error"><a class="btn btn-small" href="' + docxUrl + '?download=1">' +
+            (pageLang === 'fr' ? 'Télécharger la traduction' : 'تنزيل ملف الترجمة') + '</a></p>';
+        }
+      }
+    }
+  }
+
+  toggleBtns.forEach(function (btn) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', function () { showDocx(btn); });
+  });
+
+  /* ---------- طلب ترجمة عند غياب النظير ---------- */
+  var requestBtn = box.querySelector('[data-request-translation]');
+  if (requestBtn) {
+    requestBtn.addEventListener('click', async function () {
+      if (requestBtn.disabled) return;
+      requestBtn.disabled = true;
+      var orig = requestBtn.textContent;
+      requestBtn.textContent = pageLang === 'fr' ? 'Envoi…' : 'جارٍ الإرسال…';
+      try {
+        var r = await fetch('/api/v1/translation-requests', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            material_id: Number(requestBtn.getAttribute('data-material-id')),
+            source_file_id: Number(requestBtn.getAttribute('data-file-id')) || null,
+          }),
+        });
+        var d = await r.json().catch(function () { return {}; });
+        if (!r.ok) throw new Error(d.error || '');
+        requestBtn.textContent = pageLang === 'fr'
+          ? (d.duplicate ? 'Demande déjà enregistrée ✓' : 'Demande envoyée ✓')
+          : (d.duplicate ? 'طلبك مسجل لدينا بالفعل ✓' : 'وصلنا طلبك ✓');
+      } catch (e) {
+        requestBtn.textContent = orig;
+        requestBtn.disabled = false;
+        alert(pageLang === 'fr'
+          ? 'Envoi impossible pour le moment. Réessayez plus tard.'
+          : 'تعذّر إرسال الطلب الآن. حاول لاحقًا.');
+      }
+    });
+  }
 })();

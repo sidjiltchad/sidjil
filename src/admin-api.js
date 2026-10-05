@@ -32,6 +32,7 @@ import {
   apiResearcherVerify,
 } from './discussions.js';
 import { MATERIAL_LEVEL_VALUES } from './lib/material-levels.js';
+import { translationOverview, translationUpload, translationFileLang, translationDelete, translationRequests, translationRequestUpdate } from './manual-translations.js';
 
 // ---------- أدوات ----------
 
@@ -471,6 +472,18 @@ export async function routeAdminApi(req, env) {
     return err('غير مصرح — هذه العملية من صلاحيات الإدارة فقط', 403);
   }
 
+  // منظومة النظائر اليدوية الجديدة (الإدارة فقط)
+  if (rest === 'translations/overview' && method === 'GET') return translationOverview(env, url);
+  if (rest === 'translations/upload' && method === 'POST') return translationUpload(env, user, req);
+  let manualMatch = rest.match(/^translations\/file-lang\/(\d+)$/);
+  if (manualMatch && method === 'PATCH') return withJsonBody(req, (body) => translationFileLang(env, user, req, parseInt(manualMatch[1], 10), body));
+  manualMatch = rest.match(/^translations\/file\/(\d+)$/);
+  if (manualMatch && method === 'DELETE') return translationDelete(env, user, req, parseInt(manualMatch[1], 10));
+  if (rest === 'translation-requests' && method === 'GET') return translationRequests(env, url);
+  manualMatch = rest.match(/^translation-requests\/(\d+)$/);
+  if (manualMatch && method === 'PATCH') return withJsonBody(req, (body) => translationRequestUpdate(env, user, req, parseInt(manualMatch[1], 10), body));
+  if (rest.startsWith('translation-segments') || /^translations\/\d+/.test(rest)) return err('مسار الترجمة القديم غير متاح', 410);
+
   // رفع عدد مجلة كامل بصيغة PDF — صلاحية الإدارة فقط.
   if (rest === 'journal/issues' && method === 'POST') {
     if (!isAdmin) return err('هذه العملية من صلاحيات الإدارة فقط', 403);
@@ -611,17 +624,8 @@ export async function routeAdminApi(req, env) {
   m = rest.match(/^translations\/(\d+)$/);
   if (m && method === 'DELETE') return admTranslationDelete(env, user, req, parseInt(m[1], 10));
 
-  // إدارة ترجمات المستندات الكاملة (وظائف الخلفية)
-  if (rest === 'manual-translations' && method === 'POST') return admManualTranslationUpload(env, user, req);
-  if (rest === 'translation-jobs' && method === 'GET') return admTranslationJobsList(env, url);
-  if (rest === 'translation-jobs/cleanup' && method === 'POST')
-    return withJsonBody(req, (body) => admTranslationJobsCleanup(env, user, req, body));
-  m = rest.match(/^translation-jobs\/([^/]+)\/cancel$/);
-  if (m && method === 'POST') return admTranslationJobCancel(env, user, req, decodeURIComponent(m[1]));
-  m = rest.match(/^translation-jobs\/([^/]+)\/retry$/);
-  if (m && method === 'POST') return admTranslationJobRetry(env, user, req, decodeURIComponent(m[1]));
-  m = rest.match(/^translation-jobs\/([^/]+)$/);
-  if (m && method === 'DELETE') return admTranslationJobDelete(env, user, req, decodeURIComponent(m[1]));
+  // مسارات منظومة الترجمة القديمة — مغلقة بعد الانتقال إلى نظائر Word.
+  if (rest === 'manual-translations' || rest.startsWith('translation-jobs')) return err('مسار الترجمة القديم غير متاح', 410);
 
   // مسرد المصطلحات (تثبيت الأسماء قبل الترجمة الآلية)
   if (rest === 'glossary' && method === 'GET') return admGlossaryList(env, url);
@@ -981,7 +985,8 @@ async function admMaterialDelete(env, user, req, idOrArk) {
     db.prepare('DELETE FROM material_collections WHERE material_id = ?').bind(m.id),
     db.prepare('DELETE FROM image_versions WHERE material_id = ?').bind(m.id),
     db.prepare('DELETE FROM transcriptions WHERE material_id = ?').bind(m.id),
-    db.prepare('DELETE FROM translations WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM file_translations WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM translation_requests WHERE material_id = ?').bind(m.id),
     db.prepare('DELETE FROM files WHERE material_id = ?').bind(m.id),
     db.prepare('UPDATE collections SET cover_material_id = NULL WHERE cover_material_id = ?').bind(m.id),
     db.prepare('DELETE FROM materials_fts WHERE ark = ?').bind(m.ark),

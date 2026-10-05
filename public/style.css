@@ -3719,3 +3719,73 @@ textarea { border-radius: var(--shape-control); }
 .manual-translation-pdf { display: block; width: 100%; height: min(78vh, 900px); border: 0; border-radius: .75rem; background: #f5f3ed; }
 .manual-translation-material form { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); align-items: end; gap: .75rem; margin-top: 1rem; }
 @media (max-width: 640px) { .manual-translation-pdf { height: 68vh; } .manual-translation-actions .btn { flex: 1 1 100%; } }
+/* ---------- عارض نظير Word المترجم (داخل قارئ المستند) ---------- */
+.docx-view {
+  overflow: auto;
+  max-height: 80vh;
+  padding: 16px;
+  background: #3a3f46;
+}
+.docx-view .docx-wrapper {
+  background: transparent;
+  padding: 0;
+}
+.docx-view .docx {
+  width: 100% !important;
+  max-width: 860px;
+  margin: 0 auto;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+.docx-view .docx .docx-page {
+  width: 100% !important;
+  min-height: 0;
+  margin: 0 auto 16px;
+  padding: 2rem 2.2rem;
+  background: #fff;
+  color: #111;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.docx-view .docx .docx-page p,
+.docx-view .docx .docx-page li,
+.docx-view .docx .docx-page td {
+  max-width: 100%;
+}
+.docx-view .docx table {
+  max-width: 100%;
+  border-collapse: collapse;
+}
+.docx-view .docx img {
+  max-width: 100%;
+  height: auto;
+}
+.docx-loading,
+.docx-error {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: #eee;
+}
+.docx-error .btn {
+  margin-inline-start: 0.6rem;
+}
+
+/* في وضع عرض الترجمة: إخفاء أدوات PDF الخاصة بالصفحات */
+.pdf-viewer.is-docx-mode [data-pdf-prev],
+.pdf-viewer.is-docx-mode [data-pdf-next],
+.pdf-viewer.is-docx-mode .pdf-pageinfo,
+.pdf-viewer.is-docx-mode [data-pdf-zoom-in],
+.pdf-viewer.is-docx-mode [data-pdf-zoom-out],
+.pdf-viewer.is-docx-mode [data-pdf-fit],
+.pdf-viewer.is-docx-mode [data-pdf-full],
+.pdf-viewer.is-docx-mode [data-pdf-read] {
+  display: none;
+}
+
+/* ---------- 16. بطاقات القوائم والتصنيفات (Lists & Categories) ---------- */
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 18px;
