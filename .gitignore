@@ -3,6 +3,8 @@ node_modules/
 .dev.vars
 translation-service/.env
 **/.env
+android/local.properties
+.gradle-user/
 backup/
 *.log
 .DS_Store

@@ -30,6 +30,7 @@ await cp(join(mobileSource, 'pdf-reader.js'), join(output, 'assets', 'pdf-reader
 await cp(join(mobileSource, 'docx-reader.js'), join(output, 'assets', 'docx-reader.js'));
 await cp(join(mobileSource, 'native-files.js'), join(output, 'assets', 'native-files.js'));
 await cp(join(mobileSource, 'native-upload.js'), join(output, 'assets', 'native-upload.js'));
+await cp(join(mobileSource, 'native-ux.js'), join(output, 'assets', 'native-ux.js'));
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.min.mjs'), join(output, 'assets', 'pdfjs', 'pdf.min.mjs'));
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.worker.min.mjs'), join(output, 'assets', 'pdfjs', 'pdf.worker.min.mjs'));
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'cmaps'), join(output, 'assets', 'pdfjs', 'cmaps'), { recursive: true });

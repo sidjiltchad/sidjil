@@ -78,6 +78,8 @@ export function createNavigation({ onRoute, historyLike = globalThis.history, lo
     emit();
     return { ...current };
   }
-  return { start, navigate, back, getRoute: () => ({ ...current }) };
+  function canGoBack() { return stack.length > 1; }
+  function stackDepth() { return stack.length; }
+  return { start, navigate, back, canGoBack, stackDepth, getRoute: () => ({ ...current }) };
 }
 

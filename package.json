@@ -26,15 +26,20 @@
     "test:mobile:pdf": "node scripts/mobile-phase5-pdf-check.mjs",
     "test:mobile:files": "node scripts/mobile-phase6-files-check.mjs",
     "test:mobile:word-upload": "node scripts/mobile-phase7-word-upload-check.mjs",
+    "test:mobile:android": "node scripts/mobile-phase8-android-check.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "telegram:setup": "node scripts/telegram-setup.mjs"
   },
   "version": "0.1.0",
   "dependencies": {
     "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "8.1.2",
     "@capacitor/core": "^8.5.2",
     "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/keyboard": "8.0.6",
     "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.4",
     "pdf-lib": "^1.17.1"
   }
 }

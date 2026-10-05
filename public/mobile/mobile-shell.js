@@ -11,6 +11,7 @@ import { mountPdfReader } from './pdf-reader.js';
 import { mountWordReader } from './docx-reader.js';
 import { createNativeFilesClient, NativeFileError } from './native-files.js';
 import { createNativeUploadClient, UploadError, validateUploadFile } from './native-upload.js';
+import { configureNativeChrome, hideNativeSplash, getNativePlugin, setupNativeUx, installInternalNavigationGuard } from './native-ux.js';
 
 const shell = document.querySelector('[data-mobile-shell]');
 const runtimeEl = shell?.querySelector('[data-runtime]');
@@ -94,13 +95,15 @@ function showError(message) {
   hideState(bottomNav);
   if (errorMessage) errorMessage.textContent = message;
   showState(error);
+  hideNativeSplash().catch(() => {});
 }
-function showOfflineState() { hideState(loading); hideState(error); hideState(appState); hideState(bottomNav); showState(offline); }
+function showOfflineState() { hideState(loading); hideState(error); hideState(appState); hideState(bottomNav); showState(offline); hideNativeSplash().catch(() => {}); }
 function showLogin(message = '') {
   hideState(loading); hideState(offline); hideState(error); hideState(appState);
   hideState(bottomNav);
   if (loginMessage) loginMessage.textContent = message;
   showState(loginState);
+  hideNativeSplash().catch(() => {});
 }
 function showApp() {
   hideState(loading); hideState(offline); hideState(error); hideState(loginState);
@@ -606,6 +609,28 @@ function renderRoute(route) {
   if (route.name === 'reader') loadReader(route.id, route.source);
 }
 const navigation = createNavigation({ onRoute: renderRoute });
+function nativeBack({ canGoBack: nativeCanGoBack = false } = {}) {
+  const active = document.activeElement;
+  const typing = active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+  const keyboard = getNativePlugin('Keyboard');
+  if (typing && keyboard?.hide) {
+    keyboard.hide().catch(() => {});
+    active.blur?.();
+    return;
+  }
+  const route = navigation.getRoute();
+  if (route.name !== 'feed' || navigation.canGoBack()) {
+    navigation.back();
+    return;
+  }
+  if (!nativeCanGoBack) getNativePlugin('App')?.exitApp?.().catch?.(() => {});
+}
+const nativeUxCleanup = setupNativeUx({ onBack: nativeBack });
+const navigationGuardCleanup = installInternalNavigationGuard({ allowedOrigin: ['https://app.sidjil.org', 'https://localhost', 'capacitor://localhost'] });
+configureNativeChrome().catch(() => {});
+// Hide the native launch window as soon as the shell script is ready. Session
+// checks continue inside the UI and can never leave the splash stuck offline.
+hideNativeSplash().catch(() => {});
 shell?.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigation.navigate(button.dataset.route)));
 shell?.addEventListener('click', event => {
   const author = event.target.closest('[data-profile-id]');
@@ -651,12 +676,14 @@ async function bootstrapSession() {
     if (sessionUser) sessionUser.textContent = 'مرحبًا ' + name;
     if (accountName) accountName.textContent = name;
     showApp();
+    hideNativeSplash().catch(() => {});
     nativeFiles.cleanupTemporaryFiles().catch(() => {});
     updateFilterButtons();
     navigation.start();
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === 'NETWORK_ERROR') return showOfflineState();
     showError(cause?.message || 'تعذر التحقق من الجلسة.');
+    hideNativeSplash().catch(() => {});
   }
 }
 loginForm?.addEventListener('submit', async event => {
@@ -673,6 +700,7 @@ loginForm?.addEventListener('submit', async event => {
     if (sessionUser) sessionUser.textContent = 'مرحبًا ' + name;
     if (accountName) accountName.textContent = name;
     showApp();
+    hideNativeSplash().catch(() => {});
     navigation.start();
     await loadFeed({ reset: true });
   } catch (cause) {
@@ -688,6 +716,7 @@ logoutButtons.forEach(button => button.addEventListener('click', async () => {
 }));
 window.addEventListener('online', retry);
 window.addEventListener('offline', showOfflineState);
+window.addEventListener('beforeunload', () => { nativeUxCleanup?.(); navigationGuardCleanup?.(); });
 shell?.querySelectorAll('[data-retry]').forEach(button => button.addEventListener('click', retry));
 if (new URLSearchParams(globalThis.location?.search || '').get('diagnostics') === '1') {
   const capacitor = globalThis.Capacitor;
