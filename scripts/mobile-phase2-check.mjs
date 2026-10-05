@@ -74,6 +74,7 @@ assert.match(authSource, /export async function login/);
 assert.match(authSource, /export async function logout/);
 assert.match(indexSource, /CAPACITOR_ORIGINS/);
 assert.match(indexSource, /Access-Control-Allow-Credentials/);
+assert.match(indexSource, /capacitor:\/\/localhost/);
 assert.match(adminApiSource, /rest === 'session'/);
 assert.doesNotMatch(authSource, /localStorage|sessionStorage|password.*setItem/i);
 
