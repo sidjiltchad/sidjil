@@ -33,6 +33,7 @@ assert.doesNotMatch(manifest, /usesCleartextTraffic\s*=\s*"true"/);
 assert.match(styles, /android:statusBarColor/);
 assert.match(styles, /android:navigationBarColor/);
 assert.match(styles, /postSplashScreenTheme/);
+assert.match(styles, /windowSplashScreenAnimatedIcon/);
 assert.match(colors, /sidjil_navy/);
 assert.match(activity, /installSplashScreen\(this\)/);
 assert.match(activity, /setKeepOnScreenCondition\(\(\) -> false\)/);
@@ -57,6 +58,7 @@ assert.match(gitignore, /android\/local\.properties/);
 for (const file of [
   'dist-capacitor/assets/native-ux.js',
   'android/app/src/main/res/values/colors.xml',
+  'android/app/src/main/res/drawable/splash_icon.png',
 ]) await stat(join(root, file));
 
 console.log('Phase 8 Android UX contract checks passed. Device validation remains environment-dependent.');
