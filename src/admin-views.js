@@ -1644,6 +1644,9 @@ ${csrfMeta}
 <link rel="stylesheet" href="/admin.css?v=20261005-researcher-fullscreen-v1">
 </head>
 <body class="researcher-body">
+<script>
+try { if (localStorage.getItem('sidjil_researcher_fullscreen') === '1') document.body.classList.add('researcher-fullscreen'); } catch {}
+</script>
 <div class="admin-shell researcher-shell">
   <div class="topbar">
     <a class="topbar-brand researcher-brand-logo" href="/researcher" aria-label="العودة إلى الصفحة الرئيسية لمساحة الباحث"><img class="researcher-logo" src="/sidjil-logo.png" alt="سِجِل"><span class="researcher-wordmark">سجل</span></a>
@@ -1787,7 +1790,10 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
     if (fullscreenToggle && !fullscreenToggle.dataset.sjBound) {
       fullscreenToggle.dataset.sjBound = '1';
       const label = fullscreenToggle.querySelector('[data-fullscreen-label]');
-      let fallbackFullscreen = false;
+      const readFullscreenPreference = () => { try { return localStorage.getItem('sidjil_researcher_fullscreen') === '1'; } catch { return false; } };
+      const writeFullscreenPreference = (active) => { try { localStorage.setItem('sidjil_researcher_fullscreen', active ? '1' : '0'); } catch {} };
+      let fallbackFullscreen = readFullscreenPreference();
+      let nativeFullscreenStarted = false;
       const setFullscreenState = () => {
         const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement || fallbackFullscreen);
         fullscreenToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -1795,15 +1801,20 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
         document.body.classList.toggle('researcher-fullscreen', active);
       };
       fullscreenToggle.addEventListener('click', async () => {
+        const shouldEnter = !(document.fullscreenElement || document.webkitFullscreenElement || fallbackFullscreen);
+        writeFullscreenPreference(shouldEnter);
         try {
-          if (document.fullscreenElement || document.webkitFullscreenElement || fallbackFullscreen) {
+          if (!shouldEnter) {
             if (document.exitFullscreen) await document.exitFullscreen();
             else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            nativeFullscreenStarted = false;
             fallbackFullscreen = false;
           } else if (document.documentElement.requestFullscreen) {
             await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+            nativeFullscreenStarted = true;
           } else if (document.documentElement.webkitRequestFullscreen) {
             document.documentElement.webkitRequestFullscreen();
+            nativeFullscreenStarted = true;
           } else {
             // بعض المتصفحات المضمنة لا تعرض Fullscreen API؛ يبقى التطبيق ممتدًا داخل مساحة العرض.
             fallbackFullscreen = true;
@@ -1811,8 +1822,17 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
         } catch { fallbackFullscreen = true; /* يتطلب المتصفح نقرة المستخدم للسماح بملء الشاشة */ }
         setFullscreenState();
       });
-      document.addEventListener('fullscreenchange', setFullscreenState);
-      document.addEventListener('webkitfullscreenchange', setFullscreenState);
+      const syncNativeFullscreen = () => {
+        const activeNative = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+        if (!activeNative && nativeFullscreenStarted) {
+          nativeFullscreenStarted = false;
+          fallbackFullscreen = false;
+          writeFullscreenPreference(false);
+        }
+        setFullscreenState();
+      };
+      document.addEventListener('fullscreenchange', syncNativeFullscreen);
+      document.addEventListener('webkitfullscreenchange', syncNativeFullscreen);
       setFullscreenState();
     }
   };
