@@ -85,7 +85,7 @@ export async function mount(container, options = {}) {
     const docxUrl = `/file/${item.translation_file_id}`; setDirection(item.target_lang || 'ar'); translationPane.hidden = false; docxView.classList.add('is-loading');
     if (state.docxHandles[docxUrl]) { docxView.classList.remove('is-loading'); return; }
     docxView.innerHTML = '<p class="docx-loading muted">جارٍ تحميل الترجمة…</p>';
-    try { const reader = await waitForDocxReader(); state.docxHandles[docxUrl] = await reader.mount(docxView, { url: docxUrl, lang: item.target_lang || 'ar' }); docxView.classList.remove('is-loading'); }
+    try { const reader = await waitForDocxReader(); state.docxHandles[docxUrl] = await reader.mount(docxView, { url: docxUrl, lang: item.target_lang || 'ar', textOnly: true }); docxView.classList.remove('is-loading'); }
     catch { docxView.classList.remove('is-loading'); docxView.innerHTML = `<p class="docx-error">تعذّر عرض الترجمة داخل المتصفح. <a href="${escapeHtml(docxUrl)}?download=1">تنزيل ملف الترجمة</a> <button type="button" data-rpdf-translation-retry>إعادة المحاولة</button></p>`; docxView.querySelector('[data-rpdf-translation-retry]')?.addEventListener('click', () => { delete state.docxHandles[docxUrl]; loadTranslation(item); }); }
   }
   async function selectTranslation(item) { if (!item) return; state.activeTranslation = item; state.viewMode = 1; updateLayout(); await loadTranslation(item); setControlsVisible(true); }

@@ -115,6 +115,7 @@
 
     let destroyed = false;
     let blob = null;
+    let pages = null;
     try {
       await ensureLibs();
       // Translation files are served with a long immutable cache policy. A
@@ -128,9 +129,19 @@
       }
       if (destroyed) return { destroy() {} };
       loading.remove();
-      const pages = document.createElement('div');
+      pages = document.createElement('div');
       pages.className = 'docx-pages';
       container.appendChild(pages);
+      if (opts && opts.textOnly) {
+        await renderPlainText(blob, pages, lang);
+        if (destroyed) { container.innerHTML = ''; return { destroy() {} }; }
+        return {
+          destroy() {
+            destroyed = true;
+            container.innerHTML = '';
+          },
+        };
+      }
       await window.docx.renderAsync(blob, pages, null, {
         className: 'sidjil-docx',
         inWrapper: true,
@@ -143,6 +154,11 @@
       if (destroyed) { container.innerHTML = ''; return { destroy() {} }; }
     } catch (e) {
       try {
+        if (!pages) {
+          pages = document.createElement('div');
+          pages.className = 'docx-pages';
+          container.replaceChildren(pages);
+        }
         await renderPlainText(blob, pages, lang);
       } catch (fallbackError) {
         if (!destroyed) {
