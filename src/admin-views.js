@@ -1640,7 +1640,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261011-researcher-reader">
+<link rel="stylesheet" href="/admin.css?v=20261011-researcher-reader-fix2">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">

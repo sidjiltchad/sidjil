@@ -1033,6 +1033,7 @@ input[type="checkbox"], input[type="radio"] {
 
 /* قارئ مساحة الباحث: طبقة قراءة مستقلة، تراكبية، ومتجاوبة */
 body.rpdf-reader-open { overflow: hidden; }
+body.rpdf-reader-open .researcher-bottom-nav { display: none !important; }
 .rpdf-reader-host { position: fixed; inset: 0; z-index: 2400; }
 .rpdf-reader-overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 8, 13, .76); color: #e8edf5; }
 .rpdf-reader-surface { position: relative; display: flex; flex-direction: column; width: min(1100px, 100%); height: min(94dvh, 900px); overflow: hidden; background: #0b0e13; border: 1px solid rgba(255,255,255,.12); border-radius: 20px; box-shadow: 0 28px 90px rgba(0,0,0,.48); transition: transform .28s cubic-bezier(.2,.8,.2,1); }
