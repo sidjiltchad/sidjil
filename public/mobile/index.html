@@ -26,8 +26,26 @@
         </section>
         <section class="mobile-state is-loading" data-loading-state aria-live="polite">
           <span class="mobile-spinner" aria-hidden="true"></span>
-          <strong>جارٍ تجهيز مساحة الباحث</strong>
-          <span>سيتم توصيل الموجز والبحث والقارئ في المرحلة التالية.</span>
+          <strong>جارٍ التحقق من الجلسة…</strong>
+          <span>يتم الاتصال بمساحة الباحث بأمان.</span>
+        </section>
+        <section class="mobile-auth-card" data-login-state hidden aria-labelledby="mobile-login-title">
+          <h2 id="mobile-login-title">تسجيل الدخول</h2>
+          <p>أدخل بيانات حساب الباحث للوصول إلى مساحة سِجِل.</p>
+          <form data-login-form novalidate>
+            <label>اسم المستخدم<input name="username" type="text" autocomplete="username" required></label>
+            <label>كلمة المرور<input name="password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" data-login-submit>دخول</button>
+            <span class="mobile-form-message" data-login-message role="status"></span>
+          </form>
+        </section>
+        <section class="mobile-auth-card" data-authenticated-state hidden aria-labelledby="mobile-authenticated-title">
+          <p class="mobile-eyebrow">جلسة الباحث</p>
+          <h2 id="mobile-authenticated-title">تم تسجيل الدخول بنجاح</h2>
+          <p data-session-user></p>
+          <p class="mobile-session-status" data-session-status>الجلسة محفوظة عبر Cookie آمنة.</p>
+          <button type="button" data-logout>تسجيل الخروج</button>
+          <span class="mobile-form-message" data-session-message role="status"></span>
         </section>
         <section class="mobile-state is-offline" data-offline-state hidden role="status">
           <strong>لا يوجد اتصال بالشبكة</strong>

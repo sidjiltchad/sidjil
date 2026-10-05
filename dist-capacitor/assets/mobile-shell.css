@@ -58,6 +58,17 @@ a { color: inherit; text-decoration: none; }
 .mobile-spinner { width: 1.4rem; height: 1.4rem; border: 2px solid rgba(255,255,255,.3); border-top-color: #f4b63f; border-radius: 50%; animation: mobile-spin .8s linear infinite; }
 .mobile-state.is-error { border-color: rgba(240,95,95,.5); }
 .mobile-state.is-offline { border-color: rgba(244,182,63,.5); }
+.mobile-auth-card { margin: 2.2rem auto 0; max-width: 32rem; padding: 1.4rem; border: 1px solid rgba(255,255,255,.14); border-radius: 18px; background: rgba(255,255,255,.08); box-shadow: 0 18px 50px rgba(0,0,0,.2); }
+.mobile-auth-card h2 { margin: 0; font-size: 1.3rem; }
+.mobile-auth-card > p { margin: .5rem 0 1rem; color: #b9c7df; line-height: 1.8; }
+.mobile-auth-card form { display: grid; gap: .8rem; }
+.mobile-auth-card label { display: grid; gap: .35rem; color: #dce7fb; font-size: .9rem; }
+.mobile-auth-card input { width: 100%; border: 1px solid rgba(255,255,255,.18); border-radius: 12px; padding: .7rem .8rem; background: rgba(0,0,0,.2); color: #fff; outline: none; }
+.mobile-auth-card input:focus { border-color: #f4b63f; box-shadow: 0 0 0 3px rgba(244,182,63,.16); }
+.mobile-auth-card button { border: 0; border-radius: 999px; padding: .65rem 1rem; background: #f4b63f; color: #172033; font-weight: 700; cursor: pointer; }
+.mobile-auth-card button:disabled { opacity: .6; cursor: wait; }
+.mobile-form-message { min-height: 1.2rem; color: #ffb0a8; font-size: .85rem; }
+.mobile-session-status { font-size: .85rem; }
 .mobile-bottom-nav { display: flex; justify-content: center; gap: .5rem; padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom)); border-top: 1px solid rgba(255,255,255,.1); background: rgba(4,9,18,.76); }
 .mobile-bottom-nav a { min-width: 7rem; padding: .55rem .8rem; border-radius: 999px; color: #9db2d8; text-align: center; }
 .mobile-bottom-nav a.is-active { background: rgba(244,182,63,.16); color: #ffd879; }
