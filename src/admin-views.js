@@ -2121,7 +2121,7 @@ async function loadResearcherFollowingFeed(env, user, { search = '', cursor = ''
   const fetchLimit = safeLimit + 1;
   const [fMats, fDiscs] = await Promise.all([
     env.DB.prepare(
-      `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
+      `SELECT m.id, m.ark, m.type, m.material_level, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
               m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
               m.updated_at AS sort_date,
               COALESCE(u.display_name, u.username, 'باحث') AS author_name,
@@ -2966,7 +2966,7 @@ async function researcherSearchApi(env, user, req) {
   const materialWhere = fts ? ' WHERE materials_fts MATCH ? AND m.publish_status = \'published\'' : ' WHERE m.publish_status = \'published\' AND (m.ark LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.description LIKE ?)';
   const materialParams = fts ? [fts, limit] : [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, limit];
   const [materials, researchers, discussions, replies] = await Promise.all([
-    env.DB.prepare(`SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text, m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
+    env.DB.prepare(`SELECT m.id, m.ark, m.type, m.material_level, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text, m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
       creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
       s.name_ar AS source_name_ar, s.name AS source_name, p.name_ar AS place_name, mai.cover_file_id AS thumb_id, mai.pdf_file_id AS pdf_id, 0 AS discussions_count
       FROM materials m${materialJoin}
