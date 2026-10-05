@@ -108,6 +108,7 @@ export async function getMaterialFull(db, ark) {
         .bind(m.id)
         .all(),
       // نظائر الترجمة المرفوعة (Word) — تُعرض في القارئ عند اختيار لغة أخرى
+      // متسامح مع غياب الجدول (قبل تطبيق هجرة 0035 على قاعدة قديمة)
       db
         .prepare(
           `SELECT ft.*, f.filename AS translation_filename, f.size AS translation_size
@@ -117,7 +118,8 @@ export async function getMaterialFull(db, ark) {
            ORDER BY ft.target_lang`
         )
         .bind(m.id)
-        .all(),
+        .all()
+        .catch(() => ({ results: [] })),
     ]);
 
   // علاقات مادة↔مادة في الاتجاهين

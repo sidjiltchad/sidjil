@@ -173,14 +173,18 @@ async function apiMaterialTranslations(env, materialId) {
     .prepare("SELECT id FROM materials WHERE id = ? AND publish_status = 'published'")
     .bind(materialId).first();
   if (!mat) return err('المادة غير موجودة', 404);
-  const rows = await db.prepare(
-    `SELECT ft.source_file_id, ft.source_lang, ft.target_lang, ft.translation_file_id,
-            f.filename AS translation_filename, f.size AS translation_size
-     FROM file_translations ft
-     JOIN files f ON f.id = ft.translation_file_id
-     WHERE ft.material_id = ? AND ft.status = 'ready'`
-  ).bind(materialId).all();
-  return json({ items: rows.results || [] });
+  let items = [];
+  try {
+    const rows = await db.prepare(
+      `SELECT ft.source_file_id, ft.source_lang, ft.target_lang, ft.translation_file_id,
+              f.filename AS translation_filename, f.size AS translation_size
+       FROM file_translations ft
+       JOIN files f ON f.id = ft.translation_file_id
+       WHERE ft.material_id = ? AND ft.status = 'ready'`
+    ).bind(materialId).all();
+    items = rows.results || [];
+  } catch { items = []; /* قبل هجرة 0035 */ }
+  return json({ items });
 }
 
 // ---------- البحث العام ----------
