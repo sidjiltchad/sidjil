@@ -5,8 +5,8 @@
 // - الـ API: network-only (لا تخزين مؤقت للنقاشات — تظهر تلقائيًا)
 // ============================================================
 
-const STATIC_CACHE = 'sidjil-static-v2';
-const PAGES_CACHE = 'sidjil-pages-v2';
+const STATIC_CACHE = 'sidjil-static-v3';
+const PAGES_CACHE = 'sidjil-pages-v3';
 
 const STATIC_ASSETS = [
   '/style.css',
@@ -14,6 +14,10 @@ const STATIC_ASSETS = [
   '/js/discussions.js',
   '/logo.png',
   '/manifest.json',
+  '/app-manifest.json',
+  '/admin.css',
+  '/sidjil-logo.png',
+  '/icons/icon-192.png',
   '/fonts/ibm-plex-sans-arabic-400.woff2',
   '/fonts/ibm-plex-sans-arabic-500.woff2',
   '/fonts/ibm-plex-sans-arabic-600.woff2',
@@ -35,7 +39,8 @@ self.addEventListener('activate', (event) => {
 });
 
 function isStatic(url) {
-  return /\.(css|js|png|jpg|jpeg|webp|svg|woff2?|ico)$/.test(url.pathname) || url.pathname === '/manifest.json';
+  return /\.(css|js|png|jpg|jpeg|webp|svg|woff2?|ico)$/.test(url.pathname)
+    || url.pathname === '/manifest.json' || url.pathname === '/app-manifest.json';
 }
 
 function isApi(url) {

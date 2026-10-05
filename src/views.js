@@ -5,6 +5,7 @@ import { discussionsPage, discussionPage, registerPage, discussionSectionHTML, r
 import { searchMaterials } from './lib/search.js';
 import { getMaterialFull } from './lib/db.js';
 import { buildCitation } from './lib/citation.js';
+import { MATERIAL_LEVELS, materialLevelLabel, materialLevelDescription } from './lib/material-levels.js';
 
 // الأنواع الستة للوصول السريع (التصور §6) + كل الأنواع الثمانية
 export const QUICK_TYPES = ['document', 'book', 'image', 'manuscript', 'map', 'press'];
@@ -37,6 +38,10 @@ export function esc(s) {
 
 export function typeLabel(lang, type) {
   return t(lang, 'type_' + type, {});
+}
+
+export function levelLabel(lang, level) {
+  return materialLevelLabel(level, lang);
 }
 
 export function confidenceLabel(lang, c) {
@@ -286,7 +291,7 @@ export function cardHTML(ctx, m) {
     <a class="card-link" href="${langPath(ctx, '/document/' + encodeURIComponent(m.ark))}" aria-label="${esc(title)}">
       ${thumb}
       <div class="card-body">
-        <div class="card-tags"><span class="badge badge-type">${esc(typeLabel(lang, m.type))}</span></div>
+        <div class="card-tags"><span class="badge badge-type">${esc(typeLabel(lang, m.type))}</span>${m.material_level ? `<span class="badge badge-level" title="${esc(materialLevelDescription(m.material_level, lang))}">${esc(levelLabel(lang, m.material_level))}</span>` : ''}</div>
         <h3 class="card-title">${esc(title)}</h3>
         ${titleOrig}
         ${snippet}
@@ -558,6 +563,7 @@ async function filterOptions(env) {
     regions: (regions.results || []).map(r => r.region),
     langs: (langs.results || []).map(r => r.language),
     sources: sources.results || [],
+    levels: Object.keys(MATERIAL_LEVELS),
   };
 }
 
@@ -577,6 +583,7 @@ function filterBarHTML(ctx, opts, current, basePath) {
     <input type="hidden" name="lang" value="${lang}">
     <input type="search" name="q" class="filter-q" value="${esc(current.q || '')}" placeholder="${esc(t(lang, 'search_placeholder'))}" aria-label="${esc(t(lang, 'nav_search'))}">
     ${sel('type', opts.types.map(tp => ({ value: tp, label: typeLabel(lang, tp) })), t(lang, 'all_types'))}
+    ${sel('level', opts.levels.map(level => ({ value: level, label: levelLabel(lang, level) })), lang === 'fr' ? 'Tous les formats' : 'كل التصنيفات')}
     ${sel('region', opts.regions, t(lang, 'all_regions'))}
     ${sel('language', opts.langs, t(lang, 'all_languages'))}
     ${sel('source', opts.sources.map(s => ({ value: String(s.id), label: s.name_ar || s.name })), t(lang, 'all_sources'))}
@@ -595,12 +602,14 @@ async function archivePage(ctx) {
     region: sp.get('region') || '',
     lang: sp.get('language') || '',
     sourceId: sp.get('source') || '',
+    level: sp.get('level') || '',
     page, perPage: PER_PAGE, publishedOnly: true,
   };
   if (!params.type) delete params.type;
   if (!params.region) delete params.region;
   if (!params.lang) delete params.lang;
   if (!params.sourceId) delete params.sourceId;
+  if (!params.level) delete params.level;
 
   const res = await searchMaterials(env.DB, params);
   const items = await enrichMaterials(env, res.items || []);
@@ -610,7 +619,7 @@ async function archivePage(ctx) {
   const content = `
   <div class="wrap page-head">
     <h1 class="page-title">${esc(t(lang, 'nav_archive'))}</h1>
-    ${filterBarHTML(ctx, opts, { q: params.q, type: params.type || '', region: params.region || '', language: params.lang || '', source: params.sourceId || '' }, '/archive')}
+    ${filterBarHTML(ctx, opts, { q: params.q, type: params.type || '', level: params.level || '', region: params.region || '', language: params.lang || '', source: params.sourceId || '' }, '/archive')}
   </div>
   <div class="wrap section">
     ${cardsGrid(ctx, items)}
@@ -679,7 +688,7 @@ async function advancedSearchPage(ctx) {
     const params = {
       q: sp.get('q') || '', page, perPage: PER_PAGE, publishedOnly: true,
     };
-    const map = { type: 'type', fromYear: 'from_year', toYear: 'to_year', region: 'region', lang: 'language', sourceId: 'source', personId: 'person', tagId: 'tag', translationStatus: 'translation_status' };
+    const map = { type: 'type', level: 'level', fromYear: 'from_year', toYear: 'to_year', region: 'region', lang: 'language', sourceId: 'source', personId: 'person', tagId: 'tag', translationStatus: 'translation_status' };
     for (const [pk, qk] of Object.entries(map)) {
       const v = sp.get(qk);
       if (v) params[pk] = v;
@@ -708,6 +717,7 @@ async function advancedSearchPage(ctx) {
       <input type="hidden" name="lang" value="${lang}">
       ${field('q', t(lang, 'field_keyword'), `<input type="search" name="q" value="${esc(sp.get('q') || '')}" placeholder="${esc(t(lang, 'search_placeholder'))}">`)}
       ${field('type', t(lang, 'field_type'), sel('type', opts.types.map(tp => ({ value: tp, label: typeLabel(lang, tp) })), t(lang, 'all_types')))}
+      ${field('level', lang === 'fr' ? 'Format de la matière' : 'تصنيف المادة', sel('level', opts.levels.map(level => ({ value: level, label: levelLabel(lang, level) })), lang === 'fr' ? 'Tous les formats' : 'كل التصنيفات'))}
       <div class="adv-row">
         ${field('from_year', t(lang, 'field_from_year'), `<input type="number" name="from_year" value="${esc(sp.get('from_year') || '')}" min="1500" max="2100">`)}
         ${field('to_year', t(lang, 'field_to_year'), `<input type="number" name="to_year" value="${esc(sp.get('to_year') || '')}" min="1500" max="2100">`)}
@@ -1023,6 +1033,7 @@ async function documentPage(ctx, ark) {
       <header class="doc-head">
         <div class="doc-badges">
           <span class="badge badge-type">${esc(typeLabel(lang, m.type))}</span>
+          ${m.material_level ? `<span class="badge badge-level" title="${esc(materialLevelDescription(m.material_level, lang))}">${esc(levelLabel(lang, m.material_level))}</span>` : ''}
           <span class="badge badge-ark" dir="ltr">${esc(m.ark)}</span>
         </div>
         <h1 class="doc-title">${esc(title)}</h1>

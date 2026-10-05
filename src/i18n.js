@@ -8,7 +8,7 @@ export const STR = {
   ar: {
     site_name: 'سِجِل',
     site_name_latin: 'SIDJIL',
-    site_sub: 'أرشيف تاريخ تشاد الرقمي',
+    site_sub: 'أرشيف تشاد الرقمي',
     tagline: 'ذاكرة تشاد بين يدي الباحث',
     tagline2: 'نحفظ الوثيقة، ونستعيد الذاكرة',
     search_placeholder: 'ابحث في تاريخ تشاد...',

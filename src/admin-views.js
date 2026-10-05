@@ -8,6 +8,7 @@
 
 // ---------- ثوابت العرض ----------
 import { syncContentRepairQueue } from './admin-api.js';
+import { MATERIAL_LEVELS, materialLevelLabel, materialLevelDescription } from './lib/material-levels.js';
 
 const TYPE_LABELS = {
   document: 'وثيقة',
@@ -21,6 +22,10 @@ const TYPE_LABELS = {
   journal: 'عدد مجلة',
   article: 'مقال',
 };
+const MATERIAL_LEVEL_LABELS = Object.fromEntries(Object.entries(MATERIAL_LEVELS).map(([key, value]) => [key, value.ar]));
+const MATERIAL_LEVEL_OPTIONS = Object.entries(MATERIAL_LEVELS)
+  .map(([value, item]) => `<option value="${esc(value)}">${esc(item.ar)}</option>`)
+  .join('');
 const STATUS_LABELS = { draft: 'مسودة', in_review: 'قيد المراجعة', changes_requested: 'مطلوب تعديلها', published: 'منشورة', hidden: 'مخفية' };
 const STATUS_CLASS = { draft: 'b-draft', in_review: 'b-review', changes_requested: 'b-review', published: 'b-pub', hidden: 'b-hidden' };
 const TRSC_LABELS = { none: 'لا يوجد', auto: 'استخراج آلي', corrected: 'مصحح يدويًا' };
@@ -266,7 +271,7 @@ async function dashboardPage(env, user, req) {
     db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status='FAILED'").first(),
     db.prepare("SELECT COUNT(*) c FROM social_reports WHERE status IN ('open','reviewing')").first(),
     db.prepare("SELECT COUNT(DISTINCT visitor_hash) c FROM visitor_daily WHERE day=date('now')").first(),
-    db.prepare(`SELECT id, ark, type, title_ar, publish_status, created_at
+    db.prepare(`SELECT id, ark, type, material_level, title_ar, publish_status, created_at
       FROM materials ORDER BY created_at DESC LIMIT 6`).all(),
     db.prepare(`SELECT a.id, a.action, a.target, a.created_at, u.username
       FROM audit_log a LEFT JOIN admin_users u ON u.id = a.user_id
@@ -288,7 +293,7 @@ async function dashboardPage(env, user, req) {
     <tr>
       <td class="mono">${esc(m.ark)}</td>
       <td><a href="/admin/materials/${m.id}">${esc(m.title_ar)}</a></td>
-      <td>${esc(TYPE_LABELS[m.type] || m.type)}</td>
+      <td>${esc(MATERIAL_LEVEL_LABELS[m.material_level] || TYPE_LABELS[m.type] || m.type)}</td>
       <td>${badge(STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</td>
       <td class="muted">${fmtDate(m.created_at)}</td>
     </tr>`).join('');
@@ -352,53 +357,38 @@ async function contentHealthPage(env, user, req) {
   const url = new URL(req.url);
   const status = ['all', 'published', 'draft'].includes(url.searchParams.get('status')) ? url.searchParams.get('status') : 'published';
   const type = String(url.searchParams.get('type') || '').trim();
+  const level = Object.prototype.hasOwnProperty.call(MATERIAL_LEVELS, url.searchParams.get('level')) ? url.searchParams.get('level') : '';
   const q = String(url.searchParams.get('q') || '').trim().slice(0, 120);
   const issuesOnly = url.searchParams.get('issues') === 'only';
+  const missingCoverExpr = `((m.material_level = 'archival_image' AND a.image_file_id IS NULL) OR (m.material_level IN ('archival_book_original','archival_book_unavailable','chadian_publication') AND a.cover_file_id IS NULL))`;
+  const missingPdfExpr = `(m.material_level = 'archival_book_original' AND a.pdf_file_id IS NULL)`;
+  const missingTextExpr = `(m.material_level = 'archival_text' AND COALESCE(length(trim(m.full_text)), 0) = 0 AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0))`;
+  const issueExpr = `(${missingCoverExpr} OR ${missingPdfExpr} OR ${missingTextExpr} OR a.integrity_status = 'missing')`;
   const where = [];
   const binds = [];
   if (status !== 'all') { where.push('m.publish_status = ?'); binds.push(status); }
   if (type) { where.push('m.type = ?'); binds.push(type); }
+  if (level) { where.push('m.material_level = ?'); binds.push(level); }
   if (q) { where.push('(m.ark LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ?)'); binds.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   if (issuesOnly) {
-    where.push(`(
-      (a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> 'image') OR
-      (m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL) OR
-      (m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
-        AND COALESCE(length(trim(m.full_text)), 0) = 0
-        AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)) OR
-      a.integrity_status = 'missing'
-    )`);
+    where.push(issueExpr);
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const [summary, rows] = await Promise.all([
     Promise.all([
       db.prepare(`SELECT COUNT(*) AS c FROM materials m ${status === 'all' ? '' : 'WHERE m.publish_status = ?'}`).bind(...(status === 'all' ? [] : [status])).first(),
-      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> \'image\'' : 'WHERE m.publish_status = ? AND a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> \'image\''}`).bind(...(status === 'all' ? [] : [status])).first(),
-      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.pdf_file_id IS NULL AND m.type IN (\'book\',\'article\',\'journal\')' : 'WHERE m.publish_status = ? AND a.pdf_file_id IS NULL AND m.type IN (\'book\',\'article\',\'journal\')'}`).bind(...(status === 'all' ? [] : [status])).first(),
-      db.prepare(`SELECT COUNT(*) AS c FROM materials m ${status === 'all' ? 'WHERE' : 'WHERE m.publish_status = ? AND'} m.type IN ('document','article','excerpt','correspondence','manuscript') AND COALESCE(length(trim(m.full_text)), 0) = 0 AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE ' : 'WHERE m.publish_status = ? AND '}${missingCoverExpr}`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE ' : 'WHERE m.publish_status = ? AND '}${missingPdfExpr}`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m ${status === 'all' ? 'WHERE ' : 'WHERE m.publish_status = ? AND '}${missingTextExpr}`).bind(...(status === 'all' ? [] : [status])).first(),
       db.prepare(`SELECT COUNT(*) AS c FROM materials m JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE a.integrity_status = \'missing\'' : 'WHERE m.publish_status = ? AND a.integrity_status = \'missing\''}`).bind(...(status === 'all' ? [] : [status])).first(),
       db.prepare(`SELECT COUNT(*) AS c FROM translation_pages WHERE status = 'failed'`).first(),
-      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE' : 'WHERE m.publish_status = ? AND'} (
-        (a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> 'image') OR
-        (m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL) OR
-        (m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
-          AND COALESCE(length(trim(m.full_text)), 0) = 0
-          AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)) OR
-        a.integrity_status = 'missing'
-      )`).bind(...(status === 'all' ? [] : [status])).first(),
+      db.prepare(`SELECT COUNT(*) AS c FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${status === 'all' ? 'WHERE ' : 'WHERE m.publish_status = ? AND '}${issueExpr}`).bind(...(status === 'all' ? [] : [status])).first(),
     ]),
-    db.prepare(`SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.publish_status, m.updated_at,
+    db.prepare(`SELECT m.id, m.ark, m.type, m.material_level, m.title_ar, m.title_orig, m.publish_status, m.updated_at,
       a.cover_file_id, a.pdf_file_id, a.image_file_id, a.text_file_id, a.integrity_status, a.checked_at,
       CASE WHEN COALESCE(length(trim(m.full_text)), 0) > 0 OR EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0) THEN 1 ELSE 0 END AS has_text
       FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id ${whereSql}
-      ORDER BY CASE WHEN (
-        (a.cover_file_id IS NULL AND a.image_file_id IS NULL AND m.type <> 'image') OR
-        (m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL) OR
-        (m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
-          AND COALESCE(length(trim(m.full_text)), 0) = 0
-          AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)) OR
-        a.integrity_status = 'missing'
-      ) THEN 0 ELSE 1 END, m.updated_at DESC, m.id DESC LIMIT 250`).bind(...binds).all(),
+      ORDER BY CASE WHEN ${issueExpr} THEN 0 ELSE 1 END, m.updated_at DESC, m.id DESC LIMIT 250`).bind(...binds).all(),
   ]);
   const [allCount, missingCovers, missingPdfs, missingText, missingR2, failedPages, issueSummary] = summary;
   const cards = [
@@ -411,31 +401,34 @@ async function contentHealthPage(env, user, req) {
   ].map(([label, value, cls]) => `<div class="stat-card ${cls}"><div class="stat-num">${esc(value)}</div><div class="stat-label">${esc(label)}</div></div>`).join('');
   const rowsHtml = (rows.results || []).map((m) => {
     const issues = [];
-    if (!m.cover_file_id && !m.image_file_id && m.type !== 'image') issues.push('غلاف/صورة');
-    if (['book', 'article', 'journal'].includes(m.type) && !m.pdf_file_id) issues.push('PDF');
-    if (!Number(m.has_text) && ['document', 'article', 'excerpt', 'correspondence', 'manuscript'].includes(m.type)) issues.push('نص');
+    if (m.material_level === 'archival_image' && !m.image_file_id) issues.push('صورة');
+    if (['archival_book_original', 'archival_book_unavailable', 'chadian_publication'].includes(m.material_level) && !m.cover_file_id) issues.push('غلاف');
+    if (m.material_level === 'archival_book_original' && !m.pdf_file_id) issues.push('PDF');
+    if (m.material_level === 'archival_text' && !Number(m.has_text)) issues.push('نص موثق');
     if (m.integrity_status === 'missing') issues.push('R2');
     const integrity = m.integrity_status === 'ok' ? '<span class="badge b-pub">R2 سليم</span>' : m.integrity_status === 'missing' ? '<span class="badge b-review">R2 مفقود</span>' : '<span class="badge b-draft">R2 غير مفحوص</span>';
-    const checks = (m.type === 'image' ? 0 : 1) + (['book', 'article', 'journal'].includes(m.type) ? 1 : 0) + (['document', 'article', 'excerpt', 'correspondence', 'manuscript'].includes(m.type) ? 1 : 0);
+    const checks = (m.material_level === 'archival_image' ? 1 : 0) + (['archival_book_original', 'archival_book_unavailable', 'chadian_publication'].includes(m.material_level) ? 1 : 0) + (m.material_level === 'archival_book_original' ? 1 : 0) + (m.material_level === 'archival_text' ? 1 : 0);
     const passed = checks - issues.length;
     const score = checks ? Math.max(0, Math.min(100, Math.round((passed / checks) * 100))) : 100;
     const scoreClass = score >= 100 ? 'health-good' : score >= 60 ? 'health-warn' : 'health-bad';
     const issueText = issues.length ? `<span class="health-issues">${esc(issues.join(' · '))}</span>` : '<span class="health-ok">سليمة مبدئيًا</span>';
-    return `<tr><td class="mono small">${esc(m.ark)}</td><td><a href="/admin/materials/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a><br><span class="muted small">${esc(TYPE_LABELS[m.type] || m.type)} · آخر تعديل ${esc(fmtDate(m.updated_at))}</span></td><td><div class="health-score ${scoreClass}"><strong>${score}%</strong><span><i style="width:${score}%"></i></span></div></td><td>${issueText}<div class="health-badges">${integrity}${m.checked_at ? `<span class="muted tiny">فُحص ${esc(fmtDate(m.checked_at))}</span>` : ''}</div></td><td><button class="btn btn-sm btn-ghost" type="button" data-integrity-check="${esc(m.id)}">فحص R2</button> <a class="btn btn-sm btn-ghost" href="/admin/materials/${m.id}">فحص وإصلاح</a></td></tr>`;
+    return `<tr><td class="mono small">${esc(m.ark)}</td><td><a href="/admin/materials/${m.id}">${esc(m.title_ar || m.title_orig || '—')}</a><br><span class="muted small">${esc(MATERIAL_LEVEL_LABELS[m.material_level] || TYPE_LABELS[m.type] || m.type)} · آخر تعديل ${esc(fmtDate(m.updated_at))}</span></td><td><div class="health-score ${scoreClass}"><strong>${score}%</strong><span><i style="width:${score}%"></i></span></div></td><td>${issueText}<div class="health-badges">${integrity}${m.checked_at ? `<span class="muted tiny">فُحص ${esc(fmtDate(m.checked_at))}</span>` : ''}</div></td><td><button class="btn btn-sm btn-ghost" type="button" data-integrity-check="${esc(m.id)}">فحص R2</button> <a class="btn btn-sm btn-ghost" href="/admin/materials/${m.id}">فحص وإصلاح</a></td></tr>`;
   }).join('');
   const typeOpts = Object.entries(TYPE_LABELS).map(([value, label]) => `<option value="${esc(value)}"${type === value ? ' selected' : ''}>${esc(label)}</option>`).join('');
+  const levelOpts = Object.entries(MATERIAL_LEVELS).map(([value, item]) => `<option value="${esc(value)}"${level === value ? ' selected' : ''}>${esc(item.ar)}</option>`).join('');
   const issueCount = Number(issueSummary?.c || 0);
   const cleanCount = Math.max(0, Number(allCount?.c || 0) - issueCount);
   const healthScore = Number(allCount?.c || 0) ? Math.round((cleanCount / Number(allCount.c)) * 100) : 100;
   const coverage = Object.entries(TYPE_LABELS).map(([kind, label]) => {
     const items = (rows.results || []).filter((m) => m.type === kind);
     if (!items.length) return '';
-    const complete = items.filter((m) => !((!m.cover_file_id && !m.image_file_id && m.type !== 'image') || (['book', 'article', 'journal'].includes(m.type) && !m.pdf_file_id) || (['document', 'article', 'excerpt', 'correspondence', 'manuscript'].includes(m.type) && !Number(m.has_text)) || m.integrity_status === 'missing')).length;
+    const complete = items.filter((m) => !((m.material_level === 'archival_image' && !m.image_file_id) || (['archival_book_original', 'archival_book_unavailable', 'chadian_publication'].includes(m.material_level) && !m.cover_file_id) || (m.material_level === 'archival_book_original' && !m.pdf_file_id) || (m.material_level === 'archival_text' && !Number(m.has_text)) || m.integrity_status === 'missing')).length;
     const percent = Math.round((complete / items.length) * 100);
     return `<div class="health-coverage-row"><span>${esc(label)} <small>${items.length}</small></span><div class="health-coverage-track"><i style="width:${percent}%"></i></div><strong>${percent}%</strong></div>`;
   }).filter(Boolean).join('');
   const toggleParams = new URLSearchParams({ status });
   if (type) toggleParams.set('type', type);
+  if (level) toggleParams.set('level', level);
   if (q) toggleParams.set('q', q);
   if (!issuesOnly) toggleParams.set('issues', 'only');
   const toggleHealthHref = `/admin/content-health?${esc(toggleParams.toString())}`;
@@ -443,7 +436,7 @@ async function contentHealthPage(env, user, req) {
   const body = `${pageHead('صحة المحتوى', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}${contentOpsTabs('health')}<div class="stats">${cards}</div>
   <section class="health-overview"><div class="health-score-card"><div class="health-score-ring ${healthScore >= 90 ? 'health-good' : healthScore >= 60 ? 'health-warn' : 'health-bad'}"><strong>${healthScore}%</strong><span>سلامة مبدئية</span></div><div><h2>حالة الأرشيف</h2><p>تم فحص ${esc(allCount?.c || 0)} مادة، وتحتاج ${esc(issueCount)} مادة إلى متابعة أو إصلاح.</p><a class="btn btn-sm btn-primary" href="/admin/content-repair">فتح طابور الإصلاح</a></div></div><div class="card health-coverage"><h2>التغطية حسب النوع</h2>${coverage || '<p class="muted">لا توجد مواد في هذا العرض.</p>'}</div></section>
   <section class="card"><div class="section-head"><div><h2>فحص المواد</h2><p class="muted">تُعرض المواد التي ينقصها غلاف أو PDF أو نص موثق أو ملف R2 أولًا. فحص R2 يقرأ الكائن المرتبط فقط.</p></div><a class="btn btn-ghost" href="${toggleHealthHref}">${toggleHealthLabel}</a></div>
-  <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><label class="checkbox-field"><input type="checkbox" name="issues" value="only"${issuesOnly ? ' checked' : ''}><span>النواقص فقط</span></label><button class="btn btn-primary" type="submit">تصفية</button></form>
+  <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع الأرشيفي</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>تصنيف المادة</span><select name="level"><option value="">كل التصنيفات</option>${levelOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><label class="checkbox-field"><input type="checkbox" name="issues" value="only"${issuesOnly ? ' checked' : ''}><span>النواقص فقط</span></label><button class="btn btn-primary" type="submit">تصفية</button></form>
   <div class="table-wrap"><table class="tbl content-health-table"><thead><tr><th>الرمز</th><th>المادة</th><th>النتيجة</th><th>النواقص والفحص</th><th>إجراء</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="5" class="muted">لا توجد مواد مطابقة.</td></tr>'}</tbody></table></div></section>`;
   return layout({ title: 'صحة المحتوى', active: 'quality', user, body });
 }
@@ -579,14 +572,16 @@ async function materialsListPage(env, user, req) {
   const allowedStatuses = ['', 'published', 'draft', 'in_review', 'changes_requested', 'hidden'];
   const status = allowedStatuses.includes(url.searchParams.get('status')) ? (url.searchParams.get('status') || '') : '';
   const type = url.searchParams.get('type') || '';
+  const level = Object.prototype.hasOwnProperty.call(MATERIAL_LEVELS, url.searchParams.get('level')) ? url.searchParams.get('level') : '';
   const q = (url.searchParams.get('q') || '').trim();
 
   const where = [];
   const args = [];
   if (status) { where.push('publish_status = ?'); args.push(status); }
   if (type) { where.push('type = ?'); args.push(type); }
+  if (level) { where.push('material_level = ?'); args.push(level); }
   if (q) { where.push('(title_ar LIKE ? OR title_orig LIKE ? OR ark LIKE ?)'); args.push(`%${q}%`, `%${q}%`, `%${q}%`); }
-  const sql = `SELECT id, ark, type, title_ar, publish_status, year, created_at
+  const sql = `SELECT id, ark, type, material_level, title_ar, publish_status, year, created_at
     FROM materials ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY created_at DESC LIMIT 200`;
   const [rowResult, statusCounts] = await Promise.all([
@@ -603,6 +598,7 @@ async function materialsListPage(env, user, req) {
     const params = new URLSearchParams();
     if (nextStatus) params.set('status', nextStatus);
     if (options.keepType !== false && type) params.set('type', type);
+    if (options.keepLevel !== false && level) params.set('level', level);
     if (options.keepQ !== false && q) params.set('q', q);
     const query = params.toString();
     return `/admin/materials${query ? `?${esc(query)}` : ''}`;
@@ -611,6 +607,7 @@ async function materialsListPage(env, user, req) {
   const filterChips = [
     q ? `<a class="filter-chip" href="${materialTabParams(status, { keepQ: false })}">بحث: ${esc(q)} ×</a>` : '',
     type ? `<a class="filter-chip" href="${materialTabParams(status, { keepType: false })}">النوع: ${esc(TYPE_LABELS[type] || type)} ×</a>` : '',
+    level ? `<a class="filter-chip" href="${materialTabParams(status, { keepLevel: false })}">التصنيف: ${esc(MATERIAL_LEVEL_LABELS[level] || level)} ×</a>` : '',
     status ? `<a class="filter-chip" href="${materialTabParams('')}">الحالة: ${esc(STATUS_LABELS[status] || status)} ×</a>` : '',
   ].filter(Boolean).join('');
 
@@ -618,7 +615,7 @@ async function materialsListPage(env, user, req) {
     <tr>
       <td class="mono small">${esc(m.ark)}</td>
       <td><a href="/admin/materials/${m.id}">${esc(m.title_ar)}</a></td>
-      <td>${esc(TYPE_LABELS[m.type] || m.type)}</td>
+      <td>${esc(MATERIAL_LEVEL_LABELS[m.material_level] || TYPE_LABELS[m.type] || m.type)}</td>
       <td>${m.year ?? '—'}</td>
       <td>${badge(STATUS_LABELS[m.publish_status] || m.publish_status, STATUS_CLASS[m.publish_status] || '')}</td>
       <td class="muted">${fmtDate(m.created_at)}</td>
@@ -635,6 +632,7 @@ async function materialsListPage(env, user, req) {
     <div class="filter-row">
       <input type="search" name="q" value="${esc(q)}" placeholder="بحث بالعنوان أو الرقم الأرشيفي…">
       <select name="type"><option value="">كل الأنواع</option>${typeOpts}</select>
+      <select name="level"><option value="">كل التصنيفات</option>${Object.entries(MATERIAL_LEVELS).map(([v, item]) => opt(v, level, item.ar)).join('')}</select>
       <select name="status"><option value="">كل الحالات</option>${statusOpts}</select>
       <button class="btn" type="submit">تصفية</button>
       <a class="btn btn-ghost" href="/admin/materials">مسح</a>
@@ -972,7 +970,8 @@ async function materialFormPage(env, user, id) {
         <div class="field"><label>العنوان بالعربية *</label><input name="title_ar" required value="${val('title_ar')}"></div>
         <div class="field"><label>العنوان الأصلي</label><input name="title_orig" dir="auto" value="${val('title_orig')}"></div>
         <div class="field-row">
-          <div class="field"><label>نوع المادة *</label><select name="type">${sel('type', TYPE_LABELS)}</select></div>
+          <div class="field"><label>نوع المادة الأرشيفي *</label><select name="type">${sel('type', TYPE_LABELS)}</select><small class="muted">يحدد الرمز الأرشيفي مثل وثيقة أو كتاب أو صورة.</small></div>
+          <div class="field"><label>مستوى المادة *</label><select name="material_level" required>${Object.entries(MATERIAL_LEVELS).map(([v, item]) => `<option value="${esc(v)}"${(m?.material_level || (m?.type === 'image' ? 'archival_image' : m?.type === 'book' ? 'archival_book_original' : 'archival_text')) === v ? ' selected' : ''}>${esc(item.ar)}</option>`).join('')}</select><small class="muted">${esc(materialLevelDescription(m?.material_level || 'archival_text'))}</small></div>
           <div class="field"><label>اللغة</label><input name="language" dir="ltr" placeholder="fr / ar" value="${val('language')}"></div>
         </div>
         <div class="field-row">
@@ -1620,6 +1619,7 @@ function researcherMaterialData(material, thumbId = '') {
     id: material?.id,
     title: material?.title_ar || material?.title_orig || material?.ark || 'مادة من الأرشيف',
     type: TYPE_LABELS[material?.type] || material?.type || 'مادة',
+    level: MATERIAL_LEVEL_LABELS[material?.material_level] || '',
     year: material?.year,
     ark: material?.ark,
     source: material?.source_name_ar || material?.source_name,
@@ -1873,7 +1873,7 @@ function researcherMaterialCard(m, feed, verified) {
     ? '' : (m.summary || m.description || '');
   const sourceDetails = [
     `المعرف الأرشيفي: ${m.ark}`,
-    `نوع المادة: ${TYPE_LABELS[m.type] || m.type}`,
+    `التصنيف: ${MATERIAL_LEVEL_LABELS[m.material_level] || TYPE_LABELS[m.type] || m.type}`,
     m.year ? `السنة: ${m.year}` : '',
     m.source_name_ar || m.source_name ? `المصدر: ${m.source_name_ar || m.source_name}` : '',
     m.author ? `المؤلف/الجهة: ${m.author}` : '',
@@ -1919,7 +1919,7 @@ function researcherMaterialCard(m, feed, verified) {
   return `<article class="researcher-feed-post social-card">
     ${officialNotice}
     ${sourceBlock}
-    <div class="post-head">${cardAvatar}<div><strong>${esc(cardAuthor)}</strong><div class="post-meta">${esc(TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
+    <div class="post-head">${cardAvatar}<div><strong>${esc(cardAuthor)}</strong><div class="post-meta">${esc(MATERIAL_LEVEL_LABELS[m.material_level] || TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
     <button class="researcher-feed-title researcher-material-trigger" type="button" data-material-details ${materialData}>${esc(title)}</button>
     ${image}
     ${detailsButton}
@@ -2034,19 +2034,27 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
     : '';
   const searchTerm = String(search || '').trim().slice(0, 120);
   const arkSearch = /^ARC-[A-Z0-9-]+$/i.test(searchTerm);
-  const ftsQuery = arkSearch ? '' : buildResearcherFtsQuery(searchTerm);
+  const hasArabicSearch = /[\u0600-\u06ff]/u.test(searchTerm);
+  const searchTokens = hasArabicSearch
+    ? searchTerm.normalize('NFKC').replace(/[\u064B-\u065F\u0670]/g, '').split(/\s+/).filter(Boolean).slice(0, 10)
+    : [];
+  const ftsQuery = arkSearch || hasArabicSearch ? '' : buildResearcherFtsQuery(searchTerm);
   const searchJoin = ftsQuery ? ' JOIN materials_fts search_fts ON search_fts.ark = m.ark' : '';
   const searchFilter = searchTerm
     ? ftsQuery
       ? ' AND search_fts MATCH ?'
-      : ' AND m.ark LIKE ?'
+      : arkSearch
+        ? ' AND m.ark LIKE ?'
+        : searchTokens.length
+          ? ` AND (${searchTokens.map(() => 'm.search_blob LIKE ?').join(' AND ')})`
+          : ''
     : '';
   // ترتيب ثابت مع Cursor حقيقي حتى لا تتكرر المواد ولا تتغير الصفحة أثناء التصفح.
   const cursorFilter = decodedCursor
     ? ' AND (m.updated_at < ? OR (m.updated_at = ? AND m.id < ?))'
     : '';
   const feedOrder = 'ORDER BY m.updated_at DESC, m.id DESC';
-  const query = `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
+  const query = `SELECT m.id, m.ark, m.type, m.material_level, m.title_ar, m.title_orig, m.description, m.summary, m.year, m.date_text,
             m.author, m.photographer, m.archive_ref, m.updated_at, m.transcription_status,
             creator.id AS creator_id, creator.display_name AS creator_name, creator.avatar_url AS creator_avatar_url, creator.avatar_r2_key AS creator_avatar_r2_key,
             ${approvedAtSelect}
@@ -2072,7 +2080,8 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
   if (sectionFilter) params.push(Number(sectionId));
   if (searchFilter) {
     if (ftsQuery) params.push(ftsQuery);
-    else params.push(`%${searchTerm}%`);
+    else if (arkSearch) params.push(`%${searchTerm}%`);
+    else params.push(...searchTokens.map(token => `%${token}%`));
   }
   if (decodedCursor) params.push(decodedCursor.date, decodedCursor.date, decodedCursor.id);
   params.push(safeLimit + 1);
@@ -2793,6 +2802,9 @@ async function researcherFormPage(env, user, mode, id) {
   const canEditMaterial = isEdit && (m.publish_status === 'draft' || m.publish_status === 'changes_requested' || editApproved);
   const fieldDisabled = isEdit && !canEditMaterial ? ' disabled' : '';
   const defType = isEdit ? m.type : (mode === 'article' ? 'article' : 'document');
+  const defLevel = isEdit
+    ? (m.material_level || (m.type === 'image' || m.type === 'map' ? 'archival_image' : m.type === 'book' ? 'archival_book_unavailable' : 'archival_text'))
+    : (mode === 'article' ? 'chadian_publication' : 'archival_text');
   const typeOpts = Object.entries(TYPE_LABELS).filter(([value]) => !(mode === 'new' && value === 'article'))
     .map(([v, l]) => `<option value="${v}"${defType === v ? ' selected' : ''}>${esc(l)}</option>`).join('');
 
@@ -2857,6 +2869,7 @@ async function researcherFormPage(env, user, mode, id) {
     <section class="card">
       <h2>بيانات المادة</h2>
       <div class="field"><label for="rf-type">النوع</label><select id="rf-type" name="type" ${ro}>${typeOpts}</select></div>
+      <div class="field"><label for="rf-level">تصنيف المادة *</label><select id="rf-level" name="material_level" required ${ro}>${Object.entries(MATERIAL_LEVELS).map(([v, item]) => `<option value="${esc(v)}"${defLevel === v ? ' selected' : ''}>${esc(item.ar)}</option>`).join('')}</select><small class="muted">اختر طريقة عرض المادة: صورة، نص موثق، كتاب PDF، كتاب غير متاح، أو مؤلف تشادي.</small></div>
       <div class="field"><label for="rf-title">العنوان (عربي) *</label><input id="rf-title" name="title_ar" required value="${esc(m?.title_ar || '')}" ${ro}></div>
       <div class="field"><label for="rf-title-orig">العنوان الأصلي</label><input id="rf-title-orig" name="title_orig" value="${esc(m?.title_orig || '')}" ${ro}></div>
       <div class="field"><label for="rf-desc">الوصف</label><textarea id="rf-desc" name="description" rows="4" ${ro}>${esc(m?.description || '')}</textarea></div>

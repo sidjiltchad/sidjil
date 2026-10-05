@@ -59,8 +59,7 @@ function researcherAppRedirect(pathname, request, sessionToken = '') {
   return new Response(null, { status: 302, headers });
 }
 
-export default {
-  async fetch(request, env, ctx) {
+async function handleRequest(request, env, ctx) {
     const url = new URL(request.url);
     if (url.hostname === 'www.sidjil.org') {
       url.hostname = 'sidjil.org';
@@ -256,6 +255,15 @@ export default {
       return renderResearcher(pathname, request, env, user);
     }
 
+    // لا تعرض واجهات الأرشيف العام داخل تطبيق الباحثين. تبقى الملفات وواجهات
+    // API التي استُخدمت أعلاه متاحة للبطاقات والقارئ، أما صفحات الموقع العام
+    // فتخرج إلى النطاق الرسمي بوضوح بدل خلط التطبيقين.
+    if (researcherAppHost && request.method === 'GET') {
+      const publicUrl = new URL(request.url);
+      publicUrl.hostname = 'sidjil.org';
+      return Response.redirect(publicUrl.toString(), 302);
+    }
+
     // 4) صفحات الزوار العامة
     // Public material pages can still expose translation controls to an
     // authenticated researcher. Pass the session-bound CSRF token into the
@@ -264,5 +272,34 @@ export default {
     // responses above.
     const publicUser = await getSessionUser(request, env);
     return renderPublic(pathname, request, env, { csrfToken: publicUser?.csrfToken || '' });
+}
+
+function withSecurityHeaders(response) {
+  if (!(response instanceof Response)) return response;
+  const headers = new Headers(response.headers);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  headers.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.cloudflare.com https://*.sidjil.org",
+    "worker-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "object-src 'self' blob:"
+  ].join('; '));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const response = await handleRequest(request, env, ctx);
+    return withSecurityHeaders(response);
   },
 };

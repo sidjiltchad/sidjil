@@ -25,6 +25,7 @@ export async function searchMaterials(db, params = {}) {
     sourceId,
     collectionId,
     translationStatus,
+    level,
     placeId,
     publishedOnly = true,
     cursor: cursorToken,
@@ -65,6 +66,10 @@ export async function searchMaterials(db, params = {}) {
     where.push('m.translation_status = ?');
     binds.push(translationStatus);
   }
+  if (level) {
+    where.push('m.material_level = ?');
+    binds.push(String(level));
+  }
   if (sourceId) {
     where.push('m.source_id = ?');
     binds.push(parseInt(sourceId, 10));
@@ -103,10 +108,25 @@ export async function searchMaterials(db, params = {}) {
     binds.push(region, region);
   }
 
-  // ---- استعلام FTS5 ----
+  // ---- استعلام FTS5 / بحث Unicode احتياطي ----
+  // FTS5 في SQLite/D1 لا يتعامل بثبات مع جميع صيغ Unicode العربية. نستخدم
+  // العمود search_blob المطبع عند وجود العربية، حتى لا يتحول البحث العربي إلى
+  // 400 فارغة بسبب MATCH غير صالح.
   let ftsQuery = null;
+  let likeSearch = false;
   if (q && String(q).trim()) {
-    ftsQuery = buildFtsQuery(q);
+    const normalizedQuery = normalizeText(q);
+    const hasArabic = /[\u0600-\u06ff]/u.test(String(q));
+    if (hasArabic) {
+      const tokens = normalizedQuery.split(/\s+/).filter(Boolean).slice(0, 12);
+      if (tokens.length) {
+        likeSearch = true;
+        where.push(`(${tokens.map(() => 'm.search_blob LIKE ?').join(' AND ')})`);
+        binds.push(...tokens.map((token) => `%${token}%`));
+      }
+    } else {
+      ftsQuery = buildFtsQuery(q);
+    }
     if (ftsQuery) {
       joins.push('JOIN materials_fts ON materials_fts.ark = m.ark');
       where.push('materials_fts MATCH ?');
@@ -155,9 +175,9 @@ export async function searchMaterials(db, params = {}) {
   let itemsRes;
   try {
     itemsRes = await db.prepare(itemsSql).bind(...binds).all();
-    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, Number(itemsRes.meta?.rows_read ?? itemsRes.results?.length ?? 0), false, metricsSampleRate);
+    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : likeSearch ? 'search.materials.like' : 'search.materials.list', Date.now() - itemsStarted, Number(itemsRes.meta?.rows_read ?? itemsRes.results?.length ?? 0), false, metricsSampleRate);
   } catch (error) {
-    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : 'search.materials.list', Date.now() - itemsStarted, 0, true, metricsSampleRate);
+    await recordQueryMetric(db, metricsRoute, ftsQuery ? 'search.materials.fts' : likeSearch ? 'search.materials.like' : 'search.materials.list', Date.now() - itemsStarted, 0, true, metricsSampleRate);
     throw error;
   }
 

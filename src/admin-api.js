@@ -31,6 +31,7 @@ import {
   apiReplyDelete,
   apiResearcherVerify,
 } from './discussions.js';
+import { MATERIAL_LEVEL_VALUES } from './lib/material-levels.js';
 
 // ---------- أدوات ----------
 
@@ -309,15 +310,17 @@ export async function syncContentRepairQueue(db) {
     db.prepare(`INSERT OR IGNORE INTO content_repair_queue (material_id, issue_type, note)
       SELECT m.id, 'cover', 'لا يوجد غلاف أو صورة مرتبطة بالمادة'
       FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id
-      WHERE a.cover_file_id IS NULL`),
+      WHERE ((m.material_level = 'archival_image' AND a.image_file_id IS NULL)
+        OR (m.material_level IN ('archival_book_original', 'archival_book_unavailable', 'chadian_publication')
+            AND a.cover_file_id IS NULL))`),
     db.prepare(`INSERT OR IGNORE INTO content_repair_queue (material_id, issue_type, note)
-      SELECT m.id, 'pdf', 'كتاب أو مقال أو عدد مجلة بلا ملف PDF مرتبط'
+      SELECT m.id, 'pdf', 'كتاب أرشيفي أصيل بلا ملف PDF مرتبط'
       FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id
-      WHERE m.type IN ('book', 'article', 'journal') AND a.pdf_file_id IS NULL`),
+      WHERE m.material_level = 'archival_book_original' AND a.pdf_file_id IS NULL`),
     db.prepare(`INSERT OR IGNORE INTO content_repair_queue (material_id, issue_type, note)
       SELECT m.id, 'text', 'وثيقة نصية بلا تفريغ نصي موثق'
       FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id
-      WHERE m.type IN ('document', 'article', 'excerpt', 'correspondence', 'manuscript')
+      WHERE m.material_level = 'archival_text'
         AND COALESCE(length(trim(m.full_text)), 0) = 0
         AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)`),
   ]);
@@ -745,6 +748,7 @@ async function admMaterialsList(env, url, user) {
 
 const MATERIAL_FIELDS = [
   'type',
+  'material_level',
   'title_ar',
   'title_orig',
   'description',
@@ -779,6 +783,13 @@ function pickMaterialFields(body) {
   if (f.year !== undefined) f.year = asInt(f.year);
   if (f.place_id !== undefined) f.place_id = asInt(f.place_id);
   if (f.source_id !== undefined) f.source_id = asInt(f.source_id);
+  if (!f.material_level) {
+    f.material_level = f.type === 'image' || f.type === 'map'
+      ? 'archival_image'
+      : f.type === 'book'
+        ? 'archival_book_unavailable'
+        : 'archival_text';
+  }
   return f;
 }
 
@@ -799,6 +810,8 @@ function validateMaterialFields(f, isCreate) {
     throw new Error('حالة التفريغ غير صالحة');
   if (f.translation_status && !TRANSLATION_STATUSES.includes(f.translation_status))
     throw new Error('حالة الترجمة غير صالحة');
+  if (f.material_level && !MATERIAL_LEVEL_VALUES.includes(f.material_level))
+    throw new Error('تصنيف المادة غير صالح');
 }
 
 async function replaceLinks(db, materialId, body) {
@@ -1331,6 +1344,14 @@ async function admMaterialUpload(env, user, req, idOrArk) {
       )
       .bind(m.id, 'original', row.id, 'النسخة الأصلية كما وردت من المصدر')
       .run();
+  }
+
+  // الكتاب الذي كان مسجلًا كغير متاح ينتقل تلقائيًا إلى «أصيل متاح» عند
+  // رفع PDF فعلي، مع إبقاء «كتاب أو مؤلف تشادي» كما اختارته الإدارة.
+  if (m.type === 'book' && m.material_level === 'archival_book_unavailable'
+      && (row.mime === 'application/pdf' || /\.pdf$/i.test(row.filename || ''))) {
+    await db.prepare("UPDATE materials SET material_level = 'archival_book_original', updated_at = datetime('now') WHERE id = ?")
+      .bind(m.id).run();
   }
 
   await touchMaterial(db, m.id);

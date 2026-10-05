@@ -1153,6 +1153,11 @@ a:hover {
   background: var(--teal);
   color: #ffffff;
 }
+.badge-level {
+  background: color-mix(in srgb, var(--gold, #c9942f) 14%, transparent);
+  color: var(--ink, #273142);
+  border: 1px solid color-mix(in srgb, var(--gold, #c9942f) 38%, transparent);
+}
 [data-theme="dark"] .badge-type {
   background: var(--teal-light);
   color: var(--teal);

@@ -56,7 +56,8 @@ export async function routeApi(req, env) {
     const user = await getSessionUser(req, env);
     return serveFile(env, parseInt(m[1], 10), {
       download: url.searchParams.get('download') === '1',
-      admin: !!user,
+      // لا يكفي وجود جلسة؛ الباحث لا يتجاوز حالة النشر.
+      admin: Boolean(user && (user.role === 'admin' || Number(user.is_super_admin) === 1)),
     });
   }
 
@@ -114,7 +115,9 @@ async function serveDiscussionImage(env, id) {
 
 async function apiSearch(req, env, url) {
   const sp = url.searchParams;
-  const result = await searchMaterials(env.DB, {
+  let result;
+  try {
+    result = await searchMaterials(env.DB, {
     q: sp.get('q') || undefined,
     type: sp.get('type') || undefined,
     fromYear: sp.get('fromYear') || undefined,
@@ -126,14 +129,19 @@ async function apiSearch(req, env, url) {
     sourceId: sp.get('sourceId') || undefined,
     collectionId: sp.get('collectionId') || undefined,
     translationStatus: sp.get('translationStatus') || undefined,
+    level: sp.get('level') || undefined,
     placeId: sp.get('placeId') || undefined,
     page: sp.get('page') || 1,
     perPage: sp.get('perPage') || 20,
     cursor: sp.get('cursor') || undefined,
     metricsRoute: '/api/v1/search',
     metricsSampleRate: env.QUERY_METRICS_SAMPLE_RATE || 0.1,
-    publishedOnly: true,
-  });
+      publishedOnly: true,
+    });
+  } catch (error) {
+    console.error('api search failed', error && error.message ? error.message : error);
+    return err('تعذر تنفيذ البحث الآن. حاول مرة أخرى.', 500);
+  }
 
   const items = result.items;
   const ids = items.map((i) => i.id);
@@ -161,6 +169,7 @@ async function apiSearch(req, env, url) {
     items: items.map((i) => ({
       ark: i.ark,
       type: i.type,
+      material_level: i.material_level || null,
       title_ar: i.title_ar,
       title_orig: i.title_orig,
       year: i.year,
