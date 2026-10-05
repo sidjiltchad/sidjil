@@ -114,11 +114,18 @@
     container.appendChild(loading);
 
     let destroyed = false;
+    let blob = null;
     try {
       await ensureLibs();
-      const resp = await fetch(url, { credentials: 'same-origin' });
+      // Translation files are served with a long immutable cache policy. A
+      // previous failed response must not be reused by the browser.
+      const resp = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
       if (!resp.ok) throw new Error('تعذّر جلب ملف الترجمة');
-      const blob = await resp.blob();
+      blob = await resp.blob();
+      const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+      if (head.length < 4 || head[0] !== 0x50 || head[1] !== 0x4b) {
+        throw new Error('استجابة ملف الترجمة ليست ملف DOCX صالحًا');
+      }
       if (destroyed) return { destroy() {} };
       loading.remove();
       const pages = document.createElement('div');
