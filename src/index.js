@@ -39,6 +39,32 @@ function publicHomeCacheKey(request) {
 }
 
 const RESEARCHER_APP_HOST = 'app.sidjil.org';
+const DEFAULT_CAPACITOR_ORIGINS = new Set(['https://localhost']);
+
+function capacitorOrigin(request, env) {
+  const origin = String(request.headers.get('Origin') || '').trim();
+  if (!origin) return '';
+  const configured = String(env.CAPACITOR_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const allowed = configured.length ? new Set(configured) : DEFAULT_CAPACITOR_ORIGINS;
+  return allowed.has(origin) ? origin : '';
+}
+
+function withCapacitorCors(request, env, response) {
+  if (!(response instanceof Response)) return response;
+  const origin = capacitorOrigin(request, env);
+  if (!origin || !new URL(request.url).pathname.startsWith('/api/v1/admin/')) return response;
+  const headers = new Headers(response.headers);
+  headers.set('Access-Control-Allow-Origin', origin);
+  headers.set('Access-Control-Allow-Credentials', 'true');
+  headers.set('Access-Control-Allow-Headers', 'Accept, Content-Type, X-CSRF-Token');
+  headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  const vary = headers.get('Vary') || '';
+  if (!/(^|,\s*)Origin(,|$)/i.test(vary)) headers.append('Vary', 'Origin');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
 
 function isResearcherAppHost(url) {
   return url.hostname.toLowerCase() === RESEARCHER_APP_HOST;
@@ -66,6 +92,22 @@ async function handleRequest(request, env, ctx) {
       return Response.redirect(url.toString(), 301);
     }
     const pathname = url.pathname;
+
+    // Capacitor's bundled shell uses a controlled HTTPS localhost origin.
+    // Reply to its preflight without touching authentication or the database.
+    if (request.method === 'OPTIONS' && pathname.startsWith('/api/v1/admin/') && capacitorOrigin(request, env)) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': capacitorOrigin(request, env),
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Allow-Headers': 'Accept, Content-Type, X-CSRF-Token',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Max-Age': '600',
+          'Vary': 'Origin',
+        },
+      });
+    }
 
     // Google OAuth للباحثين — اختياري ويُفعّل عبر أسرار Cloudflare.
     if (pathname === '/auth/google/start') return googleStart(request, env);
@@ -312,6 +354,6 @@ function withSecurityHeaders(response) {
 export default {
   async fetch(request, env, ctx) {
     const response = await handleRequest(request, env, ctx);
-    return withSecurityHeaders(response);
+    return withSecurityHeaders(withCapacitorCors(request, env, response));
   },
 };

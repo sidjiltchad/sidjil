@@ -456,6 +456,14 @@ export async function routeAdminApi(req, env) {
   const user = await getSessionUser(req, env);
   if (!user) return err('غير مصرح', 401);
 
+  // حالة الجلسة لـCapacitor والواجهات التي لا تملك HTML مولدًا من الخادم.
+  // يعاد رمز CSRF فقط لأنه غير قابل لإعادة الاستخدام كجلسة ولا يحتوي على
+  // session token أو كلمة مرور.
+  if (rest === 'session' && method === 'GET') {
+    const { csrfToken, sessionToken, ...safeUser } = user;
+    return json({ authenticated: true, user: safeUser, csrfToken });
+  }
+
   // CSRF: كل طلب معدِّل (POST/PUT/PATCH/DELETE) يتطلب هيدر X-CSRF-Token
   // مطابقًا لرمز الجلسة — المصادقة هنا كوكيز جلسات (ليست Cloudflare Access)
   // إذن CSRF قابل للتطبيق فعلًا.
