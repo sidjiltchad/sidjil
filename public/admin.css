@@ -2391,3 +2391,19 @@ textarea { border-radius: var(--shape-control); }
 .rpdf-reader-root .rpdf-textlayer { inset: 0; }
 .rpdf-reader-root .rpdf-translation-pane[hidden] { display: none; }
 @media (max-width: 700px) { .rpdf-reader-root .rpdf-reader-stage.is-dual { grid-template-columns: 1fr; grid-template-rows: minmax(0,1fr) minmax(0,1fr); } .rpdf-reader-root .rpdf-pane-scroll { padding-inline: 8px; } }
+
+/* قراءة الترجمة داخل العمود: لا قص أفقي ولا صفحات Word أعرض من مساحة القراءة. */
+.rpdf-reader-root .rpdf-docx-scroll { overflow-x: hidden; overflow-y: auto; padding-inline: 0; }
+.rpdf-reader-root .sidjil-docx-view { width: 100%; max-width: 100%; min-width: 0; overflow: visible; padding: 0 10px 110px; background: #f8fafc; }
+.rpdf-reader-root .sidjil-docx-view .docx-wrapper,
+.rpdf-reader-root .sidjil-docx-view .docx,
+.rpdf-reader-root .sidjil-docx-view .docx .docx-page { width: 100% !important; max-width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; margin-inline: 0 !important; }
+.rpdf-reader-root .sidjil-docx-view .docx-wrapper { padding: 0 !important; overflow: visible !important; }
+.rpdf-reader-root .sidjil-docx-view .docx { padding: 0 !important; background: transparent !important; box-shadow: none !important; }
+.rpdf-reader-root .sidjil-docx-view .docx .docx-page { margin-bottom: 1rem !important; padding: 2rem clamp(1rem, 4vw, 2.4rem) !important; overflow-wrap: anywhere; word-break: normal; box-shadow: 0 4px 18px rgba(0,0,0,.16); }
+.rpdf-reader-root .sidjil-docx-view img, .rpdf-reader-root .sidjil-docx-view table { max-width: 100% !important; }
+.rpdf-reader-root .sidjil-docx-view[dir="rtl"] .docx-page { direction: rtl; text-align: justify; }
+.rpdf-reader-root .sidjil-docx-view[dir="ltr"] .docx-page { direction: ltr; text-align: justify; }
+.rpdf-reader-root .rpdf-reader-controls { flex-wrap: nowrap; max-width: calc(100% - 16px); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+.rpdf-reader-root .rpdf-reader-controls::-webkit-scrollbar { display: none; }
+@media (max-width: 700px) { .rpdf-reader-root .rpdf-reader-controls { gap: 2px; padding: 5px; } .rpdf-reader-root .rpdf-reader-controls button, .rpdf-reader-root .rpdf-reader-controls a { width: 34px; height: 34px; flex: 0 0 34px; } }
