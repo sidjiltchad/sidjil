@@ -379,7 +379,6 @@ export async function routeAdminApi(req, env) {
   if (m && method === 'DELETE') return admGlossaryDelete(env, user, req, parseInt(m[1], 10));
 
   // ---------- قسم الترجمة الجديد: نظائر Word ----------
-  if (rest === '_classify-langs' && method === 'GET') return admClassifyLangs(env, user, req); // مؤقتة — تُحذف بعد التشغيل
   if (rest === 'translations/overview' && method === 'GET') return admTranslationOverview(env, url);
   if (rest === 'translations/upload' && method === 'POST') return admTranslationUpload(env, user, req);
   m = rest.match(/^translations\/files\/(\d+)\/lang$/);
@@ -1247,21 +1246,6 @@ async function admRelationCreate(env, user, req, idOrArk, body) {
 
 // ============================================================
 
-// تصنيف لغات الملفات من لغة المواد (مؤقتة — تُحذف بعد التشغيل)
-async function admClassifyLangs(env, user, req) {
-  const db = env.DB;
-  const dist = await db.prepare(
-    `SELECT m.language AS lang, COUNT(*) AS c FROM files f
-     JOIN materials m ON m.id = f.material_id GROUP BY m.language`
-  ).all();
-  const upd = await db.prepare(
-    `UPDATE files SET lang = (SELECT m.language FROM materials m WHERE m.id = files.material_id)
-     WHERE (lang IS NULL OR lang = 'undetermined')
-     AND EXISTS (SELECT 1 FROM materials m WHERE m.id = files.material_id AND m.language IN ('ar','fr','en'))`
-  ).run();
-  await audit(db, { userId: user.id, action: 'db.classify_langs', target: 'production', ip: clientIp(req) });
-  return json({ ok: true, updated: upd.meta?.changes ?? 0, distribution: dist.results || [] });
-}
 
 // ============================================================
 // قسم الترجمة الجديد: نظائر Word مرفوعة يدويًا
