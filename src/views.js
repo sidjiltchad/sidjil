@@ -817,7 +817,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
     <script type="module" src="/js/pdf-viewer.js?v=20261006-docx-ready"></script>
     <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
     <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
-    <script src="/js/docx-reader.js?v=20261006" defer></script>`;
+    <script src="/js/docx-reader.js?v=20261007-fallback" defer></script>`;
 }
 
 /* ---------- صفحة المادة ---------- */
