@@ -978,6 +978,16 @@ async function documentPage(ctx, ark) {
   const translationHTML = (m.file_translations || []).length
     ? '<p class="hint translation-availability">تتوفر نظائر ترجمة منسقة داخل القارئ أعلاه.</p>'
     : '';
+  // المواد النصية المفرغة لا تملك ملفًا يفتح في عارض PDF، لذلك يظهر لها
+  // طلب ترجمة مستقل في الموقع العام مع جمع اسم الزائر وبريده.
+  const standaloneTranslationRequestHTML = !pdfFiles.length && !(m.file_translations || []).length
+    ? `<section class="doc-section public-translation-request" aria-labelledby="translationRequestTitle">
+        <h2 class="doc-section-title" id="translationRequestTitle">${esc(lang === 'fr' ? 'Traduire cette matière' : 'ترجمة المادة')}</h2>
+        <p class="hint">${esc(lang === 'fr' ? 'La traduction n’est pas encore disponible. Vous pouvez envoyer une demande à l’administration.' : 'لا تتوفر ترجمة لهذه المادة بعد. يمكنك إرسال طلب إلى الإدارة.')}</p>
+        <button type="button" class="btn btn-small btn-ghost" data-request-translation-standalone data-material-id="${esc(String(m.id))}">${esc(t(lang, 'request_translation'))}</button>
+      </section>
+      <script type="module" src="/js/translation-request.js?v=20261005-request-form"></script>`
+    : '';
 
   /* --- مواد ذات صلة --- */
   let related = (m.relations || []).map(r => r.material || r).filter(Boolean);
@@ -1047,6 +1057,7 @@ async function documentPage(ctx, ark) {
       ${galleryHTML}
       ${transcriptionHTML}
       ${translationHTML}
+      ${standaloneTranslationRequestHTML}
       ${relatedHTML}
       ${await discussionSectionHTML(ctx, m)}
       ${citationHTML}

@@ -147,8 +147,9 @@ async function openResearcherMaterialModal(trigger) {
   const text = document.getElementById('researcherMaterialModalText');
   const read = document.getElementById('researcherMaterialModalRead');
   const download = document.getElementById('researcherMaterialModalDownload');
-  const discussion = document.getElementById('researcherMaterialModalDiscussion');
-  if (!media || !type || !title || !meta || !text || !discussion) return;
+  const translation = document.getElementById('researcherMaterialModalTranslation');
+  const requestTranslation = document.getElementById('researcherMaterialModalRequestTranslation');
+  if (!media || !type || !title || !meta || !text) return;
   lastResearcherModalTrigger = trigger;
   const modalCard = modal.querySelector('.researcher-material-modal');
   modalCard?.classList.add('details-only');
@@ -156,20 +157,21 @@ async function openResearcherMaterialModal(trigger) {
   media.textContent = '';
   // نافذة التفاصيل لا تحمل عارض PDF. يفتح القارئ الموحد من زر القراءة فقط.
   media.classList.remove('researcher-material-modal-pdf');
-  media.hidden = !!d.materialPdf;
+  const isArchivalText = d.materialLevel === 'archival_text';
+  media.hidden = isArchivalText || !!d.materialPdf;
   if (!d.materialPdf && d.materialImage) {
     const image = document.createElement('img');
     image.src = d.materialImage;
     image.alt = d.materialTitle || '';
     image.loading = 'eager';
     media.appendChild(image);
-  } else if (!d.materialPdf) {
+  } else if (!d.materialPdf && !isArchivalText) {
     const placeholder = document.createElement('div');
     placeholder.className = 'researcher-material-modal-placeholder';
     placeholder.textContent = d.materialType || 'مادة من الأرشيف';
     media.appendChild(placeholder);
   }
-  type.textContent = d.materialType || 'مادة من الأرشيف';
+  type.textContent = isArchivalText ? 'مادة أرشيفية مفرغة' : (d.materialType || 'مادة من الأرشيف');
   title.textContent = d.materialTitle || 'مادة من الأرشيف';
   meta.textContent = '';
   [
@@ -235,8 +237,10 @@ async function openResearcherMaterialModal(trigger) {
       download.removeAttribute('href');
     }
   }
-  discussion.dataset.materialId = materialId;
-  discussion.setAttribute('aria-expanded', 'false');
+  if (translation) { translation.hidden = true; translation.onclick = null; }
+  if (requestTranslation) { requestTranslation.hidden = true; requestTranslation.disabled = false; requestTranslation.onclick = null; }
+  const discussion = document.getElementById('researcherMaterialModalDiscussion');
+  if (discussion) { discussion.dataset.materialId = materialId; discussion.setAttribute('aria-expanded', 'false'); }
   const discussionPanel = document.getElementById('researcherMaterialModalDiscussionPanel');
   const discussionForm = document.getElementById('researcherMaterialModalDiscussionForm');
   if (discussionPanel) discussionPanel.hidden = true;
@@ -248,6 +252,45 @@ async function openResearcherMaterialModal(trigger) {
     if (bodyField) bodyField.value = '';
     const defaultKind = discussionForm.querySelector('input[name="kind"][value="comment"]');
     if (defaultKind) defaultKind.checked = true;
+  }
+  if (materialId) {
+    try {
+      const response = await fetch(`/api/v1/materials/${encodeURIComponent(materialId)}/translations`, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const payload = response.ok ? await response.json() : { items: [] };
+      const translations = Array.isArray(payload.items) ? payload.items.filter((item) => item?.translation_file_id) : [];
+      if (translations.length && d.materialPdf && translation) {
+        translation.hidden = false;
+        translation.onclick = () => {
+          if (typeof window.SidjilOpenDocumentReader !== 'function') return;
+          closeResearcherMaterialModal();
+          window.SidjilOpenDocumentReader({ material: materialId, pdf: d.materialPdf, title: d.materialTitle || '', originalDownload: d.materialPdfDownload || d.materialPdf, translations });
+        };
+      } else if (requestTranslation) {
+        requestTranslation.hidden = false;
+        requestTranslation.onclick = async () => {
+          if (requestTranslation.disabled) return;
+          requestTranslation.disabled = true;
+          const label = requestTranslation.querySelector('.rpdf-action-label');
+          const originalLabel = label?.textContent || 'طلب ترجمة';
+          if (label) label.textContent = 'جارٍ الإرسال…';
+          try {
+            const headers = { 'content-type': 'application/json' };
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+            if (csrf) headers['X-CSRF-Token'] = csrf;
+            const sent = await fetch('/api/v1/translation-requests', { method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify({ material_id: Number(materialId), source_file_id: d.materialPdf ? Number(String(d.materialPdf).match(/\/file\/(\d+)/)?.[1]) || null : null }) });
+            const data = await sent.json().catch(() => ({}));
+            if (!sent.ok) throw new Error(data.error || 'تعذّر إرسال طلب الترجمة');
+            if (label) label.textContent = data.duplicate ? 'الطلب مسجل مسبقًا ✓' : 'تم إرسال الطلب ✓';
+          } catch (error) {
+            requestTranslation.disabled = false;
+            if (label) label.textContent = originalLabel;
+            window.toast?.(error.message || 'تعذّر إرسال الطلب', false);
+          }
+        };
+      }
+    } catch {
+      if (requestTranslation) requestTranslation.hidden = false;
+    }
   }
   const close = modal.querySelector('[data-researcher-modal-close]');
   if (close) close.focus();

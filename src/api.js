@@ -133,14 +133,22 @@ async function apiTranslationRequest(req, env) {
     const ready = await db.prepare("SELECT id FROM file_translations WHERE source_file_id = ? AND status = 'ready'").bind(fileId).first().catch(() => null);
     if (ready) return err('الترجمة متوفرة بالفعل لهذا الملف', 409);
   }
+  let requester = null;
+  try { requester = await getSessionUser(req, env); } catch {}
+  const requesterName = String(requester?.display_name || requester?.username || body.requester_name || '').trim().slice(0, 120);
+  const requesterEmail = String(requester?.email || body.requester_email || '').trim().slice(0, 160).toLowerCase();
+  if (!requesterName) return err('اكتب اسم طالب الترجمة', 400);
+  // الباحث الموثق يرسل الطلب مباشرة حتى إن لم يكن بريده محفوظًا في الحساب؛
+  // أما زائر الموقع العام فيلزم أن يترك بريدًا صالحًا لمتابعة الطلب.
+  if (!requester && (!requesterEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmail))) return err('اكتب بريدًا إلكترونيًا صالحًا', 400);
+  if (requesterEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmail)) return err('اكتب بريدًا إلكترونيًا صالحًا', 400);
   const ip = req.headers.get('cf-connecting-ip') || String(req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
   const safeFileId = Number.isFinite(fileId) ? fileId : null;
   const duplicate = await db.prepare(`SELECT id FROM translation_requests WHERE material_id = ? AND status = 'new' AND requester_ip = ? AND created_at >= datetime('now','-30 days') AND ((source_file_id = ?) OR (source_file_id IS NULL AND ? IS NULL))`).bind(materialId, ip, safeFileId, safeFileId).first().catch(() => null);
   if (duplicate) return json({ ok: true, duplicate: true });
   const count = await db.prepare("SELECT COUNT(*) AS c FROM translation_requests WHERE requester_ip = ? AND created_at >= datetime('now','-1 day')").bind(ip).first().catch(() => ({ c: 0 }));
   if (Number(count?.c || 0) >= 5) return err('تجاوزت الحد اليومي لطلبات الترجمة', 429);
-  let requesterId = null; try { requesterId = (await getSessionUser(req, env))?.id || null; } catch {}
-  await db.prepare('INSERT INTO translation_requests (material_id, source_file_id, target_lang, requester_id, requester_ip) VALUES (?, ?, ?, ?, ?)').bind(materialId, safeFileId, targetLang, requesterId, ip).run();
+  await db.prepare('INSERT INTO translation_requests (material_id, source_file_id, target_lang, requester_id, requester_ip, requester_name, requester_email) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(materialId, safeFileId, targetLang, requester?.id || null, ip, requesterName, requesterEmail).run();
   return json({ ok: true }, 201);
 }
 

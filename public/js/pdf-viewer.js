@@ -480,11 +480,23 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   /* ---------- طلب ترجمة عند غياب النظير ---------- */
   var requestBtn = box.querySelector('[data-request-translation]');
   if (requestBtn) {
-    requestBtn.addEventListener('click', async function () {
+    var requestForm = document.createElement('form');
+    requestForm.className = 'translation-request-form';
+    requestForm.hidden = true;
+    requestForm.innerHTML = pageLang === 'fr'
+      ? '<p class="translation-request-intro">Laissez vos coordonnées pour être informé lorsque la traduction sera disponible.</p><label><span>Nom du demandeur</span><input name="requester_name" required maxlength="120" autocomplete="name"></label><label><span>E-mail</span><input name="requester_email" required type="email" maxlength="160" autocomplete="email"></label><button class="btn btn-primary" type="submit">Envoyer la demande</button><p class="translation-request-status" aria-live="polite"></p>'
+      : '<p class="translation-request-intro">اكتب بياناتك لتتمكن الإدارة من متابعة طلب الترجمة معك.</p><label><span>اسم طالب الترجمة</span><input name="requester_name" required maxlength="120" autocomplete="name"></label><label><span>البريد الإلكتروني</span><input name="requester_email" required type="email" maxlength="160" autocomplete="email"></label><button class="btn btn-primary" type="submit">إرسال الطلب</button><p class="translation-request-status" aria-live="polite"></p>';
+    box.appendChild(requestForm);
+    requestBtn.addEventListener('click', function () {
       if (requestBtn.disabled) return;
-      requestBtn.disabled = true;
-      var orig = requestBtn.textContent;
-      requestBtn.textContent = pageLang === 'fr' ? 'Envoi…' : 'جارٍ الإرسال…';
+      requestForm.hidden = !requestForm.hidden;
+      if (!requestForm.hidden) requestForm.querySelector('input')?.focus();
+    });
+    requestForm.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      var submit = requestForm.querySelector('[type="submit"]'), status = requestForm.querySelector('.translation-request-status');
+      submit.disabled = true;
+      status.textContent = pageLang === 'fr' ? 'Envoi…' : 'جارٍ الإرسال…';
       try {
         var r = await fetch('/api/v1/translation-requests', {
           method: 'POST',
@@ -492,19 +504,21 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
           body: JSON.stringify({
             material_id: Number(requestBtn.getAttribute('data-material-id')),
             source_file_id: Number(requestBtn.getAttribute('data-file-id')) || null,
+            requester_name: requestForm.elements.requester_name.value.trim(),
+            requester_email: requestForm.elements.requester_email.value.trim(),
           }),
         });
         var d = await r.json().catch(function () { return {}; });
         if (!r.ok) throw new Error(d.error || '');
-        requestBtn.textContent = pageLang === 'fr'
-          ? (d.duplicate ? 'Demande déjà enregistrée ✓' : 'Demande envoyée ✓')
-          : (d.duplicate ? 'طلبك مسجل لدينا بالفعل ✓' : 'وصلنا طلبك ✓');
+        requestBtn.disabled = true;
+        requestBtn.textContent = pageLang === 'fr' ? 'Demande envoyée ✓' : 'تم إرسال طلب الترجمة ✓';
+        status.textContent = d.duplicate
+          ? (pageLang === 'fr' ? 'Votre demande est déjà enregistrée.' : 'طلبك مسجل لدينا بالفعل.')
+          : (pageLang === 'fr' ? 'Nous vous contacterons lorsque la traduction sera disponible.' : 'ستتواصل الإدارة معك عند توفر الترجمة.');
+        submit.hidden = true;
       } catch (e) {
-        requestBtn.textContent = orig;
-        requestBtn.disabled = false;
-        alert(pageLang === 'fr'
-          ? 'Envoi impossible pour le moment. Réessayez plus tard.'
-          : 'تعذّر إرسال الطلب الآن. حاول لاحقًا.');
+        submit.disabled = false;
+        status.textContent = e.message || (pageLang === 'fr' ? 'Envoi impossible.' : 'تعذّر إرسال الطلب.');
       }
     });
   }

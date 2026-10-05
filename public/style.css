@@ -3622,6 +3622,11 @@ body.sidjil-reading-open { overflow: hidden; }
 
 /* ترجمة المحتوى داخل العارض */
 .btn-translate { border-color: var(--gold); color: var(--gold-deep); }
+.translation-request-form { display: grid; gap: .65rem; margin-top: .7rem; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.translation-request-form label { display: grid; gap: .25rem; color: var(--ink); font-size: .82rem; font-weight: 700; }
+.translation-request-form input { width: 100%; min-height: 2.45rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--ink); font: inherit; }
+.translation-request-form .btn { justify-self: start; }
+.translation-request-intro, .translation-request-status { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.7; }
 .content-translate-actions { display:flex; align-items:center; gap:.65rem; margin-top:.8rem; flex-wrap:wrap; }
 .translate-inline-status { color:var(--muted); font-size:.86rem; }
 .translation-action-modal { display:none; position:fixed; inset:0; z-index:120; align-items:center; justify-content:center; padding:1rem; }

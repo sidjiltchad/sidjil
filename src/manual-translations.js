@@ -69,7 +69,14 @@ export async function translationDelete(env, user, req, id) {
 
 export async function translationRequests(env, url) {
   const status = url.searchParams.get('status') || 'new', where = status === 'all' ? '' : 'WHERE r.status=?', binds = status === 'all' ? [] : [status];
-  const rows = await env.DB.prepare(`SELECT r.*, m.ark, m.title_ar, m.title_orig, f.filename AS source_filename FROM translation_requests r JOIN materials m ON m.id=r.material_id LEFT JOIN files f ON f.id=r.source_file_id ${where} ORDER BY r.created_at DESC LIMIT 200`).bind(...binds).all().catch(() => ({ results: [] })); return json({ items: rows.results || [] });
+  const rows = await env.DB.prepare(`SELECT r.*, m.ark, m.title_ar, m.title_orig, f.filename AS source_filename,
+    COALESCE(NULLIF(r.requester_name, ''), u.display_name, u.username, 'زائر الموقع') AS requester_display_name,
+    COALESCE(NULLIF(r.requester_email, ''), u.email, '') AS requester_contact_email,
+    u.username AS requester_username
+    FROM translation_requests r JOIN materials m ON m.id=r.material_id
+    LEFT JOIN files f ON f.id=r.source_file_id
+    LEFT JOIN admin_users u ON u.id=r.requester_id
+    ${where} ORDER BY r.created_at DESC LIMIT 200`).bind(...binds).all().catch(() => ({ results: [] })); return json({ items: rows.results || [] });
 }
 
 export async function translationRequestUpdate(env, user, req, id, body) {
