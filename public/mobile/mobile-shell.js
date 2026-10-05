@@ -3,9 +3,11 @@ import { resolveAppUrl } from './api-base.js';
 import { ApiError } from './api-client.js';
 import { getSession, login, logout } from './auth.js';
 import { createResearcherFeedClient } from './researcher-feed.js';
-import { createNavigation, navigateToResearcherProfile } from './navigation.js';
+import { createNavigation, navigateToResearcherProfile, navigateToMaterial, navigateToMaterialReader } from './navigation.js';
 import { createResearcherSearchClient } from './researcher-search.js';
 import { getResearcherProfile } from './researcher-profile.js';
+import { createMaterialClient } from './material.js';
+import { mountPdfReader } from './pdf-reader.js';
 
 const shell = document.querySelector('[data-mobile-shell]');
 const runtimeEl = shell?.querySelector('[data-runtime]');
@@ -40,12 +42,18 @@ const profileBio = shell?.querySelector('[data-profile-bio]');
 const profileMeta = shell?.querySelector('[data-profile-meta]');
 const profileStats = shell?.querySelector('[data-profile-stats]');
 const profileContent = shell?.querySelector('[data-profile-content]');
+const materialDetails = shell?.querySelector('[data-material-details]');
+const materialBack = shell?.querySelector('[data-material-back]');
+const readerHost = shell?.querySelector('[data-mobile-reader]');
 const feedClient = createResearcherFeedClient();
 const searchClient = createResearcherSearchClient();
+const materialClient = createMaterialClient();
 let activeFilter = 'discover';
 let feedRequestPending = false;
 let profileRequestId = 0;
 const profileCache = new Map();
+let materialReader = null;
+let materialRequestId = 0;
 
 const typeLabels = {
   archival_image: 'صورة أرشيفية',
@@ -135,6 +143,8 @@ function addText(parent, tag, text, className = '') {
 function materialCard(item) {
   const card = document.createElement('article');
   card.className = 'mobile-feed-card';
+  card.dataset.materialId = String(item.id || '');
+  card.tabIndex = 0;
   const body = document.createElement('div');
   body.className = 'mobile-feed-card-body';
   const authorButton = document.createElement('button');
@@ -214,6 +224,8 @@ function searchResultCard(item) {
     return card;
   }
   if (item.kind === 'material') {
+    card.dataset.materialId = String(item.id || '');
+    card.tabIndex = 0;
     if (item.thumbnailUrl) {
       const image = document.createElement('img');
       image.className = 'mobile-search-thumb'; image.alt = ''; image.loading = 'lazy'; image.src = resolveAppUrl(item.thumbnailUrl); image.referrerPolicy = 'strict-origin-when-cross-origin';
@@ -221,13 +233,70 @@ function searchResultCard(item) {
     }
     const textWrap = document.createElement('span');
     addText(textWrap, 'h3', item.title || item.ark || 'مادة');
-    addText(textWrap, 'p', [type, item.year, 'تفاصيل المادة ستتوفر في المرحلة التالية.'].filter(Boolean).join(' · '));
+    addText(textWrap, 'p', [type, item.year, 'عرض التفاصيل داخل مساحة الباحث'].filter(Boolean).join(' · '));
     card.append(textWrap); return card;
   }
   const textWrap = document.createElement('span');
   addText(textWrap, 'h3', item.title || (item.kind === 'reply' ? 'رد باحث' : 'منشور باحث'));
   addText(textWrap, 'p', [type, item.body || item.authorName || ''].filter(Boolean).join(' · '));
   card.append(textWrap); return card;
+}
+
+function materialDetailRow(label, value) {
+  if (!value) return null;
+  const row = document.createElement('div'); row.className = 'mobile-material-row';
+  addText(row, 'span', label, 'mobile-material-label'); addText(row, 'span', value, 'mobile-material-value');
+  return row;
+}
+
+function renderMaterialDetails(material) {
+  if (!materialDetails) return;
+  materialDetails.replaceChildren();
+  const header = document.createElement('div'); header.className = 'mobile-material-head';
+  addText(header, 'span', typeLabels[material.materialLevel] || material.type || 'مادة أرشيفية', 'mobile-feed-type');
+  addText(header, 'h1', material.title, 'mobile-material-title');
+  if (material.ark) addText(header, 'p', material.ark, 'mobile-feed-meta');
+  materialDetails.append(header);
+  if (material.thumbnail?.url) { const image = document.createElement('img'); image.className = 'mobile-material-cover'; image.src = resolveAppUrl(material.thumbnail.url); image.alt = `معاينة ${material.title}`; image.loading = 'lazy'; materialDetails.append(image); }
+  const summary = material.summary || material.description;
+  if (summary) addText(materialDetails, 'p', summary, 'mobile-material-description');
+  const rows = [
+    ['المؤلف', material.author], ['المصور', material.photographer], ['السنة', material.year], ['التاريخ', material.dateText],
+    ['المصدر', material.sourceName], ['الموضع', material.placeName], ['المرجع الأرشيفي', material.archiveRef],
+  ].map(([label, value]) => materialDetailRow(label, value)).filter(Boolean);
+  if (rows.length) { const grid = document.createElement('div'); grid.className = 'mobile-material-meta-grid'; rows.forEach(row => grid.append(row)); materialDetails.append(grid); }
+  const actions = document.createElement('div'); actions.className = 'mobile-material-actions';
+  if (material.original) { const read = document.createElement('button'); read.type = 'button'; read.className = 'mobile-primary-action'; read.textContent = 'قراءة الأصل'; read.addEventListener('click', () => navigateToMaterialReader(navigation, material.id, 'original')); actions.append(read); }
+  const pdfTranslations = material.translations.filter(item => String(item.mime || item.filename).toLowerCase().includes('pdf'));
+  if (pdfTranslations.length) { const translate = document.createElement('button'); translate.type = 'button'; translate.className = 'mobile-secondary-action'; translate.textContent = 'قراءة الترجمة'; translate.addEventListener('click', () => navigateToMaterialReader(navigation, material.id, 'translation')); actions.append(translate); }
+  else if (material.translations.length) addText(actions, 'span', 'توجد ترجمة مرفوعة بصيغة غير PDF.', 'mobile-feed-meta');
+  materialDetails.append(actions);
+  if (material.fullText) { addText(materialDetails, 'h2', 'النص المفرغ', 'mobile-material-section-title'); const text = addText(materialDetails, 'div', material.fullText, 'mobile-material-text'); text.dir = /[\u0600-\u06ff]/u.test(material.fullText) ? 'rtl' : 'ltr'; }
+}
+
+async function loadMaterial(id) {
+  const requestId = ++materialRequestId;
+  if (!materialDetails) return;
+  materialDetails.replaceChildren(); addText(materialDetails, 'p', 'جارٍ تحميل تفاصيل المادة…', 'mobile-feed-status');
+  try {
+    const material = await materialClient.getMaterial(id);
+    if (requestId !== materialRequestId) return;
+    renderMaterialDetails(material);
+  } catch (cause) {
+    if (requestId !== materialRequestId) return;
+    materialDetails.replaceChildren(); addText(materialDetails, 'p', cause?.message || 'تعذر تحميل تفاصيل المادة.', 'mobile-feed-status');
+  }
+}
+
+async function loadReader(id, source) {
+  if (!readerHost) return;
+  materialReader?.destroy?.(); materialReader = null;
+  readerHost.replaceChildren(); addText(readerHost, 'p', 'جارٍ تجهيز القارئ…', 'mobile-feed-status');
+  try {
+    const material = await materialClient.getMaterial(id);
+    readerHost.replaceChildren();
+    materialReader = await mountPdfReader(readerHost, { material, source, onBack: () => navigation.navigate({ name: 'material', id }) });
+  } catch (cause) { readerHost.replaceChildren(); addText(readerHost, 'p', cause?.message || 'تعذر تشغيل قارئ PDF.', 'mobile-feed-status'); }
 }
 
 function renderSearchResults(items) {
@@ -351,6 +420,9 @@ async function loadFeed({ reset = true } = {}) {
 function renderRoute(route) {
   shell?.querySelectorAll('[data-view]').forEach(view => { view.hidden = view.dataset.view !== route.name; });
   shell?.querySelectorAll('[data-nav-route]').forEach(button => button.classList.toggle('is-active', button.dataset.navRoute === route.name));
+  if (bottomNav) bottomNav.hidden = route.name === 'reader';
+  document.body.classList.toggle('mobile-reader-open', route.name === 'reader');
+  if (route.name !== 'reader') { materialReader?.destroy?.(); materialReader = null; }
   if (route.name === 'feed') loadFeed({ reset: activeFilter !== feedClient.getState().feed });
   if (route.name === 'search') {
     const state = searchClient.getState();
@@ -362,13 +434,18 @@ function renderRoute(route) {
     if (profileTitle) profileTitle.textContent = route.id ? 'باحث رقم ' + route.id : 'مجتمع الباحثين';
     loadProfile(route.id);
   }
+  if (route.name === 'material') loadMaterial(route.id);
+  if (route.name === 'reader') loadReader(route.id, route.source);
 }
 const navigation = createNavigation({ onRoute: renderRoute });
 shell?.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigation.navigate(button.dataset.route)));
 shell?.addEventListener('click', event => {
   const author = event.target.closest('[data-profile-id]');
   if (author?.dataset.profileId) navigateToResearcherProfile(navigation, author.dataset.profileId);
+  const material = event.target.closest('[data-material-id]');
+  if (material?.dataset.materialId && !event.target.closest('button[data-profile-id]')) navigateToMaterial(navigation, material.dataset.materialId);
 });
+materialBack?.addEventListener('click', () => navigation.navigate('feed'));
 shell?.querySelectorAll('[data-feed-filter]').forEach(button => button.addEventListener('click', () => {
   activeFilter = button.dataset.feedFilter || 'discover';
   updateFilterButtons();

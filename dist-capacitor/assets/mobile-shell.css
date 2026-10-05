@@ -111,3 +111,42 @@ button.mobile-search-result { cursor: pointer; }
   .mobile-feed-list { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 }
 
+/* Phase 5 — material details and the local PDF.js reader */
+.mobile-material-view { padding: 1rem; }
+.mobile-view-back { border: 0; background: transparent; color: #e7b44b; font: inherit; cursor: pointer; padding: .45rem 0; }
+.mobile-material-details { max-width: 900px; margin: 0 auto; background: #fff; color: #172033; border: 1px solid rgba(24,37,57,.1); border-radius: 18px; padding: clamp(1rem, 3vw, 2rem); box-shadow: 0 12px 32px rgba(12,22,38,.08); }
+.mobile-material-head { display: grid; gap: .35rem; }
+.mobile-material-title { margin: 0; line-height: 1.45; font-size: clamp(1.35rem, 4vw, 2.1rem); }
+.mobile-material-cover { display: block; max-width: min(100%, 420px); max-height: 420px; object-fit: contain; margin: 1rem auto; border-radius: 10px; }
+.mobile-material-description { line-height: 1.9; white-space: pre-wrap; }
+.mobile-material-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .6rem; margin: 1rem 0; }
+.mobile-material-row { display: grid; gap: .15rem; padding: .7rem .8rem; border: 1px solid rgba(24,37,57,.08); border-radius: 10px; background: rgba(242,245,249,.65); }
+.mobile-material-label { color: #68758a; font-size: .78rem; }
+.mobile-material-value { font-weight: 600; overflow-wrap: anywhere; }
+.mobile-material-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-top: 1rem; }
+.mobile-primary-action, .mobile-secondary-action { border: 1px solid #b97717; border-radius: 10px; padding: .7rem 1rem; cursor: pointer; font: inherit; }
+.mobile-primary-action { color: #fff; background: #a96b12; }
+.mobile-secondary-action { color: #815511; background: #fffaf0; }
+.mobile-material-section-title { font-size: 1.1rem; margin: 1.3rem 0 .5rem; }
+.mobile-material-text { white-space: pre-wrap; line-height: 2; text-align: justify; overflow-wrap: anywhere; }
+.mobile-reader-host-view { position: fixed; inset: 0; z-index: 80; background: #0b0e13; padding: 0; overflow: hidden; }
+.mobile-reader-host-view > [data-mobile-reader] { height: 100%; }
+.mobile-reader-view { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; min-height: 100%; color: #eaf0fb; background: #0b0e13; }
+.mobile-reader-toolbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .55rem; padding: max(.45rem, env(safe-area-inset-top)) .75rem .45rem; background: rgba(11,14,19,.96); border-bottom: 1px solid rgba(255,255,255,.1); }
+.mobile-reader-toolbar button { border: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.mobile-reader-back { font-size: 1.8rem; line-height: 1; }
+.mobile-reader-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: .9rem; }
+.mobile-reader-tabs { display: flex; gap: .25rem; }
+.mobile-reader-tabs button { padding: .4rem .65rem; border-radius: 999px; color: #aeb9ca; font-size: .8rem; }
+.mobile-reader-tabs button.is-active { color: #fff; background: #244a7a; }
+.mobile-reader-tabs button:disabled { opacity: .4; cursor: not-allowed; }
+.mobile-reader-status { min-height: 1.45rem; padding: .35rem .8rem; color: #c7d2e4; text-align: center; font-size: .82rem; }
+.mobile-reader-status.is-error { color: #ffb2b2; }
+.mobile-reader-stage { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: .75rem; background: #202733; touch-action: pan-x pan-y; }
+.mobile-reader-page-wrap { width: max-content; min-width: 100%; margin: 0 auto; background: #fff; box-shadow: 0 10px 28px rgba(0,0,0,.3); }
+.mobile-reader-canvas { display: block; max-width: none; background: #fff; }
+.mobile-reader-zoom { display: flex; align-items: center; justify-content: center; gap: .75rem; padding: .4rem .8rem max(.4rem, env(safe-area-inset-bottom)); background: rgba(11,14,19,.96); }
+.mobile-reader-zoom button { width: 2rem; height: 2rem; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; color: inherit; background: transparent; font-size: 1.2rem; cursor: pointer; }
+.mobile-reader-page-label { min-width: 6.5rem; text-align: center; font-size: .8rem; color: #c7d2e4; }
+@media (min-width: 800px) { .mobile-reader-host-view { inset: 2rem; border-radius: 18px; box-shadow: 0 24px 80px rgba(0,0,0,.42); } .mobile-reader-stage { padding: 1.5rem; } }
+

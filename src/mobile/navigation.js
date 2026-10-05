@@ -1,4 +1,4 @@
-const ROUTES = new Set(['feed', 'search', 'profile', 'account']);
+const ROUTES = new Set(['feed', 'search', 'profile', 'account', 'material', 'reader']);
 
 export function parseRoute(hash = '') {
   const value = String(hash || '').replace(/^#/, '').trim();
@@ -6,11 +6,28 @@ export function parseRoute(hash = '') {
     const id = value.slice('profile/'.length).replace(/[^\d]/g, '');
     return id ? { name: 'profile', id } : { name: 'feed' };
   }
+  if (value.startsWith('material/')) {
+    const parts = value.slice('material/'.length).split('/');
+    const id = parts.shift()?.replace(/[^\d]/g, '');
+    if (!id) return { name: 'feed' };
+    if (parts[0] === 'read' && (parts[1] === 'original' || parts[1] === 'translation')) {
+      return { name: 'reader', id, source: parts[1] };
+    }
+    return { name: 'material', id };
+  }
   return ROUTES.has(value) ? { name: value } : { name: 'feed' };
 }
 
 export function navigateToResearcherProfile(navigation, id) {
   return navigation?.navigate?.({ name: 'profile', id });
+}
+
+export function navigateToMaterial(navigation, id) {
+  return navigation?.navigate?.({ name: 'material', id });
+}
+
+export function navigateToMaterialReader(navigation, id, source = 'original') {
+  return navigation?.navigate?.({ name: 'reader', id, source: source === 'translation' ? 'translation' : 'original' });
 }
 
 export function classifyNavigationUrl(value, appOrigin = 'https://app.sidjil.org') {
@@ -40,10 +57,12 @@ export function createNavigation({ onRoute, historyLike = globalThis.history, lo
   }
   function navigate(route) {
     const next = typeof route === 'string' ? parseRoute(route) : route;
-    current = next?.name === 'profile' && next.id
-      ? { name: 'profile', id: String(next.id).replace(/[^\d]/g, '') }
-      : ROUTES.has(next?.name) ? { name: next.name } : { name: 'feed' };
-    const hash = current.name === 'profile' ? `#profile/${current.id}` : `#${current.name}`;
+    if (next?.name === 'profile' && next.id) current = { name: 'profile', id: String(next.id).replace(/[^\d]/g, '') };
+    else if ((next?.name === 'material' || next?.name === 'reader') && next.id) {
+      const id = String(next.id).replace(/[^\d]/g, '');
+      current = next.name === 'reader' ? { name: 'reader', id, source: next.source === 'translation' ? 'translation' : 'original' } : { name: 'material', id };
+    } else current = ROUTES.has(next?.name) ? { name: next.name } : { name: 'feed' };
+    const hash = current.name === 'profile' ? `#profile/${current.id}` : current.name === 'material' ? `#material/${current.id}` : current.name === 'reader' ? `#material/${current.id}/read/${current.source}` : `#${current.name}`;
     try { historyLike?.pushState?.({ route: current }, '', hash); } catch { /* embedded WebView fallback */ }
     emit();
     return { ...current };

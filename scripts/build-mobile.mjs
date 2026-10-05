@@ -11,6 +11,8 @@ await rm(output, { recursive: true, force: true });
 await mkdir(join(output, 'assets'), { recursive: true });
 await mkdir(join(output, 'fonts'), { recursive: true });
 await mkdir(join(output, 'vendor'), { recursive: true });
+await mkdir(join(output, 'assets', 'pdfjs', 'cmaps'), { recursive: true });
+await mkdir(join(output, 'assets', 'pdfjs', 'standard_fonts'), { recursive: true });
 
 await cp(join(mobilePublic, 'index.html'), join(output, 'index.html'));
 await cp(join(mobilePublic, 'mobile-shell.css'), join(output, 'assets', 'mobile-shell.css'));
@@ -23,6 +25,12 @@ await cp(join(mobileSource, 'researcher-feed.js'), join(output, 'assets', 'resea
 await cp(join(mobileSource, 'navigation.js'), join(output, 'assets', 'navigation.js'));
 await cp(join(mobileSource, 'researcher-search.js'), join(output, 'assets', 'researcher-search.js'));
 await cp(join(mobileSource, 'researcher-profile.js'), join(output, 'assets', 'researcher-profile.js'));
+await cp(join(mobileSource, 'material.js'), join(output, 'assets', 'material.js'));
+await cp(join(mobileSource, 'pdf-reader.js'), join(output, 'assets', 'pdf-reader.js'));
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.min.mjs'), join(output, 'assets', 'pdfjs', 'pdf.min.mjs'));
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.worker.min.mjs'), join(output, 'assets', 'pdfjs', 'pdf.worker.min.mjs'));
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'cmaps'), join(output, 'assets', 'pdfjs', 'cmaps'), { recursive: true });
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'standard_fonts'), join(output, 'assets', 'pdfjs', 'standard_fonts'), { recursive: true });
 await cp(join(root, 'public', 'sidjil-logo.png'), join(output, 'assets', 'sidjil-logo.png'));
 for (const file of ['ibm-plex-sans-arabic-400.woff2', 'ibm-plex-sans-arabic-700.woff2']) {
   await cp(join(root, 'public', 'fonts', file), join(output, 'fonts', file));
