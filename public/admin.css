@@ -1077,11 +1077,25 @@ input[type="checkbox"], input[type="radio"] {
 }
 
 /* وضع التطبيق الكامل: يملأ مساحة العرض المتاحة ويحترم نتوءات الهاتف. */
-body.researcher-fullscreen { position: fixed; inset: 0; width: 100%; overflow: auto; }
+/* لا نثبت body في الوضع الاحتياطي: التثبيت يجعل صفحات PWA تقبل النقر لكنها تفقد تمرير الصفحة على بعض الهواتف. */
+body.researcher-fullscreen {
+  position: static;
+  inset: auto;
+  width: auto;
+  min-height: 100dvh;
+  min-height: 100svh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y;
+}
 body.researcher-fullscreen,
 body.researcher-fullscreen .researcher-shell { min-height: 100dvh; min-height: 100svh; }
 body.researcher-fullscreen .researcher-shell .topbar { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
 body.researcher-fullscreen .researcher-shell .main { min-height: 100dvh; }
+html[data-researcher-fullscreen="1"],
+html[data-researcher-fullscreen="1"] body { overflow-x: hidden; }
 @media (display-mode: fullscreen) {
   body.researcher-body { min-height: 100dvh; }
   .researcher-shell .topbar { padding-top: max(10px, env(safe-area-inset-top, 0px)); }

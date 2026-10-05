@@ -5,8 +5,8 @@
 // - الـ API: network-only (لا تخزين مؤقت للنقاشات — تظهر تلقائيًا)
 // ============================================================
 
-const STATIC_CACHE = 'sidjil-static-v4';
-const PAGES_CACHE = 'sidjil-pages-v4';
+const STATIC_CACHE = 'sidjil-static-v5';
+const PAGES_CACHE = 'sidjil-pages-v5';
 
 const STATIC_ASSETS = [
   '/style.css',

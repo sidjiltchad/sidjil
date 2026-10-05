@@ -1641,11 +1641,18 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261005-researcher-fullscreen-v1">
+<link rel="stylesheet" href="/admin.css?v=20261005-researcher-fullscreen-v2">
 </head>
 <body class="researcher-body">
 <script>
-try { if (localStorage.getItem('sidjil_researcher_fullscreen') === '1') document.body.classList.add('researcher-fullscreen'); } catch {}
+try {
+  const saved = localStorage.getItem('sidjil_researcher_fullscreen') === '1'
+    || /(?:^|;)\s*sidjil_researcher_fullscreen=1(?:;|$)/.test(document.cookie);
+  if (saved) {
+    document.body.classList.add('researcher-fullscreen');
+    document.documentElement.dataset.researcherFullscreen = '1';
+  }
+} catch {}
 </script>
 <div class="admin-shell researcher-shell">
   <div class="topbar">
@@ -1790,8 +1797,18 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
     if (fullscreenToggle && !fullscreenToggle.dataset.sjBound) {
       fullscreenToggle.dataset.sjBound = '1';
       const label = fullscreenToggle.querySelector('[data-fullscreen-label]');
-      const readFullscreenPreference = () => { try { return localStorage.getItem('sidjil_researcher_fullscreen') === '1'; } catch { return false; } };
-      const writeFullscreenPreference = (active) => { try { localStorage.setItem('sidjil_researcher_fullscreen', active ? '1' : '0'); } catch {} };
+      const fullscreenPreferenceKey = 'sidjil_researcher_fullscreen';
+      const readFullscreenPreference = () => {
+        try {
+          if (localStorage.getItem(fullscreenPreferenceKey) === '1') return true;
+        } catch {}
+        try { return new RegExp('(?:^|;)\\s*' + fullscreenPreferenceKey + '=1(?:;|$)').test(document.cookie); } catch { return false; }
+      };
+      const writeFullscreenPreference = (active) => {
+        const value = active ? '1' : '0';
+        try { localStorage.setItem(fullscreenPreferenceKey, value); } catch {}
+        try { document.cookie = `${fullscreenPreferenceKey}=${value}; Max-Age=31536000; Path=/; SameSite=Lax`; } catch {}
+      };
       let fallbackFullscreen = readFullscreenPreference();
       let nativeFullscreenStarted = false;
       const setFullscreenState = () => {
@@ -1799,6 +1816,8 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
         fullscreenToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
         if (label) label.textContent = active ? 'الخروج من ملء الشاشة' : 'ملء الشاشة';
         document.body.classList.toggle('researcher-fullscreen', active);
+        if (active) document.documentElement.dataset.researcherFullscreen = '1';
+        else delete document.documentElement.dataset.researcherFullscreen;
       };
       fullscreenToggle.addEventListener('click', async () => {
         const shouldEnter = !(document.fullscreenElement || document.webkitFullscreenElement || fallbackFullscreen);
@@ -1833,6 +1852,12 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
       };
       document.addEventListener('fullscreenchange', syncNativeFullscreen);
       document.addEventListener('webkitfullscreenchange', syncNativeFullscreen);
+      window.addEventListener('pageshow', () => {
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+          fallbackFullscreen = readFullscreenPreference();
+          setFullscreenState();
+        }
+      });
       setFullscreenState();
     }
   };
