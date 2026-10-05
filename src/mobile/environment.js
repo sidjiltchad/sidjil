@@ -29,3 +29,15 @@ export function getRuntime() {
   return 'web';
 }
 
+export function getRuntimeDiagnostics() {
+  const capacitor = globalThis.Capacitor;
+  return {
+    runtime: getRuntime(),
+    origin: globalThis.location?.origin || '',
+    protocol: globalThis.location?.protocol || '',
+    host: globalThis.location?.host || '',
+    platform: typeof capacitor?.getPlatform === 'function' ? capacitor.getPlatform() : 'web',
+    native: isNativeApp(),
+  };
+}
+

@@ -17,3 +17,4 @@ export function resolveAppUrl(path = '') {
   return value || '/';
 }
 
+
