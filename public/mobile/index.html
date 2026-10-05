@@ -39,7 +39,7 @@
           <div class="mobile-view" data-view="feed">
             <div class="mobile-feed-heading">
               <div><p class="mobile-eyebrow">مجتمع الباحثين</p><h1>موجز الباحث</h1></div>
-              <div class="mobile-feed-heading-actions"><span class="mobile-session-chip" data-session-user></span><button type="button" class="mobile-refresh" data-refresh aria-label="تحديث الموجز">↻</button></div>
+              <div class="mobile-feed-heading-actions"><span class="mobile-session-chip" data-session-user></span><button type="button" class="mobile-new-material" data-route="new">+ مادة جديدة</button><button type="button" class="mobile-refresh" data-refresh aria-label="تحديث الموجز">↻</button></div>
             </div>
             <div class="mobile-feed-filters" role="tablist" aria-label="تصفية الموجز">
               <button type="button" role="tab" data-feed-filter="discover" aria-selected="true">اكتشف</button>
@@ -66,6 +66,28 @@
           <div class="mobile-view" data-view="account" hidden>
             <p class="mobile-eyebrow">الحساب</p><h1>حسابي</h1>
             <section class="mobile-placeholder-card"><span class="mobile-avatar">س</span><h2 data-account-name>باحث</h2><p class="mobile-session-status">الجلسة محفوظة عبر Cookie آمنة.</p><button type="button" data-logout>تسجيل الخروج</button><span class="mobile-form-message" data-session-message role="status"></span></section>
+          </div>
+          <div class="mobile-view mobile-new-material-view" data-view="new" hidden>
+            <button type="button" class="mobile-view-back" data-new-material-back>‹ العودة إلى الموجز</button>
+            <section class="mobile-material-details mobile-upload-card">
+              <p class="mobile-eyebrow">مادة جديدة</p><h1 class="mobile-material-title">إضافة مادة إلى سِجِل</h1>
+              <p class="mobile-material-description">أنشئ مسودة وارفع ملفًا واحدًا من الهاتف. ستبقى المادة قيد المراجعة حتى تعتمدها الإدارة.</p>
+              <form class="mobile-new-material-form" data-new-material-form novalidate>
+                <label>العنوان بالعربية *<input name="title_ar" type="text" maxlength="240" required></label>
+                <label>العنوان الأصلي<input name="title_orig" type="text" maxlength="240"></label>
+                <label>نوع المادة *<select name="type" required><option value="document">مادة أرشيفية نصية</option><option value="book">كتاب</option><option value="image">صورة أرشيفية</option><option value="article">مقال</option></select></label>
+                <label>التصنيف التحريري<select name="material_level"><option value="archival_text">مادة أرشيفية مفرغة</option><option value="archival_book_unavailable">كتاب أرشيفي غير متاح للتحميل</option><option value="archival_book_original">كتاب أرشيفي أصيل متاح</option><option value="archival_image">صورة أرشيفية</option><option value="chadian_publication">كتاب أو مؤلف تشادي</option></select></label>
+                <label>لغة المادة<select name="language"><option value="ar">العربية</option><option value="fr">الفرنسية</option><option value="en">الإنجليزية</option></select></label>
+                <label>السنة<input name="year" type="number" min="1000" max="2200"></label>
+                <label>الوصف أو الملخص<textarea name="description" rows="4" maxlength="8000"></textarea></label>
+                <label>نوع الملف<select name="kind"><option value="content-file">مضمون PDF أو DOCX</option><option value="content-image">صورة للمضمون</option><option value="cover">غلاف صورة</option></select></label>
+                <label class="mobile-file-picker">الملف من الهاتف<input name="file" type="file" accept=".pdf,.docx,image/jpeg,image/png,image/webp,image/gif,image/tiff,image/heic" required><span data-upload-file-name>لم يُختر ملف</span></label>
+                <div class="mobile-upload-preview" data-upload-preview hidden></div>
+                <div class="mobile-upload-progress" data-upload-progress hidden><span data-upload-progress-bar></span></div>
+                <p class="mobile-upload-status" data-upload-status role="status" aria-live="polite"></p>
+                <div class="mobile-upload-actions"><button type="submit" class="mobile-primary-action" data-upload-submit>إنشاء المسودة ورفع الملف</button><button type="button" class="mobile-secondary-action" data-upload-cancel hidden>إلغاء الرفع</button><button type="button" class="mobile-secondary-action" data-upload-retry hidden>إعادة المحاولة</button></div>
+              </form>
+            </section>
           </div>
           <div class="mobile-view mobile-material-view" data-view="material" hidden>
             <button type="button" class="mobile-view-back" data-material-back>‹ العودة إلى الموجز</button>

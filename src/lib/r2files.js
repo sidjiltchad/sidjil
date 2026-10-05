@@ -70,6 +70,28 @@ function hexSha256(buf) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function hasPrefix(bytes, prefix) {
+  return prefix.every((value, index) => bytes[index] === value);
+}
+
+function validateFileBytes(ext, bytes) {
+  if (!bytes.length) throw new Error('لا يمكن رفع ملف فارغ');
+  if (ext === 'pdf' && new TextDecoder().decode(bytes.slice(0, 5)) !== '%PDF-') throw new Error('ملف PDF غير صالح');
+  if (ext === 'docx' && !hasPrefix(bytes, [0x50, 0x4b, 0x03, 0x04])) throw new Error('ملف DOCX غير صالح');
+  if (ext === 'doc' && !hasPrefix(bytes, [0xd0, 0xcf, 0x11, 0xe0])) throw new Error('ملف Word غير صالح');
+  if (ext === 'jpg' || ext === 'jpeg') {
+    if (!hasPrefix(bytes, [0xff, 0xd8, 0xff])) throw new Error('ملف JPEG غير صالح');
+  }
+  if (ext === 'png' && !hasPrefix(bytes, [0x89, 0x50, 0x4e, 0x47])) throw new Error('ملف PNG غير صالح');
+  if (ext === 'gif' && new TextDecoder().decode(bytes.slice(0, 4)) !== 'GIF8') throw new Error('ملف GIF غير صالح');
+  if ((ext === 'webp') && (new TextDecoder().decode(bytes.slice(0, 4)) !== 'RIFF' || new TextDecoder().decode(bytes.slice(8, 12)) !== 'WEBP')) throw new Error('ملف WebP غير صالح');
+  if (ext === 'tif' || ext === 'tiff') {
+    const little = hasPrefix(bytes, [0x49, 0x49, 0x2a, 0x00]);
+    const big = hasPrefix(bytes, [0x4d, 0x4d, 0x00, 0x2a]);
+    if (!little && !big) throw new Error('ملف TIFF غير صالح');
+  }
+}
+
 /**
  * putUpload(env, {materialId, ark, type}, file, kind='original')
  * - يتحقق من الامتداد والحجم
@@ -86,11 +108,13 @@ export async function putUpload(env, { materialId, ark, type }, file, kind = 'or
     throw new Error('نوع الملف غير مسموح: ' + (ext || '؟') + ' — المسموح: pdf, doc, docx, jpg, jpeg, png, webp, tiff');
   }
   const size = file.size || 0;
+  if (!size) throw new Error('لا يمكن رفع ملف فارغ');
   if (size > MAX_UPLOAD) {
     throw new Error('حجم الملف يتجاوز الحد الأقصى (100MB)');
   }
-
-  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  validateFileBytes(ext, bytes);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
   const sha256 = hexSha256(digest);
   const sha8 = sha256.slice(0, 8);
   const key = r2KeyFor({ ark, type, kind, filename, sha8 });

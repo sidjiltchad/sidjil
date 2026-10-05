@@ -1349,25 +1349,26 @@ async function admMaterialUpload(env, user, req, idOrArk) {
   const requestedKind = String(form.get('kind') || 'original');
   let kind = requestedKind;
   if (user.role !== 'admin') {
-    const isImage = /^image\/(jpeg|png|webp|tiff|gif|heic)$/i.test(file?.type || '');
+    const isImage = /^image\/(jpeg|png|webp|tiff|gif|heic)$/i.test(file?.type || '') || /\.(?:jpe?g|png|webp|tiff?|gif|heic)$/i.test(file?.name || '');
     const isPdf = file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '');
-    const isArticleFile = m.type === 'article' && /\.(pdf|docx?)$/i.test(file?.name || '');
+    const isWordFile = /\.(docx?)$/i.test(file?.name || '') || /^application\/(?:msword|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/i.test(file?.type || '');
+    const isArticleFile = m.type === 'article' && (isPdf || isWordFile);
     if (requestedKind === 'cover') {
       if (m.type === 'article') return err('مقالات المجلة لا تحتاج إلى صورة غلاف هنا', 400);
-      if (!isImage) return err('الغلاف يجب أن يكون صورة', 400);
+      if (!isImage) return err('الغلاف يجب أن يكون صورة', 415);
       const existing = await db.prepare("SELECT id FROM files WHERE material_id = ? AND kind = 'cover' LIMIT 1").bind(m.id).first();
       if (existing) return err('للمادة صورة غلاف واحدة فقط؛ احذف الغلاف الحالي أولًا لاستبداله', 400);
       kind = 'cover';
     } else if (requestedKind === 'content-image') {
       if (m.type === 'article') return err('يمكن إرفاق ملف PDF أو Word واحد بمقال المجلة', 400);
-      if (!isImage) return err('اختر صورة بصيغة مدعومة', 400);
+      if (!isImage) return err('اختر صورة بصيغة مدعومة', 415);
       const existing = await db.prepare('SELECT kind, mime, filename FROM files WHERE material_id = ? AND kind = \'attachment\'').bind(m.id).all();
       const rows = existing.results || [];
       if (m.type !== 'article' && rows.some(f => f.mime === 'application/pdf' || /\.pdf$/i.test(f.filename || ''))) return err('اختر صور المحتوى أو PDF، ولا يمكن الجمع بينهما', 400);
       if (rows.filter(f => /^image\//i.test(f.mime || '')).length >= 20) return err('الحد الأقصى 20 صورة للمادة', 400);
       kind = 'attachment';
     } else if (requestedKind === 'content-file') {
-      if (!(isPdf || isArticleFile)) return err(m.type === 'article' ? 'ملف المقال يجب أن يكون PDF أو Word' : 'ملف المحتوى يجب أن يكون PDF', 400);
+      if (!(isPdf || isWordFile || isArticleFile)) return err('ملف المضمون يجب أن يكون PDF أو Word', 415);
       const existing = await db.prepare('SELECT mime, filename FROM files WHERE material_id = ? AND kind = \'attachment\'').bind(m.id).all();
       const rows = existing.results || [];
       if (rows.some(f => f.mime === 'application/pdf' || /\.pdf$/i.test(f.filename || '') || /\.(docx?)$/i.test(f.filename || ''))) return err('يمكن إضافة ملف محتوى واحد فقط؛ احذف الملف الحالي أولًا', 400);
@@ -1384,7 +1385,9 @@ async function admMaterialUpload(env, user, req, idOrArk) {
   try {
     row = await putUpload(env, { materialId: m.id, ark: m.ark, type: m.type }, file, kind);
   } catch (e) {
-    return err(e.message || 'فشل الرفع', 400);
+    const message = e.message || 'فشل الرفع';
+    const status = /حجم الملف|100MB|100 ميغابايت/i.test(message) ? 413 : /نوع الملف|المسموح|غير صالح|صيغة مدعومة/i.test(message) ? 415 : 400;
+    return err(message, status);
   }
 
   // صورة أصلية → تسجيلها تلقائيًا كنسخة original في image_versions

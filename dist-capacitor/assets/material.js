@@ -24,12 +24,18 @@ function fileInfo(file) {
   return { id: number(file.id), filename: text(file.filename), mime: text(file.mime), kind: text(file.kind), size: number(file.size), url: fileUrl(file.id) };
 }
 
+export function isPdfFile(file) { return /pdf/i.test(`${file?.mime || ''} ${file?.filename || ''}`); }
+export function isDocxFile(file) { return /docx/i.test(`${file?.mime || ''} ${file?.filename || ''}`); }
+function isReadable(file) { return isPdfFile(file) || isDocxFile(file); }
+
 export function normalizeMaterialResponse(data, requestedId = '') {
   const source = data && typeof data === 'object' ? data : {};
   const id = number(source.id) || number(requestedId);
   const files = Array.isArray(source.files) ? source.files.map(fileInfo).filter(Boolean) : [];
-  const pdfs = files.filter(file => file.mime === 'application/pdf' || /\.pdf$/i.test(file.filename));
-  const original = pdfs.find(file => !/translation|ترجم/i.test(file.kind + ' ' + file.filename)) || pdfs[0] || null;
+  const readableFiles = files.filter(isReadable);
+  const original = readableFiles.find(file => !/translation|ترجم/i.test(file.kind + ' ' + file.filename))
+    || files.find(file => !/translation|ترجم/i.test(file.kind + ' ' + file.filename))
+    || files[0] || null;
   const translations = Array.isArray(source.file_translations)
     ? source.file_translations.map(item => {
       const translationId = number(item.translation_file_id);
@@ -44,7 +50,7 @@ export function normalizeMaterialResponse(data, requestedId = '') {
     id, ark: text(source.ark), title, titleOriginal: text(source.title_orig), type: text(source.type), materialLevel: text(source.material_level), language: text(source.language),
     year: source.year == null ? '' : text(source.year), dateText: text(source.date_text), author: text(source.author), photographer: text(source.photographer), archiveRef: text(source.archive_ref),
     description: text(source.description), summary: text(source.summary), fullText: text(source.full_text), sourceName: text(source.source?.name_ar || source.source?.name || source.source_name_ar || source.source_name), placeName: text(source.place?.name_ar || source.place_name),
-    files, original, translations, thumbnail: thumbnail ? { ...thumbnail, url: fileUrl(thumbnail.id) } : null,
+    files, original, readableOriginal: readableFiles.find(file => file.id === original?.id) || null, translations, thumbnail: thumbnail ? { ...thumbnail, url: fileUrl(thumbnail.id) } : null,
   };
 }
 

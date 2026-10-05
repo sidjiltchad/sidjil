@@ -1,4 +1,4 @@
-const ROUTES = new Set(['feed', 'search', 'profile', 'account', 'material', 'reader']);
+const ROUTES = new Set(['feed', 'search', 'profile', 'account', 'new', 'material', 'reader']);
 
 export function parseRoute(hash = '') {
   const value = String(hash || '').replace(/^#/, '').trim();

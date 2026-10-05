@@ -22,7 +22,7 @@ function readerSource(material, source) {
 }
 export function resolveReaderSource(material, source = 'original') { return readerSource(material, source); }
 
-export async function mountPdfReader(container, { material, source = 'original', fileActions = null, onBack } = {}) {
+export async function mountPdfReader(container, { material, source = 'original', fileActions = null, onBack, onSourceChange } = {}) {
   if (!container || !material) throw new Error('المادة غير محددة');
   let currentSource = source === 'translation' ? 'translation' : 'original';
   let generation = 0;
@@ -108,8 +108,17 @@ export async function mountPdfReader(container, { material, source = 'original',
     }
   }
   back.addEventListener('click', () => onBack?.());
-  originalTab.addEventListener('click', () => openSource('original'));
-  translationTab.addEventListener('click', () => openSource('translation'));
+  function switchSource(value) {
+    const next = value === 'translation' ? 'translation' : 'original';
+    const available = next === 'original' ? Boolean(material.original) : material.translations.length > 0;
+    if (!available) return;
+    if (next === currentSource) return;
+    const nextFile = next === 'original' ? material.original : material.translations.find(isPdf);
+    if (nextFile) openSource(next).catch(() => {});
+    else onSourceChange?.(next);
+  }
+  originalTab.addEventListener('click', () => switchSource('original'));
+  translationTab.addEventListener('click', () => switchSource('translation'));
   minus.addEventListener('click', () => { zoom = Math.max(.5, zoom - .1); render().catch(() => {}); });
   plus.addEventListener('click', () => { zoom = Math.min(3, zoom + .1); render().catch(() => {}); });
   previous.addEventListener('click', () => { if (pdf && currentPage > 1) { currentPage -= 1; render().catch(() => {}); } });
@@ -118,7 +127,8 @@ export async function mountPdfReader(container, { material, source = 'original',
   fullscreen.addEventListener('click', () => { const target = container.closest('.mobile-reader-host-view') || container; if (!document.fullscreenElement) target.requestFullscreen?.({ navigationUI: 'hide' }).catch?.(() => {}); else document.exitFullscreen?.().catch?.(() => {}); });
   stage.addEventListener('wheel', event => { if (!event.ctrlKey) return; event.preventDefault(); zoom = Math.max(.5, Math.min(3, zoom + (event.deltaY < 0 ? .1 : -.1))); render().catch(() => {}); }, { passive: false });
   const onResize = () => render().catch(() => {}); globalThis.addEventListener?.('resize', onResize);
-  translationTab.disabled = !material.translations.some(isPdf);
+  originalTab.disabled = !material.original;
+  translationTab.disabled = !material.translations.length;
   updateFileActions();
   await openSource(currentSource);
   return { destroy() { destroyed = true; generation += 1; globalThis.removeEventListener?.('resize', onResize); cleanupDocument(); container.replaceChildren(); }, setSource: openSource };

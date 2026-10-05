@@ -1,14 +1,16 @@
 import { getRuntime } from './environment.js';
 import { resolveAppUrl } from './api-base.js';
-import { ApiError } from './api-client.js';
+import { ApiError, apiFetch } from './api-client.js';
 import { getSession, login, logout } from './auth.js';
 import { createResearcherFeedClient } from './researcher-feed.js';
 import { createNavigation, navigateToResearcherProfile, navigateToMaterial, navigateToMaterialReader } from './navigation.js';
 import { createResearcherSearchClient } from './researcher-search.js';
 import { getResearcherProfile } from './researcher-profile.js';
-import { createMaterialClient } from './material.js';
+import { createMaterialClient, isPdfFile, isDocxFile } from './material.js';
 import { mountPdfReader } from './pdf-reader.js';
+import { mountWordReader } from './docx-reader.js';
 import { createNativeFilesClient, NativeFileError } from './native-files.js';
+import { createNativeUploadClient, UploadError, validateUploadFile } from './native-upload.js';
 
 const shell = document.querySelector('[data-mobile-shell]');
 const runtimeEl = shell?.querySelector('[data-runtime]');
@@ -45,17 +47,31 @@ const profileStats = shell?.querySelector('[data-profile-stats]');
 const profileContent = shell?.querySelector('[data-profile-content]');
 const materialDetails = shell?.querySelector('[data-material-details]');
 const materialBack = shell?.querySelector('[data-material-back]');
+const newMaterialBack = shell?.querySelector('[data-new-material-back]');
+const newMaterialForm = shell?.querySelector('[data-new-material-form]');
+const uploadFileName = shell?.querySelector('[data-upload-file-name]');
+const uploadPreview = shell?.querySelector('[data-upload-preview]');
+const uploadProgress = shell?.querySelector('[data-upload-progress]');
+const uploadProgressBar = shell?.querySelector('[data-upload-progress-bar]');
+const uploadStatus = shell?.querySelector('[data-upload-status]');
+const uploadSubmit = shell?.querySelector('[data-upload-submit]');
+const uploadCancel = shell?.querySelector('[data-upload-cancel]');
+const uploadRetry = shell?.querySelector('[data-upload-retry]');
 const readerHost = shell?.querySelector('[data-mobile-reader]');
 const feedClient = createResearcherFeedClient();
 const searchClient = createResearcherSearchClient();
 const materialClient = createMaterialClient();
 const nativeFiles = createNativeFilesClient();
+const nativeUpload = createNativeUploadClient();
 let activeFilter = 'discover';
 let feedRequestPending = false;
 let profileRequestId = 0;
 const profileCache = new Map();
 let materialReader = null;
 let materialRequestId = 0;
+let readerRequestId = 0;
+let currentUpload = null;
+let lastUpload = null;
 
 const typeLabels = {
   archival_image: 'صورة أرشيفية',
@@ -290,9 +306,9 @@ function renderMaterialDetails(material) {
   ].map(([label, value]) => materialDetailRow(label, value)).filter(Boolean);
   if (rows.length) { const grid = document.createElement('div'); grid.className = 'mobile-material-meta-grid'; rows.forEach(row => grid.append(row)); materialDetails.append(grid); }
   const actions = document.createElement('div'); actions.className = 'mobile-material-actions';
-  if (material.original) { const read = document.createElement('button'); read.type = 'button'; read.className = 'mobile-primary-action'; read.textContent = 'قراءة الأصل'; read.addEventListener('click', () => navigateToMaterialReader(navigation, material.id, 'original')); actions.append(read); }
-  const pdfTranslations = material.translations.filter(item => String(item.mime || item.filename).toLowerCase().includes('pdf'));
-  if (pdfTranslations.length) { const translate = document.createElement('button'); translate.type = 'button'; translate.className = 'mobile-secondary-action'; translate.textContent = 'قراءة الترجمة'; translate.addEventListener('click', () => navigateToMaterialReader(navigation, material.id, 'translation')); actions.append(translate); }
+  if (material.readableOriginal) { const read = document.createElement('button'); read.type = 'button'; read.className = 'mobile-primary-action'; read.textContent = isDocxFile(material.readableOriginal) ? 'قراءة Word' : 'قراءة الأصل'; read.addEventListener('click', () => navigateToMaterialReader(navigation, material.id, 'original')); actions.append(read); }
+  const readableTranslations = material.translations.filter(item => isPdfFile(item) || isDocxFile(item));
+  if (readableTranslations.length) { const translate = document.createElement('button'); translate.type = 'button'; translate.className = 'mobile-secondary-action'; translate.textContent = 'قراءة الترجمة'; translate.addEventListener('click', () => navigateToMaterialReader(navigation, material.id, 'translation')); actions.append(translate); }
   else if (material.translations.length) addText(actions, 'span', 'توجد ترجمة مرفوعة بصيغة غير PDF.', 'mobile-feed-meta');
   materialDetails.append(actions);
   const fileStatus = document.createElement('p'); fileStatus.className = 'mobile-file-status'; fileStatus.setAttribute('role', 'status');
@@ -319,14 +335,137 @@ async function loadMaterial(id) {
 
 async function loadReader(id, source) {
   if (!readerHost) return;
+  const requestId = ++readerRequestId;
   materialReader?.destroy?.(); materialReader = null;
   readerHost.replaceChildren(); addText(readerHost, 'p', 'جارٍ تجهيز القارئ…', 'mobile-feed-status');
   try {
     const material = await materialClient.getMaterial(id);
+    if (requestId !== readerRequestId) return;
+    const file = source === 'translation'
+      ? material.translations.find(item => isPdfFile(item) || isDocxFile(item))
+      : material.readableOriginal;
+    if (!file) throw new Error('لا يوجد ملف قابل للقراءة لهذا العرض.');
     readerHost.replaceChildren();
-    materialReader = await mountPdfReader(readerHost, { material, source, fileActions: nativeFiles, onBack: () => navigation.back() });
-  } catch (cause) { readerHost.replaceChildren(); addText(readerHost, 'p', cause?.message || 'تعذر تشغيل قارئ PDF.', 'mobile-feed-status'); }
+    const mount = isDocxFile(file) ? mountWordReader : mountPdfReader;
+    materialReader = await mount(readerHost, {
+      material,
+      source,
+      fileActions: nativeFiles,
+      onBack: () => navigation.back(),
+      onSourceChange: next => loadReader(id, next),
+    });
+  } catch (cause) { if (requestId === readerRequestId) { readerHost.replaceChildren(); addText(readerHost, 'p', cause?.message || 'تعذر تشغيل القارئ.', 'mobile-feed-status'); } }
 }
+
+function setUploadStatus(message = '', errorState = false) {
+  if (!uploadStatus) return;
+  uploadStatus.textContent = message;
+  uploadStatus.classList.toggle('is-error', Boolean(errorState));
+}
+
+function selectedNewMaterialFile() { return newMaterialForm?.querySelector('input[name="file"]')?.files?.[0] || null; }
+function selectedUploadKind() { return newMaterialForm?.querySelector('select[name="kind"]')?.value || 'content-file'; }
+
+function renderUploadPreview(file) {
+  if (!uploadPreview) return;
+  uploadPreview.replaceChildren();
+  if (!file) { uploadPreview.hidden = true; return; }
+  uploadPreview.hidden = false;
+  if (/^image\//i.test(file.type || '') || /\.(?:jpe?g|png|webp|gif|tiff?|heic)$/i.test(file.name || '')) {
+    const image = document.createElement('img'); image.alt = 'معاينة الملف'; image.src = URL.createObjectURL(file); image.onload = () => URL.revokeObjectURL(image.src); uploadPreview.append(image);
+  }
+  addText(uploadPreview, 'span', `${file.name} · ${(file.size / (1024 * 1024)).toFixed(2)} MB`, 'mobile-upload-file-meta');
+}
+
+function resetUploadControls({ keepStatus = false } = {}) {
+  if (uploadProgress) uploadProgress.hidden = true;
+  if (uploadProgressBar) uploadProgressBar.style.width = '0%';
+  if (uploadCancel) uploadCancel.hidden = true;
+  if (!keepStatus && uploadRetry) uploadRetry.hidden = true;
+}
+
+async function uploadCreatedMaterial(id, file, kind) {
+  lastUpload = { id: String(id), file, kind };
+  currentUpload = nativeUpload.uploadFile(id, file, {
+    kind,
+    onProgress: value => {
+      if (uploadProgress) uploadProgress.hidden = false;
+      if (uploadProgressBar) uploadProgressBar.style.width = `${Math.round(value * 100)}%`;
+      setUploadStatus(`جارٍ رفع ${file.name}… ${Math.round(value * 100)}%`);
+    },
+  });
+  if (uploadCancel) uploadCancel.hidden = false;
+  try {
+    const result = await currentUpload;
+    setUploadStatus('تم رفع الملف وإنشاء المسودة. يمكنك إرسالها للمراجعة من تفاصيل المادة.');
+    if (uploadRetry) uploadRetry.hidden = true;
+    resetUploadControls({ keepStatus: true });
+    materialClient.clear(id);
+    navigation.navigate({ name: 'material', id: String(id) });
+    return result;
+  } catch (cause) {
+    const message = cause?.message || 'تعذر إكمال الرفع.';
+    setUploadStatus(message, true);
+    if (uploadRetry) uploadRetry.hidden = false;
+    resetUploadControls({ keepStatus: true });
+    throw cause;
+  } finally {
+    currentUpload = null;
+    if (uploadCancel) uploadCancel.hidden = true;
+  }
+}
+
+async function submitNewMaterial(event) {
+  event.preventDefault();
+  if (!newMaterialForm || currentUpload) return;
+  const file = selectedNewMaterialFile();
+  const kind = selectedUploadKind();
+  let fileRule;
+  try { fileRule = validateUploadFile(file, { kind }); } catch (cause) { setUploadStatus(cause.message, true); return; }
+  const data = new FormData(newMaterialForm);
+  const payload = {
+    type: String(data.get('type') || 'document'),
+    material_level: String(data.get('material_level') || ''),
+    title_ar: String(data.get('title_ar') || '').trim(),
+    title_orig: String(data.get('title_orig') || '').trim(),
+    description: String(data.get('description') || '').trim(),
+    language: String(data.get('language') || 'ar'),
+  };
+  const year = Number.parseInt(String(data.get('year') || ''), 10); if (Number.isInteger(year)) payload.year = year;
+  if (!payload.title_ar) { setUploadStatus('العنوان بالعربية مطلوب.', true); return; }
+  uploadSubmit.disabled = true; uploadRetry.hidden = true; setUploadStatus('جارٍ إنشاء المسودة…'); resetUploadControls({ keepStatus: true });
+  try {
+    const created = await apiFetch('/api/v1/admin/materials', { method: 'POST', body: payload });
+    await uploadCreatedMaterial(created.id, file, fileRule.kind);
+  } catch (cause) {
+    if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) return showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+    if (cause instanceof UploadError && cause.code === 'AUTH_REQUIRED') return showLogin(cause.message);
+    if (cause instanceof ApiError && cause.code === 'NETWORK_ERROR') return showOfflineState();
+    if (!(cause instanceof UploadError)) setUploadStatus(cause?.message || 'تعذر إنشاء المسودة.', true);
+  } finally { uploadSubmit.disabled = false; }
+}
+
+newMaterialForm?.querySelector('input[name="file"]')?.addEventListener('change', () => {
+  const file = selectedNewMaterialFile();
+  if (uploadFileName) uploadFileName.textContent = file?.name || 'لم يُختر ملف';
+  renderUploadPreview(file);
+  if (file) { try { setUploadStatus(validateUploadFile(file, { kind: selectedUploadKind() }).filename); } catch (cause) { setUploadStatus(cause.message, true); } }
+});
+newMaterialForm?.querySelector('select[name="kind"]')?.addEventListener('change', () => {
+  const file = selectedNewMaterialFile();
+  if (file) { try { setUploadStatus(validateUploadFile(file, { kind: selectedUploadKind() }).filename); } catch (cause) { setUploadStatus(cause.message, true); } }
+});
+newMaterialForm?.addEventListener('submit', submitNewMaterial);
+newMaterialBack?.addEventListener('click', () => navigation.back());
+uploadCancel?.addEventListener('click', () => {
+  if (!lastUpload || !currentUpload) return;
+  nativeUpload.cancelUpload(lastUpload.id, lastUpload.file, { kind: lastUpload.kind });
+});
+uploadRetry?.addEventListener('click', () => {
+  if (!lastUpload || currentUpload) return;
+  uploadRetry.hidden = true;
+  uploadCreatedMaterial(lastUpload.id, lastUpload.file, lastUpload.kind).catch(cause => { if (cause instanceof UploadError && cause.code === 'AUTH_REQUIRED') showLogin(cause.message); });
+});
 
 function renderSearchResults(items) {
   if (!searchResults) return;
