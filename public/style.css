@@ -2300,7 +2300,7 @@ body.sidjil-reading-open { overflow: hidden; }
   .pdf-reading-heading { display: block; line-height: 1.35; }
   .pdf-reading-heading strong { display: block; max-width: 42vw; font-size: .82rem; }
   .pdf-reading-heading span { font-size: .75rem; }
-  .pdf-reading-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pdf-reading-columns { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
   .pdf-reading-column-title { padding: .45rem .5rem; font-size: .78rem; }
   .pdf-reading-pages, .pdf-reading-translation-pane > .docx-view { padding: .35rem; }
   .pdf-reading-translation-pane > .docx-view .docx .docx-page { padding: 1rem .75rem; }
