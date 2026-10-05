@@ -979,6 +979,37 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ---------- مجموعات القائمة الإدارية ----------
+(function initAdminNavGroups() {
+  const nav = document.querySelector('.admin-shell:not(.researcher-shell) .nav');
+  if (!nav) return;
+  const groups = Array.from(nav.querySelectorAll('[data-nav-group]'));
+  const setOpen = (group, open) => {
+    group.classList.toggle('is-open', open);
+    group.querySelector('[data-nav-group-toggle]')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  groups.forEach((group) => {
+    group.querySelector('[data-nav-group-toggle]')?.addEventListener('click', () => {
+      const open = !group.classList.contains('is-open');
+      groups.forEach((item) => setOpen(item, item === group ? open : false));
+      try { localStorage.setItem('sidjil-admin-nav-group', open ? group.dataset.navGroup : ''); } catch (_) { /* خاص */ }
+    });
+  });
+})();
+
+// ---------- اختصار البحث الإداري ----------
+(function initAdminSearchShortcut() {
+  const search = document.querySelector('.admin-global-search input');
+  if (!search) return;
+  document.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      search.focus();
+      search.select();
+    }
+  });
+})();
+
 // ---------- قائمة الجوال: إظهار/إخفاء الشريط الجانبي ----------
 (function initSideToggle() {
   var btn = document.getElementById('sideToggle');

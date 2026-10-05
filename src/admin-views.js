@@ -72,6 +72,15 @@ const NAV_MARKS = {
   tags: '#', collections: '▤', journal: '▣', announcements: '!', glossary: 'Aa', translation: '文',
   verification: '✓', quality: '◇', repair: '⚙', users: '♙', discussions: '◌', 'social-reports': '⚑', metrics: '▥', backup: '⇩', audit: '≡',
 };
+const NAV_GROUPS = [
+  { id: 'overview', label: 'الرئيسية', items: ['dashboard', 'metrics'] },
+  { id: 'archive', label: 'الأرشيف والمحتوى', items: ['materials', 'review', 'quality', 'repair'] },
+  { id: 'reference', label: 'البيانات المرجعية', items: ['people', 'places', 'sources', 'tags', 'collections'] },
+  { id: 'publishing', label: 'النشر والتحرير', items: ['journal', 'announcements', 'verification'] },
+  { id: 'translation', label: 'الترجمة', items: ['translation', 'glossary'] },
+  { id: 'community', label: 'المجتمع والحسابات', items: ['users', 'discussions', 'social-reports'] },
+  { id: 'system', label: 'النظام والمراقبة', items: ['backup', 'audit'] },
+];
 
 // ---------- أدوات ----------
 function esc(s) {
@@ -121,9 +130,17 @@ const THEME_TOGGLE_ADMIN = `<button class="theme-toggle" id="themeToggle" type="
 </button>`;
 
 function layout({ title, active, user, body, head = '' }) {
-  const nav = NAV.map(([key, href, label]) =>
-    `<a href="${href}" class="nav-item${active === key ? ' active' : ''}" title="${esc(label)}"><span class="nav-item-icon" aria-hidden="true">${NAV_MARKS[key] || '•'}</span><span class="nav-item-label">${esc(label)}</span></a>`
-  ).join('');
+  const navMap = new Map(NAV.map(([key, href, label]) => [key, { href, label }]));
+  const activeGroup = NAV_GROUPS.find((group) => group.items.includes(active))?.id || 'overview';
+  const nav = NAV_GROUPS.map((group) => {
+    const isOpen = group.id === activeGroup;
+    const items = group.items.map((key) => {
+      const item = navMap.get(key);
+      if (!item) return '';
+      return `<a href="${item.href}" class="nav-item${active === key ? ' active' : ''}" title="${esc(item.label)}"><span class="nav-item-icon" aria-hidden="true">${NAV_MARKS[key] || '•'}</span><span class="nav-item-label">${esc(item.label)}</span></a>`;
+    }).join('');
+    return `<section class="nav-group${isOpen ? ' is-open' : ''}" data-nav-group="${group.id}"><button class="nav-group-toggle" type="button" data-nav-group-toggle="${group.id}" aria-expanded="${isOpen ? 'true' : 'false'}"><span class="nav-group-label">${esc(group.label)}</span><span class="nav-group-chevron" aria-hidden="true">⌄</span></button><div class="nav-group-items">${items}</div></section>`;
+  }).join('');
   // رمز CSRF للطلبات المعدِّلة (يُقرأ من admin.js عبر الميتا)
   const csrfMeta = user && user.csrfToken
     ? `<meta name="csrf-token" content="${esc(user.csrfToken)}">` : '';
@@ -135,7 +152,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261005-translation-tabs-v1">
+<link rel="stylesheet" href="/admin.css?v=20261005-admin-redesign-v1">
 ${head}
 </head>
 <body>
@@ -144,7 +161,9 @@ ${head}
     <button class="nav-toggle-admin" id="sideToggle" type="button" aria-expanded="false" aria-controls="adminNav" aria-label="القائمة">
       <span></span><span></span><span></span>
     </button>
-    <span class="topbar-brand">سِجِل — لوحة الإدارة</span>
+    <div class="topbar-context"><strong>لوحة الإدارة</strong><span>${esc(title)}</span></div>
+    <form class="admin-global-search" action="/admin/materials" method="get" role="search"><span class="admin-global-search-icon" aria-hidden="true">⌕</span><input name="q" type="search" placeholder="ابحث في المواد..." aria-label="البحث في المواد"><kbd>Ctrl K</kbd></form>
+    <div class="topbar-actions"><a class="btn btn-primary btn-sm topbar-add" href="/admin/materials/new">+ مادة جديدة</a><a class="topbar-review-link" href="/admin/review"><span aria-hidden="true">✓</span><span>المراجعة</span></a>${THEME_TOGGLE_ADMIN}<details class="admin-account-menu"><summary><span class="account-avatar" aria-hidden="true">${esc(String(user?.display_name || user?.username || 'م').slice(0, 1))}</span><span class="admin-account-name">${esc(user?.display_name || user?.username || 'المدير')}</span><span class="admin-account-chevron" aria-hidden="true">⌄</span></summary><div class="admin-account-dropdown"><strong>${esc(user?.display_name || user?.username || 'المدير')}</strong><span class="muted small">${esc(user?.role || 'admin')}</span><a href="/admin/users">إدارة الحسابات</a><button id="btnLogout" type="button">تسجيل الخروج</button></div></details></div>
   </div>
   <aside class="sidebar" id="adminNav">
     <div class="brand">
@@ -156,13 +175,10 @@ ${head}
         <button class="sidebar-collapse" id="sidebarCollapse" type="button" aria-expanded="true" aria-controls="adminNav" aria-label="طي القائمة الجانبية" title="طي القائمة الجانبية"><span aria-hidden="true">‹</span></button>
       </div>
     </div>
-    <nav class="nav">${nav}</nav>
+    <nav class="nav" aria-label="أقسام لوحة الإدارة">${nav}</nav>
     <div class="side-foot">
-      <div class="who"><span class="side-user-label">المستخدم: </span><strong>${esc(user?.username || '')}</strong></div>
-      <div class="foot-row">
-        <button class="btn btn-ghost btn-sm" id="btnLogout" type="button"><span class="nav-item-label">تسجيل الخروج</span><span class="logout-mark" aria-hidden="true">↪</span></button>
-        ${THEME_TOGGLE_ADMIN}
-      </div>
+      <div class="who"><span class="side-user-label">جلسة الإدارة</span><strong>${esc(user?.username || '')}</strong></div>
+      <a class="side-account-link" href="/admin/users">إدارة الحسابات ←</a>
     </div>
   </aside>
   <main class="main">
@@ -170,16 +186,28 @@ ${head}
     ${body}
   </main>
 </div>
-<script src="/admin.js?v=20261005-translation-tabs-v1" defer></script>
+<script src="/admin.js?v=20261005-admin-redesign-v1" defer></script>
 </body>
 </html>`;
 }
 
-function pageHead(title, extra = '') {
-  return `<div class="page-head">
-  <h1>${esc(title)}</h1>
-  <div class="page-actions">${extra}</div>
-</div>`;
+const PAGE_DESCRIPTIONS = {
+  'لوحة التحكم': 'نظرة تشغيلية سريعة على الأرشيف، وما يحتاج إلى قرار أو متابعة الآن.',
+  'المواد': 'إدارة الوثائق والكتب والصور والمخطوطات المحفوظة في سِجِل.',
+  'طابور المراجعة': 'راجع المواد الواردة واتخذ قرار النشر أو طلب التعديل.',
+  'صحة المحتوى': 'تحقق من اكتمال البيانات والملفات المرتبطة بكل مادة.',
+  'طابور إصلاح المحتوى': 'تابع النواقص الفنية والمواد التي تحتاج إلى مصدر أو معالجة.',
+  'الترجمة': 'أدر محرك الترجمة والوظائف والملفات اليدوية من مساحة واحدة.',
+  'المستخدمون': 'إدارة حسابات المديرين والباحثين وحالات الوصول.',
+  'بلاغات المجتمع': 'راجع البلاغات الواردة من مساحة الباحثين وسجل قرارات المعالجة.',
+  'سجل العمليات': 'تتبع التغييرات الإدارية المهمة مع تفاصيل قابلة للمراجعة.',
+};
+function pageHead(title, extra = '', description = '') {
+  const pageDescription = description || PAGE_DESCRIPTIONS[title] || '';
+  const breadcrumb = title === 'لوحة التحكم'
+    ? '<span>الرئيسية</span>'
+    : `<a href="/admin">لوحة التحكم</a><span aria-hidden="true">›</span><span>${esc(title)}</span>`;
+  return `<div class="page-head"><div class="page-head-copy"><div class="breadcrumbs" aria-label="مسار الصفحة">${breadcrumb}</div><h1>${esc(title)}</h1>${pageDescription ? `<p class="page-head-description">${esc(pageDescription)}</p>` : ''}</div><div class="page-actions">${extra}</div></div>`;
 }
 
 function badge(text, cls) {
@@ -223,28 +251,33 @@ ${THEME_INIT}
 // ---------- 2) لوحة التحكم ----------
 async function dashboardPage(env, user) {
   const db = env.DB;
-  const [[mCount], [imgCount], [draftCount], [reviewCount], [trlPending]] = (await Promise.all([
-    db.prepare("SELECT COUNT(*) c FROM materials").first(),
-    db.prepare("SELECT COUNT(*) c FROM materials WHERE type='image'").first(),
-    db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='draft'").first(),
+  const [publishedCount, reviewCount, repairCount, trlPending, trlFailed, reportsOpen, visitorsToday, latest, audits, activity] = await Promise.all([
+    db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='published'").first(),
     db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='in_review'").first(),
-    db.prepare("SELECT COUNT(*) c FROM translations WHERE status IN ('machine','in_review')").first(),
-  ])).map(r => [r || {}]);
-  const latest = await db.prepare(
-    `SELECT id, ark, type, title_ar, publish_status, created_at
-     FROM materials ORDER BY created_at DESC LIMIT 6`).all();
-  const audits = await db.prepare(
-    `SELECT a.id, a.action, a.target, a.created_at, u.username
-     FROM audit_log a LEFT JOIN admin_users u ON u.id = a.user_id
-     ORDER BY a.created_at DESC LIMIT 8`).all();
+    db.prepare("SELECT COUNT(*) c FROM content_repair_queue WHERE status IN ('pending','processing','blocked')").first(),
+    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status NOT IN ('COMPLETED','FAILED','CANCELLED')").first(),
+    db.prepare("SELECT COUNT(*) c FROM translation_jobs WHERE status='FAILED'").first(),
+    db.prepare("SELECT COUNT(*) c FROM social_reports WHERE status IN ('open','reviewing')").first(),
+    db.prepare("SELECT COUNT(DISTINCT visitor_hash) c FROM visitor_daily WHERE day=date('now')").first(),
+    db.prepare(`SELECT id, ark, type, title_ar, publish_status, created_at
+      FROM materials ORDER BY created_at DESC LIMIT 6`).all(),
+    db.prepare(`SELECT a.id, a.action, a.target, a.created_at, u.username
+      FROM audit_log a LEFT JOIN admin_users u ON u.id = a.user_id
+      ORDER BY a.created_at DESC LIMIT 8`).all(),
+    db.prepare(`SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS c
+      FROM materials WHERE created_at >= date('now', '-6 day')
+      GROUP BY day ORDER BY day`).all(),
+  ]);
 
+  const metric = (row) => Number(row?.c || 0);
   const cards = [
-    ['إجمالي المواد', mCount?.c ?? 0, 'k-total'],
-    ['الصور', imgCount?.c ?? 0, 'k-img'],
-    ['مسودات بانتظار النشر', draftCount?.c ?? 0, 'k-draft'],
-    ['قيد المراجعة', reviewCount?.c ?? 0, 'k-review'],
-    ['ترجمات معلقة (آلية/قيد المراجعة)', trlPending?.c ?? 0, 'k-trl'],
-  ].map(([t, n, k]) => `<div class="stat-card ${k}"><div class="stat-num">${n}</div><div class="stat-label">${t}</div></div>`).join('');
+    ['المواد المنشورة', metric(publishedCount), 'k-pub', '/admin/materials?status=published'],
+    ['قيد المراجعة', metric(reviewCount), 'k-review', '/admin/review'],
+    ['تحتاج إصلاحًا', metric(repairCount), 'k-draft', '/admin/content-repair'],
+    ['الترجمات الجارية', metric(trlPending), 'k-trl', '/admin/translation?tab=jobs'],
+    ['بلاغات مفتوحة', metric(reportsOpen), 'k-review', '/admin/social-reports?status=open'],
+    ['زوار اليوم', metric(visitorsToday), 'k-total', '/admin/metrics'],
+  ].map(([label, value, cls, href]) => `<a class="stat-card ${cls} dashboard-stat-link" href="${href}"><span class="stat-card-mark" aria-hidden="true"></span><div class="stat-num">${esc(value)}</div><div class="stat-label">${esc(label)}</div><span class="stat-card-arrow" aria-hidden="true">←</span></a>`).join('');
 
   const matRows = (latest.results || []).map(m => `
     <tr>
@@ -263,31 +296,47 @@ async function dashboardPage(env, user) {
       <td class="mono small">${esc(a.target || '—')}</td>
     </tr>`).join('');
 
+  const attentionItems = [
+    [metric(reviewCount), 'مواد بانتظار المراجعة', '/admin/review', 'k-review'],
+    [metric(repairCount), 'عناصر تحتاج إصلاحًا', '/admin/content-repair', 'k-draft'],
+    [metric(trlFailed), 'وظائف ترجمة فاشلة', '/admin/translation?tab=jobs', 'k-trl'],
+    [metric(reportsOpen), 'بلاغات مجتمع مفتوحة', '/admin/social-reports?status=open', 'k-review'],
+  ].filter(([value]) => value > 0).map(([value, label, href, cls]) => `<a class="attention-item ${cls}" href="${href}"><strong>${esc(value)}</strong><span>${esc(label)}</span><span aria-hidden="true">←</span></a>`).join('');
+  const activityRows = activity.results || [];
+  const maxActivity = Math.max(1, ...activityRows.map((row) => Number(row.c || 0)));
+  const activityBars = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(Date.now() - (6 - index) * 86400000).toISOString().slice(0, 10);
+    const row = activityRows.find((item) => item.day === date);
+    const count = Number(row?.c || 0);
+    const height = count ? Math.max(10, Math.round(count / maxActivity * 100)) : 4;
+    return `<div class="activity-bar-wrap"><span class="activity-count">${count || ''}</span><i class="activity-bar" style="height:${height}%" title="${esc(date)}: ${count}"></i><small>${esc(date.slice(5))}</small></div>`;
+  }).join('');
+  const serviceRows = [
+    ['D1', 'قاعدة البيانات', 'متصل', 'service-ok'],
+    ['R2', 'الملفات والأصول', 'متصل', 'service-ok'],
+    ['Worker', 'الواجهة والخدمات', 'نشط', 'service-ok'],
+    ['Translation API', 'محرك الترجمة', env.TRANSLATION_SERVICE_URL ? 'مهيأ' : 'غير مهيأ', env.TRANSLATION_SERVICE_URL ? 'service-ok' : 'service-warn'],
+  ].map(([name, label, state, cls]) => `<div class="service-row"><span class="service-dot ${cls}" aria-hidden="true"></span><div><strong>${esc(name)}</strong><small>${esc(label)}</small></div><b class="${cls}">${esc(state)}</b></div>`).join('');
+
   const body = `
   ${pageHead('لوحة التحكم', `<a class="btn btn-primary" href="/admin/materials/new">+ مادة جديدة</a>`)}
-  <div class="stats">${cards}</div>
-  <div class="grid-2">
-    <section class="card">
-      <h2>أحدث المواد</h2>
-      <div class="table-wrap"><table class="tbl">
-        <thead><tr><th>الرقم</th><th>العنوان</th><th>النوع</th><th>الحالة</th><th>أُضيفت</th></tr></thead>
-        <tbody>${matRows || '<tr><td colspan="5" class="muted">لا مواد بعد.</td></tr>'}</tbody>
-      </table></div>
-      <p class="card-foot"><a href="/admin/materials">عرض كل المواد ←</a></p>
-    </section>
-    <section class="card">
-      <h2>آخر العمليات</h2>
-      <div class="table-wrap"><table class="tbl">
-        <thead><tr><th>الوقت</th><th>المستخدم</th><th>العملية</th><th>الهدف</th></tr></thead>
-        <tbody>${auditRows || '<tr><td colspan="4" class="muted">لا عمليات مسجلة بعد.</td></tr>'}</tbody>
-      </table></div>
-      <p class="card-foot"><a href="/admin/audit">عرض سجل العمليات ←</a></p>
-    </section>
+  <div class="stats dashboard-stats">${cards}</div>
+  <section class="dashboard-attention card"><div class="section-head"><div><h2>يتطلب انتباهك</h2><p class="muted">أهم الأعمال التي تنتظر إجراءً إداريًا.</p></div><a class="btn btn-ghost btn-sm" href="/admin/review">فتح مركز العمل ←</a></div><div class="attention-list">${attentionItems || '<div class="dashboard-empty"><strong>لا توجد مهام عاجلة</strong><span>كل الطوابير الأساسية محدثة حاليًا.</span></div>'}</div></section>
+  <div class="dashboard-grid">
+    <section class="card dashboard-activity"><div class="section-head"><div><h2>نشاط المواد</h2><p class="muted">المواد المضافة خلال آخر 7 أيام.</p></div><a class="btn btn-ghost btn-sm" href="/admin/metrics">تفاصيل الأداء</a></div><div class="activity-chart" aria-label="مخطط نشاط المواد">${activityBars}</div></section>
+    <section class="card dashboard-services"><div class="section-head"><div><h2>حالة الخدمات</h2><p class="muted">آخر حالة متاحة من بيئة التشغيل الحالية.</p></div></div><div class="service-list">${serviceRows}</div></section>
+  </div>
+  <div class="grid-2 dashboard-lower-grid">
+    <section class="card"><div class="section-head"><div><h2>أحدث المواد</h2><p class="muted">آخر العناصر التي دخلت الأرشيف.</p></div><a class="btn btn-ghost btn-sm" href="/admin/materials">عرض الكل</a></div><div class="table-wrap"><table class="tbl"><thead><tr><th>الرقم</th><th>العنوان</th><th>النوع</th><th>الحالة</th><th>أُضيفت</th></tr></thead><tbody>${matRows || '<tr><td colspan="5" class="muted">لا مواد بعد.</td></tr>'}</tbody></table></div></section>
+    <section class="card"><div class="section-head"><div><h2>آخر العمليات</h2><p class="muted">نشاط الإدارة المسجل في النظام.</p></div><a class="btn btn-ghost btn-sm" href="/admin/audit">السجل الكامل</a></div><div class="table-wrap"><table class="tbl"><thead><tr><th>الوقت</th><th>المستخدم</th><th>العملية</th><th>الهدف</th></tr></thead><tbody>${auditRows || '<tr><td colspan="4" class="muted">لا عمليات مسجلة بعد.</td></tr>'}</tbody></table></div></section>
   </div>`;
   return layout({ title: 'لوحة التحكم', active: 'dashboard', user, body });
 }
 
 // ---------- صحة المحتوى والأصول ----------
+function contentOpsTabs(active) {
+  return `<nav class="admin-local-tabs" aria-label="وحدة جودة المحتوى"><a class="${active === 'health' ? 'is-active' : ''}" href="/admin/content-health">صحة المحتوى</a><a class="${active === 'repair' ? 'is-active' : ''}" href="/admin/content-repair">طابور الإصلاح</a></nav>`;
+}
 async function contentHealthPage(env, user, req) {
   const db = env.DB;
   const url = new URL(req.url);
@@ -381,7 +430,7 @@ async function contentHealthPage(env, user, req) {
   if (!issuesOnly) toggleParams.set('issues', 'only');
   const toggleHealthHref = `/admin/content-health?${esc(toggleParams.toString())}`;
   const toggleHealthLabel = issuesOnly ? 'عرض كل المواد' : 'عرض النواقص فقط';
-  const body = `${pageHead('صحة المحتوى', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div>
+  const body = `${pageHead('صحة المحتوى', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}${contentOpsTabs('health')}<div class="stats">${cards}</div>
   <section class="health-overview"><div class="health-score-card"><div class="health-score-ring ${healthScore >= 90 ? 'health-good' : healthScore >= 60 ? 'health-warn' : 'health-bad'}"><strong>${healthScore}%</strong><span>سلامة مبدئية</span></div><div><h2>حالة الأرشيف</h2><p>تم فحص ${esc(allCount?.c || 0)} مادة، وتحتاج ${esc(issueCount)} مادة إلى متابعة أو إصلاح.</p><a class="btn btn-sm btn-primary" href="/admin/content-repair">فتح طابور الإصلاح</a></div></div><div class="card health-coverage"><h2>التغطية حسب النوع</h2>${coverage || '<p class="muted">لا توجد مواد في هذا العرض.</p>'}</div></section>
   <section class="card"><div class="section-head"><div><h2>فحص المواد</h2><p class="muted">تُعرض المواد التي ينقصها غلاف أو PDF أو نص موثق أو ملف R2 أولًا. فحص R2 يقرأ الكائن المرتبط فقط.</p></div><a class="btn btn-ghost" href="${toggleHealthHref}">${toggleHealthLabel}</a></div>
   <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><label class="checkbox-field"><input type="checkbox" name="issues" value="only"${issuesOnly ? ' checked' : ''}><span>النواقص فقط</span></label><button class="btn btn-primary" type="submit">تصفية</button></form>
@@ -406,7 +455,7 @@ async function contentRepairPage(env, user, req) {
   const issueLabels = { cover: 'غلاف/صورة', pdf: 'ملف PDF', text: 'تفريغ نصي', asset: 'ملف مفقود', ocr: 'OCR', metadata: 'بيانات وصفية' };
   const statusLabels = { pending: 'معلّق', processing: 'قيد المعالجة', resolved: 'مكتمل', blocked: 'متوقف' };
   const bodyRows = (rows.results || []).map(r => `<tr data-repair-row="${esc(r.id)}"><td class="mono">#${esc(r.id)}</td><td><a href="/admin/materials/${esc(r.material_id)}">${esc(r.title_ar || r.ark)}</a><br><span class="muted small">${esc(r.ark)} · ${esc(TYPE_LABELS[r.type] || r.type)}</span></td><td>${esc(issueLabels[r.issue_type] || r.issue_type)}</td><td><select data-repair-status="${esc(r.id)}" aria-label="حالة عنصر الإصلاح">${Object.entries(statusLabels).map(([v, label]) => `<option value="${v}"${r.status === v ? ' selected' : ''}>${label}</option>`).join('')}</select></td><td><input class="repair-source-file" type="number" min="1" data-repair-source="${esc(r.id)}" value="${esc(r.source_file_id || '')}" placeholder="معرف الملف" aria-label="معرف ملف المصدر"><textarea class="repair-note" rows="2" data-repair-note="${esc(r.id)}" placeholder="ملاحظة المصدر أو الإجراء">${esc(r.note || '')}</textarea></td><td class="muted">${fmtDate(r.updated_at || r.created_at)}</td><td><button class="btn btn-sm btn-primary" type="button" data-repair-save="${esc(r.id)}">حفظ</button></td></tr>`).join('');
-  const body = `${pageHead('طابور إصلاح المحتوى', '<a class="btn btn-ghost" href="/admin/content-health">← صحة المحتوى</a>')}<section class="card"><div class="section-head"><div><h2>نواقص تحتاج قرارًا أو مصدرًا</h2><p class="muted">يُنشئ النظام العناصر من النقص المرصود فقط. اربط معرف ملف موثوقًا واكتب ملاحظة قبل اعتماد الإصلاح.</p></div></div><form class="filters" method="get" action="/admin/content-repair"><label class="field"><span>الحالة</span><select name="status"><option value="pending"${status === 'pending' ? ' selected' : ''}>معلّق</option><option value="processing"${status === 'processing' ? ' selected' : ''}>قيد المعالجة</option><option value="blocked"${status === 'blocked' ? ' selected' : ''}>متوقف</option><option value="resolved"${status === 'resolved' ? ' selected' : ''}>مكتمل</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>نوع النقص</span><select name="issue_type"><option value="">الكل</option>${Object.entries(issueLabels).map(([v, l]) => `<option value="${v}"${issueType === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label><button class="btn btn-primary" type="submit">تصفية</button></form><div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>المادة</th><th>النقص</th><th>الحالة</th><th>المصدر / الملاحظة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا توجد عناصر في هذا العرض.</td></tr>'}</tbody></table></div></section>`;
+  const body = `${pageHead('طابور إصلاح المحتوى', '<a class="btn btn-ghost" href="/admin/content-health">← صحة المحتوى</a>')}${contentOpsTabs('repair')}<section class="card"><div class="section-head"><div><h2>نواقص تحتاج قرارًا أو مصدرًا</h2><p class="muted">يُنشئ النظام العناصر من النقص المرصود فقط. اربط معرف ملف موثوقًا واكتب ملاحظة قبل اعتماد الإصلاح.</p></div></div><form class="filters" method="get" action="/admin/content-repair"><label class="field"><span>الحالة</span><select name="status"><option value="pending"${status === 'pending' ? ' selected' : ''}>معلّق</option><option value="processing"${status === 'processing' ? ' selected' : ''}>قيد المعالجة</option><option value="blocked"${status === 'blocked' ? ' selected' : ''}>متوقف</option><option value="resolved"${status === 'resolved' ? ' selected' : ''}>مكتمل</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>نوع النقص</span><select name="issue_type"><option value="">الكل</option>${Object.entries(issueLabels).map(([v, l]) => `<option value="${v}"${issueType === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label><button class="btn btn-primary" type="submit">تصفية</button></form><div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>المادة</th><th>النقص</th><th>الحالة</th><th>المصدر / الملاحظة</th><th>آخر تحديث</th><th>إجراء</th></tr></thead><tbody>${bodyRows || '<tr><td colspan="7" class="muted">لا توجد عناصر في هذا العرض.</td></tr>'}</tbody></table></div></section>`;
   return layout({ title: 'طابور إصلاح المحتوى', active: 'repair', user, body });
 }
 
@@ -517,7 +566,8 @@ async function translationPage(env, user, req) {
 // ---------- 3) قائمة المواد ----------
 async function materialsListPage(env, user, req) {
   const url = new URL(req.url);
-  const status = url.searchParams.get('status') || '';
+  const allowedStatuses = ['', 'published', 'draft', 'in_review', 'changes_requested', 'hidden'];
+  const status = allowedStatuses.includes(url.searchParams.get('status')) ? (url.searchParams.get('status') || '') : '';
   const type = url.searchParams.get('type') || '';
   const q = (url.searchParams.get('q') || '').trim();
 
@@ -529,11 +579,30 @@ async function materialsListPage(env, user, req) {
   const sql = `SELECT id, ark, type, title_ar, publish_status, year, created_at
     FROM materials ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY created_at DESC LIMIT 200`;
-  const rows = (await env.DB.prepare(sql).bind(...args).all()).results || [];
+  const [rowResult, statusCounts] = await Promise.all([
+    env.DB.prepare(sql).bind(...args).all(),
+    env.DB.prepare(`SELECT publish_status, COUNT(*) AS c FROM materials GROUP BY publish_status`).all(),
+  ]);
+  const rows = rowResult.results || [];
+  const counts = Object.fromEntries((statusCounts.results || []).map((row) => [row.publish_status, Number(row.c || 0)]));
 
   const opt = (val, cur, label) => `<option value="${val}"${val === cur ? ' selected' : ''}>${esc(label)}</option>`;
   const typeOpts = Object.entries(TYPE_LABELS).map(([v, l]) => opt(v, type, l)).join('');
   const statusOpts = Object.entries(STATUS_LABELS).map(([v, l]) => opt(v, status, l)).join('');
+  const materialTabParams = (nextStatus = '', options = {}) => {
+    const params = new URLSearchParams();
+    if (nextStatus) params.set('status', nextStatus);
+    if (options.keepType !== false && type) params.set('type', type);
+    if (options.keepQ !== false && q) params.set('q', q);
+    const query = params.toString();
+    return `/admin/materials${query ? `?${esc(query)}` : ''}`;
+  };
+  const materialTabs = [['', 'الكل'], ['published', 'منشورة'], ['draft', 'مسودات'], ['in_review', 'قيد المراجعة'], ['changes_requested', 'مطلوب تعديل'], ['hidden', 'مخفية']].map(([value, label]) => `<a class="admin-filter-tab${status === value ? ' is-active' : ''}" href="${materialTabParams(value)}"${status === value ? ' aria-current="page"' : ''}>${esc(label)} <small>${esc(value ? (counts[value] || 0) : Object.values(counts).reduce((sum, count) => sum + count, 0))}</small></a>`).join('');
+  const filterChips = [
+    q ? `<a class="filter-chip" href="${materialTabParams(status, { keepQ: false })}">بحث: ${esc(q)} ×</a>` : '',
+    type ? `<a class="filter-chip" href="${materialTabParams(status, { keepType: false })}">النوع: ${esc(TYPE_LABELS[type] || type)} ×</a>` : '',
+    status ? `<a class="filter-chip" href="${materialTabParams('')}">الحالة: ${esc(STATUS_LABELS[status] || status)} ×</a>` : '',
+  ].filter(Boolean).join('');
 
   const bodyRows = rows.map(m => `
     <tr>
@@ -551,6 +620,7 @@ async function materialsListPage(env, user, req) {
 
   const body = `
   ${pageHead('المواد', `<a class="btn btn-primary" href="/admin/materials/new">+ مادة جديدة</a>`)}
+  <nav class="admin-filter-tabs" aria-label="حالات المواد">${materialTabs}</nav>
   <form class="filters card" method="get" action="/admin/materials">
     <div class="filter-row">
       <input type="search" name="q" value="${esc(q)}" placeholder="بحث بالعنوان أو الرقم الأرشيفي…">
@@ -559,6 +629,7 @@ async function materialsListPage(env, user, req) {
       <button class="btn" type="submit">تصفية</button>
       <a class="btn btn-ghost" href="/admin/materials">مسح</a>
     </div>
+    ${filterChips ? `<div class="filter-chips" aria-label="الفلاتر النشطة">${filterChips}</div>` : ''}
   </form>
   <div class="card">
     <div class="table-wrap"><table class="tbl">
@@ -1250,16 +1321,16 @@ async function reviewPage(env, user) {
     </tr>`).join('');
 
   const body = `
-  ${pageHead('طلبات تعديل المواد المنشورة', `<span class="muted">${(editRequests.results || []).length} طلب</span>`)}
-  <div class="card"><div class="table-wrap"><table class="tbl"><thead><tr><th>الرقم</th><th>المادة</th><th>الباحث</th><th>تاريخ الطلب</th><th>القرار</th></tr></thead>
-    <tbody>${editRequestRows || '<tr><td colspan="5" class="muted">لا توجد طلبات تعديل معلقة.</td></tr>'}</tbody></table></div></div>
   ${pageHead('طابور المراجعة', `<span class="muted">${items.length} مادة بانتظار القرار</span>`)}
-  <div class="card">
+  <nav class="admin-local-tabs" aria-label="أقسام المراجعة"><a class="is-active" href="#review-queue">المواد الجديدة <small>${items.length}</small></a><a href="#edit-requests">طلبات تعديل المواد المنشورة <small>${(editRequests.results || []).length}</small></a></nav>
+  <section id="edit-requests" class="card"><div class="section-head"><div><h2>طلبات تعديل المواد المنشورة</h2><p class="muted">طلبات الباحثين التي تحتاج قرارًا قبل فتح التعديل.</p></div></div><div class="table-wrap"><table class="tbl"><thead><tr><th>الرقم</th><th>المادة</th><th>الباحث</th><th>تاريخ الطلب</th><th>القرار</th></tr></thead>
+    <tbody>${editRequestRows || '<tr><td colspan="5" class="muted">لا توجد طلبات تعديل معلقة.</td></tr>'}</tbody></table></div>
+  </section>
+  <section id="review-queue" class="card">
     <div class="table-wrap"><table class="tbl">
       <thead><tr><th>الرقم</th><th>العنوان</th><th>النوع</th><th>الباحث</th><th>أُرسلت</th><th>القرار</th></tr></thead>
       <tbody>${bodyRows || '<tr><td colspan="6" class="muted">لا مواد قيد المراجعة — الطابور فارغ.</td></tr>'}</tbody>
-    </table></div>
-  </div>
+    </table></div></section>
   <div class="modal-veil" id="reviewModal" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reviewModalH">
       <h3 id="reviewModalH">إعادة المادة إلى الباحث</h3>
@@ -1312,11 +1383,19 @@ async function journalAdminPage(env, user) {
   return layout({ title: 'إدارة المجلة', active: 'journal', user, body, head: '<script src="/journal-admin.js?v=20261004-journal-pdf-upload-v1" defer></script>' });
 }
 // ---------- 9) المستخدمون ----------
-async function usersPage(env, user) {
-  const rows = await env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.display_name, u.affiliation, u.created_at,
-            (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
-     FROM admin_users u ORDER BY u.id ASC`).all();
+async function usersPage(env, user, req) {
+  const view = ['all', 'researchers', 'admins', 'inactive'].includes(new URL(req.url).searchParams.get('view')) ? new URL(req.url).searchParams.get('view') : 'all';
+  const userWhere = view === 'researchers' ? "WHERE u.role = 'researcher'" : view === 'admins' ? "WHERE u.role = 'admin'" : view === 'inactive' ? 'WHERE u.is_active = 0' : '';
+  const [rows, counts] = await Promise.all([
+    env.DB.prepare(
+      `SELECT u.id, u.username, u.role, u.is_active, u.is_verified, u.verification_type, u.display_name, u.affiliation, u.created_at,
+              (SELECT COUNT(*) FROM materials m WHERE m.created_by = u.id) AS materials_count
+       FROM admin_users u ${userWhere} ORDER BY u.id ASC`).all(),
+    env.DB.prepare(`SELECT role, is_active, COUNT(*) AS c FROM admin_users GROUP BY role, is_active`).all(),
+  ]);
+  const countFor = (role, active) => Number((counts.results || []).find((row) => row.role === role && Number(row.is_active) === active)?.c || 0);
+  const allUsers = (counts.results || []).reduce((sum, row) => sum + Number(row.c || 0), 0);
+  const userTabs = [['all', 'الكل', allUsers], ['researchers', 'الباحثون', countFor('researcher', 1)], ['admins', 'المديرون', countFor('admin', 1)], ['inactive', 'غير النشطين', (counts.results || []).filter((row) => Number(row.is_active) === 0).reduce((sum, row) => sum + Number(row.c || 0), 0)]].map(([value, label, count]) => `<a class="admin-filter-tab${view === value ? ' is-active' : ''}" href="/admin/users?view=${value}"${view === value ? ' aria-current="page"' : ''}>${esc(label)} <small>${esc(count)}</small></a>`).join('');
   const bodyRows = (rows.results || []).map(u => {
     const self = Number(u.id) === Number(user.id);
     const isResearcher = u.role === 'researcher';
@@ -1344,6 +1423,7 @@ async function usersPage(env, user) {
 
   const body = `
   ${pageHead('المستخدمون', '')}
+  <nav class="admin-filter-tabs" aria-label="فئات المستخدمين">${userTabs}</nav>
   <div class="grid-2">
     <section class="card">
       <h2>حسابات الدخول</h2>
@@ -1476,7 +1556,7 @@ export async function renderAdmin(pathname, req, env, user) {
   if (clean === '/admin/backup') return htmlRes(await backupPage(env, user));
   if (clean === '/admin/audit') return htmlRes(await auditPage(env, user, req));
   if (clean === '/admin/review') return htmlRes(await reviewPage(env, user));
-  if (clean === '/admin/users') return htmlRes(await usersPage(env, user));
+  if (clean === '/admin/users') return htmlRes(await usersPage(env, user, req));
   if (clean === '/admin/verification') return htmlRes(await verificationPage(env, user));
   if (clean === '/admin/discussions') return htmlRes(await adminDiscussionsPage(env, user));
   if (clean === '/admin/social-reports') return htmlRes(await socialReportsPage(env, user, req));
