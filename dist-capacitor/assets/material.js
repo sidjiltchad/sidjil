@@ -25,7 +25,7 @@ function fileInfo(file) {
 }
 
 export function isPdfFile(file) { return /pdf/i.test(`${file?.mime || ''} ${file?.filename || ''}`); }
-export function isDocxFile(file) { return /docx/i.test(`${file?.mime || ''} ${file?.filename || ''}`); }
+export function isDocxFile(file) { return /docx|wordprocessingml\.document/i.test(`${file?.mime || ''} ${file?.filename || ''}`); }
 function isReadable(file) { return isPdfFile(file) || isDocxFile(file); }
 
 export function normalizeMaterialResponse(data, requestedId = '') {

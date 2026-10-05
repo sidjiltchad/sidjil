@@ -13,7 +13,7 @@ export class DocxReaderError extends Error {
 }
 
 function isDocx(file) {
-  return /docx/i.test(String(file?.mime || file?.filename || ''));
+  return /docx|wordprocessingml\.document/i.test(String(file?.mime || file?.filename || ''));
 }
 
 function loadScript(url, ready, label) {
