@@ -3,7 +3,8 @@
   'use strict';
 
   /* ---------- تسجيل Service Worker (تطبيق الويب التقدمي) ---------- */
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  var nativeApp = Boolean(window.Capacitor && ((typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) || (typeof window.Capacitor.getPlatform === 'function' && ['android', 'ios'].indexOf(window.Capacitor.getPlatform()) !== -1) || /^(capacitor|ionic):$/i.test(location.protocol)));
+  if (!nativeApp && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('/sw.js').catch(function () { /* تجاهل */ });
     });

@@ -1,0 +1,27 @@
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const output = join(root, 'dist-capacitor');
+const mobilePublic = join(root, 'public', 'mobile');
+const mobileSource = join(root, 'src', 'mobile');
+
+await rm(output, { recursive: true, force: true });
+await mkdir(join(output, 'assets'), { recursive: true });
+await mkdir(join(output, 'fonts'), { recursive: true });
+await mkdir(join(output, 'vendor'), { recursive: true });
+
+await cp(join(mobilePublic, 'index.html'), join(output, 'index.html'));
+await cp(join(mobilePublic, 'mobile-shell.css'), join(output, 'assets', 'mobile-shell.css'));
+await cp(join(mobilePublic, 'mobile-shell.js'), join(output, 'assets', 'mobile-shell.js'));
+await cp(join(mobileSource, 'environment.js'), join(output, 'assets', 'environment.js'));
+await cp(join(mobileSource, 'api-base.js'), join(output, 'assets', 'api-base.js'));
+await cp(join(root, 'public', 'sidjil-logo.png'), join(output, 'assets', 'sidjil-logo.png'));
+for (const file of ['ibm-plex-sans-arabic-400.woff2', 'ibm-plex-sans-arabic-700.woff2']) {
+  await cp(join(root, 'public', 'fonts', file), join(output, 'fonts', file));
+}
+
+await writeFile(join(output, 'vendor', '.keep'), 'Capacitor vendor assets will be added only when a later phase needs them.\n', 'utf8');
+console.log(`Capacitor shell built at ${output}`);
+

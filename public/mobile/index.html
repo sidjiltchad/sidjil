@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0b1220">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>سِجِل — مساحة الباحث</title>
+    <link rel="icon" href="./assets/sidjil-logo.png">
+    <link rel="stylesheet" href="./assets/mobile-shell.css">
+  </head>
+  <body>
+    <div class="mobile-app-shell" data-mobile-shell>
+      <header class="mobile-app-header">
+        <a class="mobile-brand" href="#home" aria-label="مساحة الباحث">
+          <img src="./assets/sidjil-logo.png" alt="سِجِل" width="42" height="42">
+          <span>مساحة الباحث</span>
+        </a>
+        <span class="mobile-runtime" data-runtime aria-live="polite">جارٍ التهيئة…</span>
+      </header>
+      <main class="mobile-app-main" id="mobile-main" tabindex="-1">
+        <section class="mobile-hero" aria-labelledby="mobile-title">
+          <p class="mobile-eyebrow">SIDJIL</p>
+          <h1 id="mobile-title">مجتمع الباحثين</h1>
+          <p>مساحة موحدة لقراءة المصادر، ومناقشتها، والمساهمة في الأرشيف الرقمي.</p>
+        </section>
+        <section class="mobile-state is-loading" data-loading-state aria-live="polite">
+          <span class="mobile-spinner" aria-hidden="true"></span>
+          <strong>جارٍ تجهيز مساحة الباحث</strong>
+          <span>سيتم توصيل الموجز والبحث والقارئ في المرحلة التالية.</span>
+        </section>
+        <section class="mobile-state is-offline" data-offline-state hidden role="status">
+          <strong>لا يوجد اتصال بالشبكة</strong>
+          <span>تحقق من الاتصال ثم أعد المحاولة.</span>
+          <button type="button" data-retry>إعادة المحاولة</button>
+        </section>
+        <section class="mobile-state is-error" data-error-state hidden role="alert">
+          <strong>تعذر تهيئة التطبيق</strong>
+          <span data-error-message>حاول مرة أخرى.</span>
+          <button type="button" data-retry>إعادة المحاولة</button>
+        </section>
+      </main>
+      <nav class="mobile-bottom-nav" aria-label="تنقل مساحة الباحث">
+        <a class="is-active" href="#home">الرئيسية</a>
+        <a href="#community">المجتمع</a>
+        <a href="#account">حسابي</a>
+      </nav>
+    </div>
+    <script type="module" src="./assets/mobile-shell.js"></script>
+  </body>
+</html>
+

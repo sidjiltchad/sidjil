@@ -1,6 +1,8 @@
 {
   "description": "سِجِل — SIDJIL: منصة رقمية لحفظ وفهرسة مصادر تاريخ تشاد",
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
+    "typescript": "^5.9.2",
     "wrangler": "^3.114.17"
   },
   "name": "sidjil",
@@ -12,12 +14,19 @@
     "db:migrate:remote": "wrangler d1 migrations apply SIDJIL --remote",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "mobile:build": "node scripts/build-mobile.mjs",
+    "mobile:sync": "npm run mobile:build && npx cap sync android",
+    "mobile:android": "npm run mobile:sync && npx cap open android",
+    "mobile:open": "npx cap open android",
     "test": "node scripts/ci-contract.mjs",
+    "test:mobile": "node scripts/mobile-phase1-check.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "telegram:setup": "node scripts/telegram-setup.mjs"
   },
   "version": "0.1.0",
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "pdf-lib": "^1.17.1"
   }
 }
