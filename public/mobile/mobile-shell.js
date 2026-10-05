@@ -257,7 +257,9 @@ async function runFileAction(file, action, title, variant, statusEl) {
   try {
     const handler = action === 'download' ? nativeFiles.downloadFile : action === 'share' ? nativeFiles.shareFile : nativeFiles.openFile;
     const result = await handler(file, { title, variant, onProgress: value => { if (value != null) statusEl.textContent = `${action === 'download' ? 'جارٍ حفظ الملف' : 'جارٍ تجهيز الملف'}… ${Math.round(value * 100)}%`; } });
-    statusEl.textContent = action === 'download' ? `تم حفظ ${result.filename} داخل مساحة التطبيق.` : action === 'share' ? 'تم فتح نافذة المشاركة.' : 'تم فتح قائمة التطبيقات المناسبة.';
+    statusEl.textContent = action === 'download'
+      ? (result.native ? `تم حفظ ${result.filename} داخل مساحة التطبيق.` : 'بدأ تنزيل الملف.')
+      : action === 'share' ? 'تم فتح نافذة المشاركة.' : 'تم فتح قائمة التطبيقات المناسبة.';
   } catch (error) {
     if (error instanceof NativeFileError && error.code === 'AUTH_REQUIRED') return showLogin(error.message);
     statusEl.textContent = error?.message || 'تعذر تنفيذ عملية الملف.';
