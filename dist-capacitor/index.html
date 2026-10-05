@@ -53,7 +53,15 @@
           </div>
           <div class="mobile-view" data-view="profile" hidden>
             <p class="mobile-eyebrow">مجتمع الباحثين</p><h1>صفحة الباحث</h1>
-            <section class="mobile-placeholder-card"><span class="mobile-avatar" data-profile-avatar>ب</span><h2 data-profile-title>باحث</h2><p>ستظهر هنا منشورات الباحث ومناقشاته في المرحلة التالية.</p></section>
+            <section class="mobile-profile-card mobile-placeholder-card"><div class="mobile-profile-header"><span class="mobile-avatar" data-profile-avatar>ب</span><div><h2 data-profile-title>باحث</h2><p class="mobile-feed-meta" data-profile-username></p></div></div><p class="mobile-profile-bio" data-profile-bio></p><div class="mobile-profile-meta" data-profile-meta></div><div class="mobile-profile-stats" data-profile-stats></div></section>
+            <div class="mobile-profile-content" data-profile-content></div>
+          </div>
+          <div class="mobile-view" data-view="search" hidden>
+            <div class="mobile-feed-heading"><div><p class="mobile-eyebrow">اكتشف</p><h1>البحث</h1></div></div>
+            <form class="mobile-search-form" data-search-form role="search"><label for="mobileSearchInput">ابحث في الباحثين والمواد والمنشورات</label><div class="mobile-search-row"><input id="mobileSearchInput" name="q" type="search" autocomplete="off" placeholder="اكتب كلمتين على الأقل…"><button type="button" data-search-clear aria-label="مسح البحث" hidden>×</button></div></form>
+            <div class="mobile-search-status" data-search-status aria-live="polite"></div>
+            <div class="mobile-search-results" data-search-results aria-live="polite"></div>
+            <button class="mobile-load-more" type="button" data-search-more hidden>تحميل المزيد</button>
           </div>
           <div class="mobile-view" data-view="account" hidden>
             <p class="mobile-eyebrow">الحساب</p><h1>حسابي</h1>
@@ -65,6 +73,7 @@
       </main>
       <nav class="mobile-bottom-nav" aria-label="تنقل مساحة الباحث">
         <button type="button" data-route="feed" data-nav-route="feed" class="is-active">الموجز</button>
+        <button type="button" data-route="search" data-nav-route="search">بحث</button>
         <button type="button" data-route="profile" data-nav-route="profile">المجتمع</button>
         <button type="button" data-route="account" data-nav-route="account">حسابي</button>
       </nav>
