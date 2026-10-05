@@ -67,9 +67,9 @@
   --line-soft: #f0ebda;
   --line-strong: #cfc39f;
 
-  --radius-sm: 12px;
-  --radius: 18px;
-  --radius-lg: 24px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
   --shape-control: 16px;
   --shape-card: 24px;
   --shape-pill: 9999px;
@@ -667,6 +667,7 @@ input[type="checkbox"], input[type="radio"] {
 .seg-edit-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 #segStatus { margin-bottom: 10px; }
 #cardOcr .tbl td { vertical-align: top; }
+.flip { transform: scaleX(-1); }
 
 /* ---------- 18. واجهة الباحث ---------- */
 .researcher-bar {

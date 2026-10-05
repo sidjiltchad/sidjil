@@ -824,3 +824,31 @@ function initTranslationSection() {
   load();
   loadRequests();
 }
+
+// ---------- قائمة الجوال: إظهار/إخفاء الشريط الجانبي ----------
+(function initSideToggle() {
+  var btn = document.getElementById('sideToggle');
+  var sidebar = document.getElementById('adminNav');
+  var shell = document.querySelector('.admin-shell');
+  if (!btn || !sidebar || !shell) return;
+  function setOpen(open) {
+    sidebar.classList.toggle('open', open);
+    shell.classList.toggle('nav-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setOpen(!sidebar.classList.contains('open'));
+  });
+  document.addEventListener('click', function (e) {
+    if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      setOpen(false);
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') setOpen(false);
+  });
+  sidebar.querySelectorAll('.nav-item').forEach(function (a) {
+    a.addEventListener('click', function () { setOpen(false); });
+  });
+})();
