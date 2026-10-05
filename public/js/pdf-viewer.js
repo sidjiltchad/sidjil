@@ -26,8 +26,15 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var errEl = box.querySelector('[data-pdf-error]');
   var wrap = box.querySelector('#pdfCanvasWrap');
   var readingPages = box.querySelector('[data-pdf-reading-pages]');
+  var readingShell = box.querySelector('[data-reading-shell]');
+  var readingClose = box.querySelector('[data-reading-close]');
+  var readingActions = box.querySelector('[data-reading-actions]');
+  var readingTranslationPane = box.querySelector('[data-reading-translation-pane]');
+  var readingCurrent = box.querySelector('[data-reading-current]');
+  var readingCount = box.querySelector('[data-reading-count]');
   var readBtn = box.querySelector('[data-pdf-read]');
-  var hasReadingMode = !!(readingPages && readBtn);
+  var toolbar = box.querySelector('.pdf-toolbar');
+  var hasReadingMode = !!(readingPages && readingShell && readBtn);
 
   var pdfDoc = null;
   var pageNum = 1;
@@ -36,6 +43,9 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var rendering = false;
   var readingMode = false;
   var readingObserver = null;
+  var readingScrollHandlers = [];
+  var readingSyncBusy = false;
+  var pdfLoadPromise = null;
 
   function showError() {
     errEl.classList.remove('hidden');
@@ -95,6 +105,43 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     renderPage();
   }
 
+  function updateReadingPage(scrollEl) {
+    if (!readingCurrent || !pdfDoc || !scrollEl) return;
+    var max = Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight);
+    var ratio = Math.max(0, Math.min(1, scrollEl.scrollTop / max));
+    var current = Math.min(pdfDoc.numPages, Math.max(1, Math.round(ratio * (pdfDoc.numPages - 1)) + 1));
+    readingCurrent.textContent = String(current);
+    numEl.textContent = String(current);
+  }
+
+  function syncReadingScroll(source, target) {
+    if (!readingMode || !source || !target || readingSyncBusy) return;
+    readingSyncBusy = true;
+    var sourceMax = Math.max(1, source.scrollHeight - source.clientHeight);
+    var targetMax = Math.max(0, target.scrollHeight - target.clientHeight);
+    var ratio = Math.max(0, Math.min(1, source.scrollTop / sourceMax));
+    target.scrollTop = ratio * targetMax;
+    updateReadingPage(source);
+    requestAnimationFrame(function () { readingSyncBusy = false; });
+  }
+
+  function bindReadingSync() {
+    readingScrollHandlers.forEach(function (item) { item.el.removeEventListener('scroll', item.fn); });
+    readingScrollHandlers = [];
+    if (!docxView || !readingPages || !activeDocxBtn) return;
+    var originalHandler = function () { syncReadingScroll(readingPages, docxView); };
+    var translationHandler = function () { syncReadingScroll(docxView, readingPages); };
+    readingPages.addEventListener('scroll', originalHandler, { passive: true });
+    docxView.addEventListener('scroll', translationHandler, { passive: true });
+    readingScrollHandlers.push({ el: readingPages, fn: originalHandler }, { el: docxView, fn: translationHandler });
+  }
+
+  function unbindReadingSync() {
+    readingScrollHandlers.forEach(function (item) { item.el.removeEventListener('scroll', item.fn); });
+    readingScrollHandlers = [];
+    readingSyncBusy = false;
+  }
+
   function renderReadingPage(pageNumber, pageCanvas) {
     if (!pdfDoc || pageCanvas.dataset.rendered === '1' || pageCanvas.dataset.loading === '1') return;
     pageCanvas.dataset.loading = '1';
@@ -126,13 +173,26 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     });
   }
 
-  function enterReadingMode() {
-    if (!hasReadingMode || !pdfDoc || readingMode) return;
+  async function enterReadingMode() {
+    if (!hasReadingMode || readingMode) return;
+    if (!pdfDoc && pdfLoadPromise) {
+      readBtn.disabled = true;
+      readBtn.setAttribute('aria-busy', 'true');
+      await pdfLoadPromise;
+      readBtn.disabled = false;
+      readBtn.removeAttribute('aria-busy');
+    }
+    if (!pdfDoc) return;
     readingMode = true;
     wrap.classList.add('hidden');
+    readingShell.classList.remove('hidden');
+    box.classList.add('is-reading');
+    document.body.classList.add('sidjil-reading-open');
     readingPages.classList.remove('hidden');
     readBtn.textContent = readBtn.dataset.closeLabel;
     readBtn.setAttribute('aria-pressed', 'true');
+    if (readingCount) readingCount.textContent = String(pdfDoc.numPages);
+    if (readingActions) toggleBtns.forEach(function (btn) { readingActions.appendChild(btn); });
     readingPages.innerHTML = '';
     for (var i = 1; i <= pdfDoc.numPages; i += 1) {
       var pageBox = document.createElement('div');
@@ -152,6 +212,12 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     }, { root: readingPages, rootMargin: '900px 0px' });
     canvases.forEach(function (pageCanvas) { readingObserver.observe(pageCanvas); });
     renderReadingPage(1, canvases[0]);
+    if (activeDocxBtn) {
+      readingTranslationPane.classList.remove('hidden');
+      readingTranslationPane.appendChild(docxView);
+      docxView.classList.remove('hidden');
+      bindReadingSync();
+    }
     var current = readingPages.querySelector('[data-page="' + pageNum + '"]');
     if (current) current.scrollIntoView({ block: 'start' });
   }
@@ -159,8 +225,18 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   function leaveReadingMode() {
     if (!hasReadingMode || !readingMode) return;
     readingMode = false;
+    unbindReadingSync();
     if (readingObserver) readingObserver.disconnect();
     readingObserver = null;
+    if (docxView && docxView.parentElement === readingTranslationPane) {
+      box.appendChild(docxView);
+      docxView.classList.toggle('hidden', !activeDocxBtn);
+    }
+    if (readingTranslationPane) readingTranslationPane.classList.add('hidden');
+    if (toolbar) toggleBtns.forEach(function (btn) { toolbar.appendChild(btn); });
+    readingShell.classList.add('hidden');
+    box.classList.remove('is-reading');
+    document.body.classList.remove('sidjil-reading-open');
     readingPages.classList.add('hidden');
     wrap.classList.remove('hidden');
     readBtn.textContent = readBtn.dataset.readLabel;
@@ -182,6 +258,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       if (readingMode) leaveReadingMode();
       else enterReadingMode();
     });
+    if (readingClose) readingClose.addEventListener('click', leaveReadingMode);
   }
   box.querySelector('[data-pdf-full]').addEventListener('click', function () {
     var el = box;
@@ -199,12 +276,14 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     resizeTimer = setTimeout(renderPage, 200);
   });
 
-  pdfjsLib.getDocument({ url: url, withCredentials: true, ...pdfRenderOptions }).promise.then(function (doc) {
+  pdfLoadPromise = pdfjsLib.getDocument({ url: url, withCredentials: true, ...pdfRenderOptions }).promise.then(function (doc) {
     pdfDoc = doc;
     countEl.textContent = String(doc.numPages);
     renderPage();
+    return doc;
   }).catch(function () {
     showError();
+    return null;
   });
 
   /* ---------- تبديل لغة القراءة: نظير Word المترجم ---------- */
@@ -247,7 +326,8 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       activeDocxBtn = null;
     }
     if (docxView) docxView.classList.add('hidden');
-    if (wrap) wrap.classList.remove('hidden');
+    if (readingTranslationPane) readingTranslationPane.classList.add('hidden');
+    if (wrap) wrap.classList.toggle('hidden', readingMode);
     setPdfControlsEnabled(true);
     if (!readingMode) renderPage();
   }
@@ -263,9 +343,12 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     btn.textContent = btn.getAttribute('data-label-back');
     btn.setAttribute('aria-pressed', 'true');
     activeDocxBtn = btn;
-    if (readingMode) leaveReadingMode();
+    if (readingMode && readingTranslationPane) {
+      readingTranslationPane.classList.remove('hidden');
+      readingTranslationPane.appendChild(docxView);
+    }
     if (wrap) wrap.classList.add('hidden');
-    if (readingPages) readingPages.classList.add('hidden');
+    if (readingPages && !readingMode) readingPages.classList.add('hidden');
     setPdfControlsEnabled(false);
     if (docxView) {
       docxView.classList.remove('hidden');
@@ -275,6 +358,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
         try {
           var reader = await waitForDocxReader();
           docxHandles[docxUrl] = await reader.mount(docxView, { url: docxUrl, lang: docxLang });
+          if (readingMode) bindReadingSync();
         } catch (e) {
           docxView.innerHTML = '<p class="docx-error"><a class="btn btn-small" href="' + docxUrl + '?download=1">' +
             (pageLang === 'fr' ? 'Télécharger la traduction' : 'تنزيل ملف الترجمة') + '</a></p>';

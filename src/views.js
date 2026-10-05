@@ -810,7 +810,25 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
         </div>
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap"><canvas data-pdf-canvas></canvas></div>
         <div class="docx-view hidden" data-docx-view aria-live="polite"></div>
-        <div class="pdf-reading-pages hidden" data-pdf-reading-pages aria-live="polite"></div>
+        <div class="pdf-reading-shell hidden" data-reading-shell aria-label="${esc(t(lang, 'read_full_book'))}">
+          <div class="pdf-reading-header">
+            <button type="button" class="pdf-reading-close" data-reading-close aria-label="${esc(t(lang, 'close_full_book'))}">×</button>
+            <div class="pdf-reading-heading">
+              <strong>${esc(documentTitle || t(lang, 'pdf_viewer_label'))}</strong>
+              <span><span data-reading-current>1</span> / <span data-reading-count>…</span></span>
+            </div>
+            <div class="pdf-reading-actions" data-reading-actions></div>
+          </div>
+          <div class="pdf-reading-columns">
+            <section class="pdf-reading-column" data-reading-original-pane>
+              <h3 class="pdf-reading-column-title">${lang === 'fr' ? 'Original' : 'الأصل'}</h3>
+              <div class="pdf-reading-pages" data-pdf-reading-pages aria-live="polite"></div>
+            </section>
+            <section class="pdf-reading-column pdf-reading-translation-pane hidden" data-reading-translation-pane>
+              <h3 class="pdf-reading-column-title" data-reading-translation-label>${lang === 'fr' ? 'Traduction' : 'الترجمة'}</h3>
+            </section>
+          </div>
+        </div>
         <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
