@@ -322,7 +322,8 @@ export async function syncContentRepairQueue(db) {
       FROM materials m LEFT JOIN material_assets_index a ON a.material_id = m.id
       WHERE m.material_level = 'archival_text'
         AND COALESCE(length(trim(m.full_text)), 0) = 0
-        AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)`),
+        AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)
+        AND a.pdf_file_id IS NULL`),
   ]);
 }
 
@@ -1388,6 +1389,12 @@ async function admMaterialUpload(env, user, req, idOrArk) {
   if (m.type === 'book' && m.material_level === 'archival_book_unavailable'
       && (row.mime === 'application/pdf' || /\.pdf$/i.test(row.filename || ''))) {
     await db.prepare("UPDATE materials SET material_level = 'archival_book_original', updated_at = datetime('now') WHERE id = ?")
+      .bind(m.id).run();
+  }
+  // قاعدة التصنيف: PDF فعلي لا يبقى في مستوى التفريغ النصي. يستطيع المدير
+  // اختيار chadian_publication صراحة للمؤلفات التشادية قبل رفع الملف.
+  if (row.mime === 'application/pdf' || /\.pdf$/i.test(row.filename || '')) {
+    await db.prepare("UPDATE materials SET material_level = 'archival_book_original', updated_at = datetime('now') WHERE id = ? AND material_level = 'archival_text'")
       .bind(m.id).run();
   }
 

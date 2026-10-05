@@ -362,7 +362,7 @@ async function contentHealthPage(env, user, req) {
   const issuesOnly = url.searchParams.get('issues') === 'only';
   const missingCoverExpr = `((m.material_level = 'archival_image' AND a.image_file_id IS NULL) OR (m.material_level IN ('archival_book_original','archival_book_unavailable','chadian_publication') AND a.cover_file_id IS NULL))`;
   const missingPdfExpr = `(m.material_level = 'archival_book_original' AND a.pdf_file_id IS NULL)`;
-  const missingTextExpr = `(m.material_level = 'archival_text' AND COALESCE(length(trim(m.full_text)), 0) = 0 AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0))`;
+  const missingTextExpr = `(m.material_level = 'archival_text' AND a.pdf_file_id IS NULL AND COALESCE(length(trim(m.full_text)), 0) = 0 AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0))`;
   const issueExpr = `(${missingCoverExpr} OR ${missingPdfExpr} OR ${missingTextExpr} OR a.integrity_status = 'missing')`;
   const where = [];
   const binds = [];
