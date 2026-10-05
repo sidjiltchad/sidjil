@@ -182,6 +182,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---------- طابور إصلاح المحتوى ----------
+  document.querySelector('[data-repair-triage]')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    setLoading(btn, true);
+    try {
+      const result = await api('/api/v1/admin/content-repair/triage', 'POST', {});
+      toast(`تم التصنيف: ${result.obsoleteCovers || 0} أغلفة غير منطبقة، ${result.pdfAssigned || 0} ملفًا جاهزًا لـOCR`);
+      setTimeout(() => location.reload(), 700);
+    } catch (error) { toast(error.message, false); }
+    finally { setLoading(btn, false); }
+  });
   document.querySelectorAll('[data-repair-save]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.repairSave;
@@ -961,6 +971,16 @@ document.addEventListener('DOMContentLoaded', () => {
           const status = btn.closest('tr')?.querySelector('.translation-job-status');
           if (status) status.textContent = 'ملغاة';
           toast('أُوقفت وظيفة الترجمة');
+        } catch (error) { toast(error.message, false); setLoading(btn, false); }
+      });
+    });
+    translationScope.querySelectorAll('[data-translation-job-retry]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        setLoading(btn, true);
+        try {
+          const result = await api(`/api/v1/admin/translation-jobs/${encodeURIComponent(btn.dataset.translationJobRetry)}/retry`, 'POST', {});
+          toast(result?.id ? 'أعيد إرسال الترجمة إلى الطابور' : 'لا تحتاج الوظيفة إلى إعادة محاولة');
+          setTimeout(() => location.reload(), 700);
         } catch (error) { toast(error.message, false); setLoading(btn, false); }
       });
     });

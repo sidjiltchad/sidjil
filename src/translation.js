@@ -249,6 +249,60 @@ async function ensureTranslationDocument(db, material, file, source, target, mod
   return document;
 }
 
+// A browser can be closed while a page request is in flight.  Keep completed
+// pages intact, release only the interrupted work, and expose a resumable
+// state instead of leaving the document apparently running forever.
+async function recoverStaleTranslationDocuments(db) {
+  try {
+    const stale = await db.prepare(`SELECT id FROM translation_documents
+      WHERE status IN ('RUNNING', 'QUEUED')
+        AND COALESCE(heartbeat_at, updated_at) < datetime('now', '-20 minutes')
+      LIMIT 50`).all();
+    const rows = stale.results || [];
+    for (const row of rows) {
+      await db.batch([
+        db.prepare(`UPDATE translation_pages SET status = 'pending', progress = 0,
+          error_code = 'STALE_HEARTBEAT', error_message = 'أعيد فتح الصفحة للاستئناف بعد انقطاع الجلسة',
+          updated_at = datetime('now') WHERE document_id = ? AND status = 'processing'`).bind(row.id),
+        db.prepare(`UPDATE translation_documents SET status = 'PAUSED',
+          error_code = 'STALE_HEARTBEAT', error_message = 'توقفت مؤقتًا بسبب انقطاع الجلسة ويمكن استئنافها',
+          last_error_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status IN ('RUNNING','QUEUED')`).bind(row.id),
+      ]);
+    }
+    return rows.length;
+  } catch (_) {
+    // The additive migration may not have reached a local preview yet. The
+    // request remains usable there; production runs with the new columns.
+    return 0;
+  }
+}
+
+async function touchTranslationDocument(db, documentId, fields = {}) {
+  const sets = ['updated_at = datetime(\'now\')', 'heartbeat_at = datetime(\'now\')'];
+  const binds = [];
+  if (fields.status) { sets.push('status = ?'); binds.push(fields.status); }
+  if (fields.errorCode !== undefined) { sets.push('error_code = ?'); binds.push(fields.errorCode); }
+  if (fields.errorMessage !== undefined) { sets.push('error_message = ?'); binds.push(fields.errorMessage); }
+  if (fields.completedAt) sets.push('completed_at = datetime(\'now\')');
+  binds.push(documentId);
+  await db.prepare(`UPDATE translation_documents SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
+}
+
+async function refreshTranslationProgress(db, documentId, pageCount = null) {
+  const complete = await db.prepare("SELECT COUNT(*) AS c FROM translation_pages WHERE document_id = ? AND status = 'completed'").bind(documentId).first();
+  const failed = await db.prepare("SELECT COUNT(*) AS c FROM translation_pages WHERE document_id = ? AND status = 'failed'").bind(documentId).first();
+  const document = await db.prepare('SELECT page_count, status FROM translation_documents WHERE id = ?').bind(documentId).first();
+  const count = Number(document?.page_count || pageCount || 0);
+  const completedPages = Number(complete?.c || 0);
+  const progress = count > 0 ? Math.min(100, Math.round((completedPages / count) * 100)) : 0;
+  const status = document?.status === 'CANCELLED' ? 'CANCELLED' : (count > 0 && completedPages >= count ? 'COMPLETED' : (Number(failed?.c || 0) ? 'PAUSED' : 'RUNNING'));
+  await db.prepare(`UPDATE translation_documents SET status = ?, completed_pages = ?, progress = ?,
+    updated_at = datetime('now'), heartbeat_at = datetime('now'),
+    completed_at = CASE WHEN ? = 'COMPLETED' THEN datetime('now') ELSE completed_at END
+    WHERE id = ?`).bind(status, completedPages, progress, status, documentId).run();
+  return { status, completedPages, progress };
+}
+
 function batchPageMarker(index) {
   return `SIDJIL_PAGE_BREAK_${String.fromCharCode(65 + index)}`;
 }
@@ -259,6 +313,7 @@ async function pageTranslationBatch(req, env, value) {
   const user = await getSessionUser(req, env);
   if (user && !verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
   if (!user && !s.guest_enabled) return fail('تسجيل الدخول مطلوب لاستخدام الترجمة', 401, 'LOGIN_REQUIRED');
+  await recoverStaleTranslationDocuments(env.DB);
   let body;
   try { body = await req.json(); } catch (_) { return fail('بيانات الطلب غير صالحة'); }
   const source = String(body.source || 'auto');
@@ -337,7 +392,7 @@ async function pageTranslationBatch(req, env, value) {
   const completedPages = Number(complete?.c || 0);
   const pageCount = Number(document.page_count || body.page_count || 0);
   const progress = pageCount > 0 ? Math.min(100, Math.round((completedPages / pageCount) * 100)) : 0;
-  await env.DB.prepare(`UPDATE translation_documents SET status = ?, completed_pages = ?, progress = ?, page_count = COALESCE(page_count, ?), updated_at = datetime('now') WHERE id = ?`)
+  await env.DB.prepare(`UPDATE translation_documents SET status = ?, completed_pages = ?, progress = ?, page_count = COALESCE(page_count, ?), updated_at = datetime('now'), heartbeat_at = datetime('now'), error_code = NULL, error_message = NULL WHERE id = ?`)
     .bind(pageCount > 0 && completedPages >= pageCount ? 'COMPLETED' : 'RUNNING', completedPages, progress, pageCount || null, document.id).run();
   return json({ success: true, cached: results.every((item) => item.cached), documentId: document.id, pages: results, direction: pageLanguageDirection(target) });
 }
@@ -348,6 +403,7 @@ async function pageTranslation(req, env, value, pageNumber) {
   const user = await getSessionUser(req, env);
   if (user && !verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
   if (!user && !s.guest_enabled) return fail('تسجيل الدخول مطلوب لاستخدام الترجمة', 401, 'LOGIN_REQUIRED');
+  await recoverStaleTranslationDocuments(env.DB);
   const page = Number(pageNumber);
   if (!Number.isInteger(page) || page < 1 || page > 3000) return fail('رقم الصفحة غير صالح', 400, 'INVALID_PAGE');
   let body;
@@ -406,9 +462,9 @@ async function pageTranslation(req, env, value, pageNumber) {
     const completedPages = Number(complete?.c || 0);
     const pageCount = Number(document.page_count || body.page_count || 0);
     const progress = pageCount > 0 ? Math.min(100, Math.round((completedPages / pageCount) * 100)) : 0;
-    await env.DB.prepare(`UPDATE translation_documents SET status = ?, completed_pages = ?, progress = ?,
+     await env.DB.prepare(`UPDATE translation_documents SET status = ?, completed_pages = ?, progress = ?,
       page_count = COALESCE(page_count, ?), updated_at = datetime('now'), completed_at = CASE WHEN ? > 0 AND ? >= ? THEN datetime('now') ELSE completed_at END
-      WHERE id = ?`)
+       , heartbeat_at = datetime('now'), error_code = NULL, error_message = NULL WHERE id = ?`)
       .bind(pageCount > 0 && completedPages >= pageCount ? 'COMPLETED' : 'RUNNING', completedPages, progress, pageCount || null, completedPages, completedPages, pageCount || 0, document.id).run();
     await env.DB.prepare(`INSERT OR REPLACE INTO translation_page_segments
       (page_id, sequence_number, source_text, translated_text, kind, direction)
@@ -418,11 +474,13 @@ async function pageTranslation(req, env, value, pageNumber) {
   } catch (e) {
     await env.DB.prepare(`UPDATE translation_pages SET status = 'failed', progress = 0, error_code = ?, error_message = ?, updated_at = datetime('now') WHERE document_id = ? AND page_number = ?`)
       .bind('PAGE_TRANSLATION_FAILED', String(e?.message || 'تعذر تنفيذ الترجمة').slice(0, 500), document.id, page).run().catch(() => {});
+    await touchTranslationDocument(env.DB, document.id, { status: 'PAUSED', errorCode: 'PAGE_TRANSLATION_FAILED', errorMessage: String(e?.message || 'تعذر تنفيذ الترجمة').slice(0, 500) }).catch(() => {});
     return fail('تعذر ترجمة هذه الصفحة الآن. حاول مرة أخرى لاحقًا.', 503, 'PAGE_TRANSLATION_UNAVAILABLE');
   }
 }
 
 async function getTranslatedPage(req, env, value, pageNumber) {
+  await recoverStaleTranslationDocuments(env.DB);
   const page = Number(pageNumber);
   if (!Number.isInteger(page) || page < 1) return fail('رقم الصفحة غير صالح', 400, 'INVALID_PAGE');
   const material = await materialById(env.DB, value);
@@ -444,11 +502,33 @@ async function translationDocumentControl(req, env, documentId, action) {
   const user = await getSessionUser(req, env);
   if (!user) return fail('تسجيل الدخول مطلوب', 401, 'LOGIN_REQUIRED');
   if (!verifyCsrf(user, req)) return fail('رمز CSRF غير صالح أو مفقود', 403, 'CSRF_INVALID');
-  const row = await env.DB.prepare('SELECT id FROM translation_documents WHERE id = ?').bind(documentId).first();
+  await recoverStaleTranslationDocuments(env.DB);
+  const row = await env.DB.prepare('SELECT id, created_by, status FROM translation_documents WHERE id = ?').bind(documentId).first();
   if (!row) return fail('وثيقة الترجمة غير موجودة', 404);
-  const status = action === 'pause' ? 'PAUSED' : action === 'resume' ? 'RUNNING' : 'CANCELLED';
-  await env.DB.prepare('UPDATE translation_documents SET status = ?, updated_at = datetime(\'now\') WHERE id = ?').bind(status, documentId).run();
-  return json({ success: true, status });
+  const isAdmin = ['admin', 'super_admin'].includes(String(user.role));
+  if (!isAdmin && row.created_by && Number(row.created_by) !== Number(user.id)) return fail('غير مصرح بالتحكم في هذه الترجمة', 403, 'FORBIDDEN');
+  if (!['pause', 'resume', 'retry', 'cancel'].includes(action)) return fail('إجراء غير صالح', 400);
+  if (action === 'pause') {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE translation_documents SET status = 'PAUSED', error_code = NULL, error_message = NULL, updated_at = datetime('now'), heartbeat_at = datetime('now') WHERE id = ?").bind(documentId),
+      env.DB.prepare("UPDATE translation_pages SET status = 'pending', progress = 0, updated_at = datetime('now') WHERE document_id = ? AND status = 'processing'").bind(documentId),
+    ]);
+    return json({ success: true, status: 'PAUSED' });
+  }
+  if (action === 'cancel') {
+    await env.DB.prepare("UPDATE translation_documents SET status = 'CANCELLED', error_code = 'CANCELLED_BY_USER', error_message = 'ألغيت الترجمة من المستخدم', updated_at = datetime('now'), heartbeat_at = datetime('now') WHERE id = ?").bind(documentId).run();
+    return json({ success: true, status: 'CANCELLED' });
+  }
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE translation_pages SET status = 'pending', progress = 0,
+      error_code = NULL, error_message = NULL, updated_at = datetime('now')
+      WHERE document_id = ? AND status IN ('failed', 'processing')`).bind(documentId),
+    env.DB.prepare(`UPDATE translation_documents SET status = 'RUNNING', attempts = attempts + 1,
+      error_code = NULL, error_message = NULL, last_error_at = NULL, completed_at = NULL,
+      updated_at = datetime('now'), heartbeat_at = datetime('now') WHERE id = ?`).bind(documentId),
+  ]);
+  const progress = await refreshTranslationProgress(env.DB, documentId);
+  return json({ success: true, status: progress.status, progress: progress.progress, retried: true });
 }
 
 async function listJobs(req, env) {
@@ -485,6 +565,9 @@ async function internalUpdate(req, env, jobId) {
   let body; try { body = await req.json(); } catch (_) { return fail('بيانات غير صالحة'); }
   const status = String(body.status || ''); const progress = Math.max(0, Math.min(100, Number(body.progress) || 0)); const stage = JOB_STAGES.has(body.currentStage) ? body.currentStage : status;
   if (!JOB_STAGES.has(status)) return fail('حالة غير صالحة');
+  // لا تسمح callback قديمًا بإرجاع وظيفة مكتملة أو فاشلة إلى حالة تشغيلية.
+  if (existing.status === 'COMPLETED' && status !== 'COMPLETED') return json({ success: true, ignored: true, reason: 'already_completed' });
+  if (existing.status === 'FAILED' && !['FAILED', 'COMPLETED'].includes(status)) return json({ success: true, ignored: true, reason: 'already_failed' });
   const fields = ['status = ?', 'progress = ?', 'current_stage = ?', 'processed_pages = COALESCE(?, processed_pages)', 'page_count = COALESCE(?, page_count)', 'ocr_used = COALESCE(?, ocr_used)', 'updated_at = datetime(\'now\')']; const binds = [status, progress, stage, body.processedPages ?? null, body.pageCount ?? null, body.ocrUsed ?? null];
   if (body.outputKey) { fields.push('output_key = ?', 'output_mime = ?', 'output_size = ?'); binds.push(String(body.outputKey), body.outputMime || 'application/pdf', body.outputSize || null); }
   if (body.errorCode) { fields.push('error_code = ?', 'error_message = ?'); binds.push(String(body.errorCode), String(body.errorMessage || '')); }
@@ -559,7 +642,7 @@ export async function routeTranslationApi(req, env) {
   if (pageMatch && req.method === 'POST') return pageTranslation(req, env, decodeURIComponent(pageMatch[1]), pageMatch[2]);
   pageMatch = path.match(/^\/api\/v1\/documents\/([^/]+)\/pages\/(\d+)$/);
   if (pageMatch && req.method === 'GET') return getTranslatedPage(req, env, decodeURIComponent(pageMatch[1]), pageMatch[2]);
-  let controlMatch = path.match(/^\/api\/v1\/translate\/documents\/([^/]+)\/(pause|resume|cancel)$/);
+  let controlMatch = path.match(/^\/api\/v1\/translate\/documents\/([^/]+)\/(pause|resume|retry|cancel)$/);
   if (controlMatch && req.method === 'POST') return translationDocumentControl(req, env, decodeURIComponent(controlMatch[1]), controlMatch[2]);
   let m = path.match(/^\/api\/v1\/documents\/([^/]+)\/translations$/);
   if (m && req.method === 'GET') {

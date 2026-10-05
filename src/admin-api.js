@@ -379,6 +379,40 @@ async function admContentRepairEnqueue(env, user, req, body) {
   return json({ ok: true });
 }
 
+// تصنيف آلي محافظ: يغلق النواقص غير المنطبقة أو المكتملة فعليًا، ويحدد
+// ملف PDF المرشح لعناصر OCR دون اعتبار التفريغ مكتملًا قبل مراجعته.
+async function admContentRepairAutoTriage(env, user, req) {
+  const db = env.DB;
+  await syncContentRepairQueue(db);
+  const obsolete = await db.prepare(`UPDATE content_repair_queue
+    SET status = 'resolved', note = 'غير منطبق: الوثيقة النصية لا تحتاج غلافًا وفق تصنيف المادة',
+        resolved_by = ?, resolved_at = datetime('now'), updated_at = datetime('now')
+    WHERE status IN ('pending','processing') AND issue_type = 'cover'
+      AND material_id IN (SELECT id FROM materials WHERE material_level = 'archival_text')`).bind(user.id).run();
+  const completedText = await db.prepare(`UPDATE content_repair_queue
+    SET status = 'resolved', note = 'اكتمل التفريغ النصي في سجل المادة',
+        resolved_by = ?, resolved_at = datetime('now'), updated_at = datetime('now')
+    WHERE status IN ('pending','processing') AND issue_type = 'text'
+      AND material_id IN (SELECT m.id FROM materials m WHERE COALESCE(length(trim(m.full_text)), 0) > 0
+        OR EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0))`).bind(user.id).run();
+  const assignedPdf = await db.prepare(`UPDATE content_repair_queue
+    SET source_file_id = COALESCE(source_file_id, (SELECT a.pdf_file_id FROM material_assets_index a WHERE a.material_id = content_repair_queue.material_id)),
+        note = 'ملف PDF مرتبط؛ يحتاج تشغيل OCR ثم مراجعة التفريغ قبل اعتماده', updated_at = datetime('now')
+    WHERE status = 'pending' AND issue_type = 'text'
+      AND material_id IN (SELECT m.id FROM materials m WHERE m.material_level = 'archival_text'
+        AND EXISTS (SELECT 1 FROM material_assets_index a WHERE a.material_id = m.id AND a.pdf_file_id IS NOT NULL))`).run();
+  const blocked = await db.prepare(`UPDATE content_repair_queue
+    SET status = 'blocked', note = 'لا يوجد PDF أو نص مصدر يمكن تشغيل OCR عليه؛ يلزم رفع المصدر أولًا',
+        resolved_by = ?, resolved_at = datetime('now'), updated_at = datetime('now')
+    WHERE status IN ('pending','processing') AND issue_type = 'text'
+      AND material_id IN (SELECT m.id FROM materials m WHERE m.material_level = 'archival_text'
+        AND COALESCE(length(trim(m.full_text)), 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM transcriptions t WHERE t.material_id = m.id AND length(trim(t.text)) > 0)
+        AND NOT EXISTS (SELECT 1 FROM material_assets_index a WHERE a.material_id = m.id AND a.pdf_file_id IS NOT NULL))`).bind(user.id).run();
+  await audit(db, { userId: user.id, action: 'content_repair.auto_triage', target: 'content_repair_queue', detail: JSON.stringify({ obsoleteCovers: obsolete.meta?.changes || 0, completedText: completedText.meta?.changes || 0, pdfAssigned: assignedPdf.meta?.changes || 0, blocked: blocked.meta?.changes || 0 }), ip: clientIp(req) });
+  return json({ ok: true, obsoleteCovers: Number(obsolete.meta?.changes || 0), completedText: Number(completedText.meta?.changes || 0), pdfAssigned: Number(assignedPdf.meta?.changes || 0), blocked: Number(blocked.meta?.changes || 0) });
+}
+
 async function admContentRepairUpdate(env, user, req, id, body) {
   const status = ['pending', 'processing', 'resolved', 'blocked'].includes(body?.status) ? body.status : null;
   if (!status) return err('حالة الطابور غير صالحة', 400);
@@ -583,6 +617,8 @@ export async function routeAdminApi(req, env) {
     return withJsonBody(req, (body) => admTranslationJobsCleanup(env, user, req, body));
   m = rest.match(/^translation-jobs\/([^/]+)\/cancel$/);
   if (m && method === 'POST') return admTranslationJobCancel(env, user, req, decodeURIComponent(m[1]));
+  m = rest.match(/^translation-jobs\/([^/]+)\/retry$/);
+  if (m && method === 'POST') return admTranslationJobRetry(env, user, req, decodeURIComponent(m[1]));
   m = rest.match(/^translation-jobs\/([^/]+)$/);
   if (m && method === 'DELETE') return admTranslationJobDelete(env, user, req, decodeURIComponent(m[1]));
 
@@ -596,6 +632,7 @@ export async function routeAdminApi(req, env) {
   if (rest === 'content-repair' && method === 'GET') return admContentRepairList(env, url);
   if (rest === 'content-repair' && method === 'POST')
     return withJsonBody(req, (body) => admContentRepairEnqueue(env, user, req, body));
+  if (rest === 'content-repair/triage' && method === 'POST') return admContentRepairAutoTriage(env, user, req);
   m = rest.match(/^content-repair\/(\d+)$/);
   if (m && method === 'PATCH')
     return withJsonBody(req, (body) => admContentRepairUpdate(env, user, req, parseInt(m[1], 10), body));
@@ -1934,6 +1971,12 @@ async function admManualTranslationUpload(env, user, req) {
 
 async function admTranslationJobsList(env, url) {
   const db = env.DB;
+  // وظيفة PDF التي لا ترسل heartbeat خلال ساعتين لم تعد قابلة للاستئناف من
+  // الخدمة الحالية؛ نضعها فاشلة مع سبب واضح، وتبقى قابلة لإعادة المحاولة.
+  await db.prepare(`UPDATE translation_jobs SET status = 'FAILED', current_stage = 'FAILED',
+    error_code = 'STALE_HEARTBEAT', error_message = 'توقفت الخدمة دون تحديث ويمكن إعادة المحاولة', updated_at = datetime('now')
+    WHERE status IN ('QUEUED','ANALYZING','EXTRACTING','OCR_PROCESSING','TRANSLATING','REBUILDING','UPLOADING')
+      AND updated_at < datetime('now', '-2 hours')`).run().catch(() => {});
   const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
   const source = String(url.searchParams.get('source') || '').trim().toLowerCase();
   const target = String(url.searchParams.get('target') || '').trim().toLowerCase();
@@ -2010,6 +2053,47 @@ async function admTranslationJobCancel(env, user, req, jobId) {
   }
   await audit(db, { userId: user.id, action: 'translation_job.cancel', target: String(job.id), detail: 'إلغاء وظيفة ترجمة', ip: clientIp(req) });
   return json({ ok: true, id: job.id, status: 'CANCELLED' });
+}
+
+async function admTranslationJobRetry(env, user, req, jobId) {
+  const db = env.DB;
+  const job = await db.prepare(`SELECT j.*, m.id AS material_id FROM translation_jobs j
+    LEFT JOIN materials m ON m.id = j.material_id WHERE j.id = ?`).bind(jobId).first();
+  if (!job) return json({ ok: true, id: jobId, missing: true });
+  if (!['FAILED', 'CANCELLED'].includes(String(job.status))) {
+    return json({ ok: true, id: job.id, status: job.status, unchanged: true });
+  }
+  if (!env.TRANSLATION_SERVICE_URL) return err('خدمة معالجة المستند غير مهيأة', 503, 'SERVICE_NOT_CONFIGURED');
+  const fingerprint = `${job.fingerprint}|retry|${Date.now()}`;
+  const newId = crypto.randomUUID();
+  await db.prepare(`INSERT INTO translation_jobs
+    (id, material_id, file_id, user_id, content_hash, fingerprint, source_language, target_language,
+     engine, engine_version, pdf_engine, pdf_engine_version, output_mode, ocr_mode, input_key, status, current_stage)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ollama', 'qwen3:8b', 'sidjil-pdf', 'v4', ?, ?, ?, 'QUEUED', 'QUEUED')`)
+    .bind(newId, job.material_id, job.file_id, job.user_id, job.content_hash, fingerprint,
+      job.source_language, job.target_language, job.output_mode, job.ocr_mode, job.input_key).run();
+  const base = String(env.TRANSLATION_SERVICE_URL).replace(/\/$/, '');
+  const payload = {
+    jobId: newId, materialId: job.material_id, fileId: job.file_id, inputKey: job.input_key,
+    contentHash: job.content_hash, fingerprint, source: job.source_language, target: job.target_language,
+    mode: job.output_mode, ocr: job.ocr_mode,
+    inputUrl: new URL(`/api/v1/translate/internal/jobs/${newId}/input`, req.url).toString(),
+    outputUrl: new URL(`/api/v1/translate/internal/jobs/${newId}/output`, req.url).toString(),
+    callback: new URL(`/api/v1/translate/internal/jobs/${newId}`, req.url).toString(),
+  };
+  const headers = { 'content-type': 'application/json' };
+  if (env.TRANSLATION_SERVICE_TOKEN) headers['X-Sidjil-Service-Token'] = env.TRANSLATION_SERVICE_TOKEN;
+  try {
+    const response = await fetch(`${base}/jobs`, { method: 'POST', headers, body: JSON.stringify(payload) });
+    if (!response.ok) throw new Error(`service ${response.status}`);
+  } catch (error) {
+    await db.prepare(`UPDATE translation_jobs SET status = 'FAILED', current_stage = 'FAILED',
+      error_code = 'SERVICE_UNAVAILABLE', error_message = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(String(error.message).slice(0, 500), newId).run();
+    return err('تعذر إعادة إرسال الترجمة إلى الخدمة', 503, 'SERVICE_UNAVAILABLE');
+  }
+  await audit(db, { userId: user.id, action: 'translation_job.retry', target: String(jobId), detail: `إعادة إنشاء الوظيفة ${newId}`, ip: clientIp(req) });
+  return json({ ok: true, previousId: jobId, id: newId, status: 'QUEUED' }, 202);
 }
 
 async function admTranslationJobsCleanup(env, user, req, body) {

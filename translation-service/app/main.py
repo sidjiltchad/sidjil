@@ -423,8 +423,24 @@ async def ocr_page(request: Request, x_sidjil_service_token: str | None = Header
 
 
 async def callback(job: Job, **data):
-    async with httpx.AsyncClient(timeout=20) as client:
-        await client.patch(job.callback, headers={'X-Sidjil-Service-Token': TOKEN}, json=data)
+    last_error: Exception | None = None
+    # Cloudflare Worker requests can be briefly unavailable during a deploy or
+    # a cold start. Retry the callback without rerunning the expensive PDF job.
+    for attempt in range(4):
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.patch(job.callback, headers={'X-Sidjil-Service-Token': TOKEN}, json=data)
+                if response.status_code in {408, 429, 500, 502, 503, 504}:
+                    response.raise_for_status()
+                response.raise_for_status()
+                return
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError, httpx.HTTPStatusError) as exc:
+            last_error = exc
+            if attempt >= 3:
+                break
+            await asyncio.sleep(min(8, 2 ** attempt))
+    if last_error:
+        raise last_error
 
 
 async def download_input(job: Job, destination: Path):

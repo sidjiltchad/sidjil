@@ -1,0 +1,33 @@
+name: SIDJIL CI
+
+on:
+  push:
+    branches: [main, agent-work, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx wrangler deploy --dry-run
+
+  production-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.SIDJIL_RUN_PRODUCTION_SMOKE == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/smoke-test.mjs
