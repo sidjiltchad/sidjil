@@ -152,7 +152,7 @@ ${THEME_INIT}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${csrfMeta}
 <title>${esc(title)} — سِجِل | لوحة الإدارة</title>
-<link rel="stylesheet" href="/admin.css?v=20261005-admin-redesign-v1">
+<link rel="stylesheet" href="/admin.css?v=20261005-admin-redesign-v2">
 ${head}
 </head>
 <body>
@@ -249,8 +249,15 @@ ${THEME_INIT}
 }
 
 // ---------- 2) لوحة التحكم ----------
-async function dashboardPage(env, user) {
+async function dashboardPage(env, user, req) {
   const db = env.DB;
+  const requestedDays = Number(new URL(req?.url || 'https://sidjil.org/admin').searchParams.get('days'));
+  const days = [7, 30, 90].includes(requestedDays) ? requestedDays : 7;
+  const activityStatement = days === 7
+    ? db.prepare(`SELECT substr(created_at, 1, 10) AS bucket, substr(created_at, 6, 5) AS label, COUNT(*) AS c
+      FROM materials WHERE created_at >= date('now', ?) GROUP BY bucket ORDER BY bucket`).bind(`-${days - 1} day`)
+    : db.prepare(`SELECT strftime('%Y-%W', created_at) AS bucket, strftime('%W', created_at) AS label, COUNT(*) AS c
+      FROM materials WHERE created_at >= date('now', ?) GROUP BY bucket ORDER BY bucket`).bind(`-${days - 1} day`);
   const [publishedCount, reviewCount, repairCount, trlPending, trlFailed, reportsOpen, visitorsToday, latest, audits, activity] = await Promise.all([
     db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='published'").first(),
     db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='in_review'").first(),
@@ -264,9 +271,7 @@ async function dashboardPage(env, user) {
     db.prepare(`SELECT a.id, a.action, a.target, a.created_at, u.username
       FROM audit_log a LEFT JOIN admin_users u ON u.id = a.user_id
       ORDER BY a.created_at DESC LIMIT 8`).all(),
-    db.prepare(`SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS c
-      FROM materials WHERE created_at >= date('now', '-6 day')
-      GROUP BY day ORDER BY day`).all(),
+    activityStatement.all(),
   ]);
 
   const metric = (row) => Number(row?.c || 0);
@@ -304,13 +309,18 @@ async function dashboardPage(env, user) {
   ].filter(([value]) => value > 0).map(([value, label, href, cls]) => `<a class="attention-item ${cls}" href="${href}"><strong>${esc(value)}</strong><span>${esc(label)}</span><span aria-hidden="true">←</span></a>`).join('');
   const activityRows = activity.results || [];
   const maxActivity = Math.max(1, ...activityRows.map((row) => Number(row.c || 0)));
-  const activityBars = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(Date.now() - (6 - index) * 86400000).toISOString().slice(0, 10);
-    const row = activityRows.find((item) => item.day === date);
-    const count = Number(row?.c || 0);
+  const activityBuckets = days === 7
+    ? Array.from({ length: 7 }, (_, index) => {
+      const bucket = new Date(Date.now() - (6 - index) * 86400000).toISOString().slice(0, 10);
+      const row = activityRows.find((item) => item.bucket === bucket);
+      return { bucket, label: bucket.slice(5), count: Number(row?.c || 0) };
+    })
+    : activityRows.map((row) => ({ bucket: row.bucket, label: row.label, count: Number(row.c || 0) }));
+  const activityBars = (activityBuckets.length ? activityBuckets : [{ bucket: '', label: '—', count: 0 }]).map(({ bucket, label, count }) => {
     const height = count ? Math.max(10, Math.round(count / maxActivity * 100)) : 4;
-    return `<div class="activity-bar-wrap"><span class="activity-count">${count || ''}</span><i class="activity-bar" style="height:${height}%" title="${esc(date)}: ${count}"></i><small>${esc(date.slice(5))}</small></div>`;
+    return `<div class="activity-bar-wrap"><span class="activity-count">${count || ''}</span><i class="activity-bar" style="height:${height}%" title="${esc(bucket || label)}: ${count}"></i><small>${esc(label)}</small></div>`;
   }).join('');
+  const activityRangeLinks = [7, 30, 90].map((range) => `<a class="dashboard-range-link${days === range ? ' is-active' : ''}" href="/admin?days=${range}"${days === range ? ' aria-current="page"' : ''}>${range} أيام</a>`).join('');
   const serviceRows = [
     ['D1', 'قاعدة البيانات', 'متصل', 'service-ok'],
     ['R2', 'الملفات والأصول', 'متصل', 'service-ok'],
@@ -323,7 +333,7 @@ async function dashboardPage(env, user) {
   <div class="stats dashboard-stats">${cards}</div>
   <section class="dashboard-attention card"><div class="section-head"><div><h2>يتطلب انتباهك</h2><p class="muted">أهم الأعمال التي تنتظر إجراءً إداريًا.</p></div><a class="btn btn-ghost btn-sm" href="/admin/review">فتح مركز العمل ←</a></div><div class="attention-list">${attentionItems || '<div class="dashboard-empty"><strong>لا توجد مهام عاجلة</strong><span>كل الطوابير الأساسية محدثة حاليًا.</span></div>'}</div></section>
   <div class="dashboard-grid">
-    <section class="card dashboard-activity"><div class="section-head"><div><h2>نشاط المواد</h2><p class="muted">المواد المضافة خلال آخر 7 أيام.</p></div><a class="btn btn-ghost btn-sm" href="/admin/metrics">تفاصيل الأداء</a></div><div class="activity-chart" aria-label="مخطط نشاط المواد">${activityBars}</div></section>
+    <section class="card dashboard-activity"><div class="section-head"><div><h2>نشاط المواد</h2><p class="muted">المواد المضافة خلال آخر ${days} أيام.</p></div><div class="dashboard-section-actions"><div class="dashboard-range-tabs" aria-label="النطاق الزمني">${activityRangeLinks}</div><a class="btn btn-ghost btn-sm" href="/admin/metrics">تفاصيل الأداء</a></div></div><div class="activity-chart activity-chart-${days}" aria-label="مخطط نشاط المواد">${activityBars}</div></section>
     <section class="card dashboard-services"><div class="section-head"><div><h2>حالة الخدمات</h2><p class="muted">آخر حالة متاحة من بيئة التشغيل الحالية.</p></div></div><div class="service-list">${serviceRows}</div></section>
   </div>
   <div class="grid-2 dashboard-lower-grid">
@@ -1538,7 +1548,7 @@ export async function renderAdmin(pathname, req, env, user) {
   if (user.role !== 'admin') return redirect('/researcher');
 
   const clean = pathname.replace(/\/+$/, '') || '/admin';
-  if (clean === '/admin') return htmlRes(await dashboardPage(env, user));
+  if (clean === '/admin') return htmlRes(await dashboardPage(env, user, req));
   if (clean === '/admin/content-health') return htmlRes(await contentHealthPage(env, user, req));
   if (clean === '/admin/content-repair') return htmlRes(await contentRepairPage(env, user, req));
   if (clean === '/admin/metrics') return htmlRes(await metricsPage(env, user, req));
