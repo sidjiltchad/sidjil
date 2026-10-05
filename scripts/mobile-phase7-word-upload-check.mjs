@@ -104,6 +104,14 @@ assert.ok(xhr.body instanceof FormData);
 assert.ok(progress.some(value => value === .5));
 assert.equal(uploadClient.running.size, 0);
 
+class HangingUploadXhr extends FakeUploadXhr { send(body) { this.body = body; } }
+const cancelClient = api.createNativeUploadClient({ xhrFactory: () => new HangingUploadXhr(), native: true });
+const cancelFile = new File([new Uint8Array(8)], 'cancel.pdf', { type: 'application/pdf' });
+const pending = cancelClient.uploadFile(23, cancelFile, { kind: 'content-file' });
+assert.equal(cancelClient.cancelUpload(23, cancelFile, { kind: 'content-file' }), true);
+await assert.rejects(pending, error => error.code === 'CANCELLED');
+assert.equal(cancelClient.getState(23, cancelFile, { kind: 'content-file' }).state, 'cancelled');
+
 for (const file of [
   'dist-capacitor/assets/docx-reader.js',
   'dist-capacitor/assets/native-upload.js',
