@@ -60,7 +60,11 @@ export async function mount(container, options = {}) {
     translationPane.hidden = !hasTranslation;
     originalButton.classList.toggle('is-active', !hasTranslation || state.dual);
     dualButton.classList.toggle('is-active', state.dual);
-    if (hasTranslation) {
+    if (!hasTranslation && trs.length) {
+      dualButton.textContent = '◐';
+      dualButton.title = 'عرض الترجمة';
+      dualButton.setAttribute('aria-label', dualButton.title);
+    } else if (hasTranslation) {
       dualButton.textContent = state.dual ? '📄' : '◐';
       dualButton.title = state.dual ? 'العودة إلى الأصل' : 'عرض ثنائي متزامن';
       dualButton.setAttribute('aria-label', dualButton.title);
