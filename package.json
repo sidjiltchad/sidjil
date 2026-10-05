@@ -23,6 +23,7 @@
     "test:mobile:auth": "node scripts/mobile-phase2-check.mjs",
     "test:mobile:feed": "node scripts/mobile-phase3-check.mjs",
     "test:mobile:search-profile": "node scripts/mobile-phase4-search-profile-check.mjs",
+    "test:mobile:pdf": "node scripts/mobile-phase5-pdf-check.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "telegram:setup": "node scripts/telegram-setup.mjs"
   },
