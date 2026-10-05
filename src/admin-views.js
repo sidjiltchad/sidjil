@@ -375,9 +375,15 @@ async function contentHealthPage(env, user, req) {
     const percent = Math.round((complete / items.length) * 100);
     return `<div class="health-coverage-row"><span>${esc(label)} <small>${items.length}</small></span><div class="health-coverage-track"><i style="width:${percent}%"></i></div><strong>${percent}%</strong></div>`;
   }).filter(Boolean).join('');
+  const toggleParams = new URLSearchParams({ status });
+  if (type) toggleParams.set('type', type);
+  if (q) toggleParams.set('q', q);
+  if (!issuesOnly) toggleParams.set('issues', 'only');
+  const toggleHealthHref = `/admin/content-health?${esc(toggleParams.toString())}`;
+  const toggleHealthLabel = issuesOnly ? 'عرض كل المواد' : 'عرض النواقص فقط';
   const body = `${pageHead('صحة المحتوى', '<a class="btn btn-ghost" href="/admin">← لوحة التحكم</a>')}<div class="stats">${cards}</div>
   <section class="health-overview"><div class="health-score-card"><div class="health-score-ring ${healthScore >= 90 ? 'health-good' : healthScore >= 60 ? 'health-warn' : 'health-bad'}"><strong>${healthScore}%</strong><span>سلامة مبدئية</span></div><div><h2>حالة الأرشيف</h2><p>تم فحص ${esc(allCount?.c || 0)} مادة، وتحتاج ${esc(issueCount)} مادة إلى متابعة أو إصلاح.</p><a class="btn btn-sm btn-primary" href="/admin/content-repair">فتح طابور الإصلاح</a></div></div><div class="card health-coverage"><h2>التغطية حسب النوع</h2>${coverage || '<p class="muted">لا توجد مواد في هذا العرض.</p>'}</div></section>
-  <section class="card"><div class="section-head"><div><h2>فحص المواد</h2><p class="muted">تُعرض المواد التي ينقصها غلاف أو PDF أو نص موثق أو ملف R2 أولًا. فحص R2 يقرأ الكائن المرتبط فقط.</p></div><a class="btn btn-ghost" href="/admin/content-health?status=${encodeURIComponent(status)}&issues=only">عرض النواقص فقط</a></div>
+  <section class="card"><div class="section-head"><div><h2>فحص المواد</h2><p class="muted">تُعرض المواد التي ينقصها غلاف أو PDF أو نص موثق أو ملف R2 أولًا. فحص R2 يقرأ الكائن المرتبط فقط.</p></div><a class="btn btn-ghost" href="${toggleHealthHref}">${toggleHealthLabel}</a></div>
   <form class="filters" method="get" action="/admin/content-health"><label class="field"><span>الحالة</span><select name="status"><option value="published"${status === 'published' ? ' selected' : ''}>المنشورة</option><option value="draft"${status === 'draft' ? ' selected' : ''}>المسودات</option><option value="all"${status === 'all' ? ' selected' : ''}>الكل</option></select></label><label class="field"><span>النوع</span><select name="type"><option value="">كل الأنواع</option>${typeOpts}</select></label><label class="field"><span>بحث</span><input name="q" value="${esc(q)}" placeholder="العنوان أو الرمز"></label><label class="checkbox-field"><input type="checkbox" name="issues" value="only"${issuesOnly ? ' checked' : ''}><span>النواقص فقط</span></label><button class="btn btn-primary" type="submit">تصفية</button></form>
   <div class="table-wrap"><table class="tbl content-health-table"><thead><tr><th>الرمز</th><th>المادة</th><th>النتيجة</th><th>النواقص والفحص</th><th>إجراء</th></tr></thead><tbody>${rowsHtml || '<tr><td colspan="5" class="muted">لا توجد مواد مطابقة.</td></tr>'}</tbody></table></div></section>`;
   return layout({ title: 'صحة المحتوى', active: 'quality', user, body });
