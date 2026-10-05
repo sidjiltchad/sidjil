@@ -107,9 +107,15 @@ export async function mount(container, options = {}) {
 async function openResearcherReader(options = {}) {
   if (window.__sidjilResearcherReaderClose) window.__sidjilResearcherReaderClose();
   const root = document.createElement('div'); root.className = 'rpdf-reader-host'; document.body.appendChild(root);
+  const sourceUrl = options.url || options.pdf || options.originalUrl || '';
+  if (!sourceUrl) {
+    root.remove();
+    toast('ملف القراءة غير محدد', false);
+    return { destroy() {}, close() {} };
+  }
   let translations = options.translations;
   if (!Array.isArray(translations) && options.material) { try { const response = await fetch(`/api/v1/materials/${encodeURIComponent(options.material)}/translations`, { credentials: 'same-origin', headers: { Accept: 'application/json' } }); const data = await response.json(); translations = data.items || []; } catch { translations = []; } }
-  const handle = await mount(root, { ...options, materialId: options.material || options.materialId, translations }); window.__sidjilResearcherReaderClose = handle.close; return handle;
+  const handle = await mount(root, { ...options, url: sourceUrl, materialId: options.material || options.materialId, originalDownload: options.originalDownload || options.pdfDownload || sourceUrl, translations }); window.__sidjilResearcherReaderClose = handle.close; return handle;
 }
 window.SidjilPdfReader = { mount };
 window.SidjilOpenDocumentReader = openResearcherReader;
