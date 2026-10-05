@@ -2473,3 +2473,8 @@ textarea { border-radius: var(--shape-control); }
 .rpdf-reader-root .rpdf-reader-controls { flex-wrap: nowrap; max-width: calc(100% - 16px); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
 .rpdf-reader-root .rpdf-reader-controls::-webkit-scrollbar { display: none; }
 @media (max-width: 700px) { .rpdf-reader-root .rpdf-reader-controls { gap: 2px; padding: 5px; } .rpdf-reader-root .rpdf-reader-controls button, .rpdf-reader-root .rpdf-reader-controls a { width: 34px; height: 34px; flex: 0 0 34px; } }
+
+/* بطاقات المواد في موجز الباحث مستطيلة بحواف خفيفة، لا بشكل كبسولة. */
+button.researcher-material-visual,
+button.researcher-material-visual.researcher-book-visual,
+button.researcher-material-visual.researcher-image-visual { border-radius: 8px; }
