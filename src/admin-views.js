@@ -197,8 +197,8 @@ async function dashboardPage(env, user) {
     db.prepare("SELECT COUNT(*) c FROM materials WHERE publish_status='in_review'").first(),
     db.prepare(`SELECT COUNT(*) c FROM files f WHERE f.kind IN ('original','attachment')
       AND (f.mime = 'application/pdf' OR f.mime LIKE '%word%' OR lower(f.filename) LIKE '%.pdf' OR lower(f.filename) LIKE '%.doc' OR lower(f.filename) LIKE '%.docx')
-      AND NOT EXISTS (SELECT 1 FROM file_translations ft WHERE ft.source_file_id = f.id AND ft.status = 'ready')`).first(),
-    db.prepare("SELECT COUNT(*) c FROM translation_requests WHERE status = 'new'").first(),
+      AND NOT EXISTS (SELECT 1 FROM file_translations ft WHERE ft.source_file_id = f.id AND ft.status = 'ready')`).first().catch(() => ({ c: 0 })), /* قبل هجرة 0035 */
+    db.prepare("SELECT COUNT(*) c FROM translation_requests WHERE status = 'new'").first().catch(() => ({ c: 0 })), /* قبل هجرة 0035 */
   ])).map(r => [r || {}]);
   const latest = await db.prepare(
     `SELECT id, ark, type, title_ar, publish_status, created_at
