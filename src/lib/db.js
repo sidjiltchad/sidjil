@@ -109,7 +109,7 @@ export async function getMaterialFull(db, ark) {
         .all(),
       db
         .prepare(
-          `SELECT ft.*, f.filename AS translation_filename, f.size AS translation_size
+          `SELECT ft.*, f.filename AS translation_filename, f.mime AS translation_mime, f.size AS translation_size
            FROM file_translations ft
            LEFT JOIN files f ON f.id = ft.translation_file_id
            WHERE ft.material_id = ? AND ft.status = 'ready' AND ft.translation_file_id IS NOT NULL

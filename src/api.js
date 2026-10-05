@@ -80,6 +80,9 @@ export async function routeApi(req, env) {
   m = rest.match(/^materials\/(\d+)\/translations$/);
   if (m) return apiMaterialTranslations(env, parseInt(m[1], 10));
 
+  m = rest.match(/^materials\/(\d+)\/details$/);
+  if (m) return apiMaterialDetails(env, parseInt(m[1], 10));
+
   m = rest.match(/^document\/([^/]+)\/citation$/);
   if (m) return apiCitation(env, url, decodeURIComponent(m[1]));
 
@@ -155,8 +158,34 @@ async function apiTranslationRequest(req, env) {
 async function apiMaterialTranslations(env, materialId) {
   const mat = await env.DB.prepare("SELECT id FROM materials WHERE id = ? AND publish_status = 'published'").bind(materialId).first();
   if (!mat) return err('المادة غير موجودة', 404);
-  const rows = await env.DB.prepare(`SELECT ft.source_file_id, ft.source_lang, ft.target_lang, ft.translation_file_id, f.filename AS translation_filename, f.size AS translation_size FROM file_translations ft JOIN files f ON f.id = ft.translation_file_id WHERE ft.material_id = ? AND ft.status = 'ready'`).bind(materialId).all().catch(() => ({ results: [] }));
+  const rows = await env.DB.prepare(`SELECT ft.source_file_id, ft.source_lang, ft.target_lang, ft.translation_file_id, f.filename AS translation_filename, f.mime AS translation_mime, f.size AS translation_size FROM file_translations ft JOIN files f ON f.id = ft.translation_file_id WHERE ft.material_id = ? AND ft.status = 'ready'`).bind(materialId).all().catch(() => ({ results: [] }));
   return json({ items: rows.results || [] });
+}
+
+// تفاصيل مادة مخصصة لمساحة الباحث. لا نعيد مفاتيح R2 أو بيانات الإدارة؛
+// يكتفي العميل بمعرفات الملفات التي يمر طلبها عبر /file/:id.
+async function apiMaterialDetails(env, materialId) {
+  const row = await env.DB.prepare("SELECT ark FROM materials WHERE id = ? AND publish_status = 'published'").bind(materialId).first();
+  const material = row?.ark ? await getMaterialFull(env.DB, row.ark) : null;
+  if (!material || material.publish_status !== 'published') return err('المادة غير موجودة', 404);
+  const files = (material.files || []).map(file => ({
+    id: file.id, filename: file.filename, mime: file.mime, kind: file.kind, size: file.size,
+  }));
+  const fileTranslations = (material.file_translations || []).map(item => ({
+    id: item.id, material_id: item.material_id, source_file_id: item.source_file_id,
+    source_lang: item.source_lang, target_lang: item.target_lang, translation_file_id: item.translation_file_id,
+    translation_filename: item.translation_filename, translation_mime: item.translation_mime, translation_size: item.translation_size,
+  }));
+  return json({
+    id: material.id, ark: material.ark, type: material.type, material_level: material.material_level,
+    title_ar: material.title_ar, title_orig: material.title_orig, language: material.language,
+    year: material.year, date_text: material.date_text, author: material.author, photographer: material.photographer,
+    archive_ref: material.archive_ref, description: material.description, summary: material.summary,
+    full_text: material.full_text, source_name_ar: material.source?.name_ar || '', place_name: material.place?.name_ar || '',
+    source: material.source ? { name_ar: material.source.name_ar, name: material.source.name } : null,
+    place: material.place ? { name_ar: material.place.name_ar, name_orig: material.place.name_orig } : null,
+    files, file_translations: fileTranslations,
+  }, 200, { 'Cache-Control': 'private, no-store' });
 }
 
 // ---------- البحث العام ----------

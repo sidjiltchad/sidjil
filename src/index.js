@@ -66,6 +66,9 @@ function withCapacitorCors(request, env, response) {
   const allowedPath = pathname.startsWith('/api/v1/admin/')
     || pathname === '/researcher/feed'
     || pathname === '/researcher/search'
+    || /^\/api\/v1\/materials\/\d+\/details$/.test(pathname)
+    || /^\/api\/v1\/materials\/\d+\/translations$/.test(pathname)
+    || pathname.startsWith('/file/')
     || pathname.startsWith('/researcher/profile/')
     || pathname.startsWith('/researcher/avatar');
   if (!origin || !allowedPath) return response;
@@ -108,7 +111,7 @@ async function handleRequest(request, env, ctx) {
 
     // Capacitor's bundled shell uses a controlled HTTPS localhost origin.
     // Reply to its preflight without touching authentication or the database.
-    if (request.method === 'OPTIONS' && (pathname.startsWith('/api/v1/admin/') || pathname === '/researcher/feed' || pathname === '/researcher/search' || pathname.startsWith('/researcher/profile/')) && capacitorOrigin(request, env)) {
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/api/v1/admin/') || pathname === '/researcher/feed' || pathname === '/researcher/search' || /^\/api\/v1\/materials\/\d+\/(details|translations)$/.test(pathname) || pathname.startsWith('/file/') || pathname.startsWith('/researcher/profile/')) && capacitorOrigin(request, env)) {
       return new Response(null, {
         status: 204,
         headers: {
