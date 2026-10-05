@@ -197,6 +197,24 @@ export async function mount(container, { url, materialId, materialTitle, fileId,
   let activeLangBtn = null;
   const langName = (l) => (l === 'ar' ? 'العربية' : 'الفرنسية');
 
+  function waitForDocxReader(timeout = 15000) {
+    if (window.SidjilDocxReader && window.SidjilDocxReader.mount) {
+      return Promise.resolve(window.SidjilDocxReader);
+    }
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        if (window.SidjilDocxReader && window.SidjilDocxReader.mount) {
+          clearInterval(timer);
+          resolve(window.SidjilDocxReader);
+        } else if (Date.now() - started >= timeout) {
+          clearInterval(timer);
+          reject(new Error('تعذّر تحميل قارئ الترجمة'));
+        }
+      }, 100);
+    });
+  }
+
   function rpdfShowOriginal() {
     if (activeLangBtn) { activeLangBtn.classList.remove('active'); activeLangBtn.textContent = activeLangBtn.dataset.labelRead; activeLangBtn = null; }
     docxView.hidden = true;
@@ -215,9 +233,14 @@ export async function mount(container, { url, materialId, materialTitle, fileId,
     composer.hidden = true;
     pdfPage.hidden = true;
     docxView.hidden = false;
-    if (!docxHandles[docxUrl] && window.SidjilDocxReader && window.SidjilDocxReader.mount) {
-      try { docxHandles[docxUrl] = await window.SidjilDocxReader.mount(docxView, { url: docxUrl, lang: docxLang }); }
-      catch { /* القارئ يعرض الخطأ */ }
+    if (!docxHandles[docxUrl]) {
+      docxView.innerHTML = '<p class="docx-loading muted">جارٍ تحميل الترجمة…</p>';
+      try {
+        const reader = await waitForDocxReader();
+        docxHandles[docxUrl] = await reader.mount(docxView, { url: docxUrl, lang: docxLang });
+      } catch {
+        docxView.innerHTML = '<p class="docx-error">تعذّر عرض الترجمة داخل المتصفح. <a class="btn btn-small" href="' + docxUrl + '?download=1">تنزيل ملف الترجمة</a></p>';
+      }
     }
   }
   if (langBar) {

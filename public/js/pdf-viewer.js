@@ -218,6 +218,28 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     box.classList.toggle('is-docx-mode', !on);
   }
 
+  // The PDF viewer is a module while the DOCX dependencies are deferred
+  // classic scripts.  On a fast click the module can run first, so wait for
+  // the reader instead of replacing the translation pane with a dead link.
+  function waitForDocxReader(timeout) {
+    timeout = timeout || 15000;
+    if (window.SidjilDocxReader && window.SidjilDocxReader.mount) {
+      return Promise.resolve(window.SidjilDocxReader);
+    }
+    return new Promise(function (resolve, reject) {
+      var started = Date.now();
+      var timer = setInterval(function () {
+        if (window.SidjilDocxReader && window.SidjilDocxReader.mount) {
+          clearInterval(timer);
+          resolve(window.SidjilDocxReader);
+        } else if (Date.now() - started >= timeout) {
+          clearInterval(timer);
+          reject(new Error('تعذّر تحميل قارئ الترجمة'));
+        }
+      }, 100);
+    });
+  }
+
   function showOriginal() {
     if (activeDocxBtn) {
       activeDocxBtn.textContent = activeDocxBtn.getAttribute('data-label-read');
@@ -248,11 +270,12 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
     if (docxView) {
       docxView.classList.remove('hidden');
       if (!docxHandles[docxUrl]) {
-        if (window.SidjilDocxReader && window.SidjilDocxReader.mount) {
-          try {
-            docxHandles[docxUrl] = await window.SidjilDocxReader.mount(docxView, { url: docxUrl, lang: docxLang });
-          } catch (e) { /* يعرض القارئ رسالة الخطأ بنفسه */ }
-        } else {
+        docxView.innerHTML = '<p class="docx-loading muted">' +
+          (pageLang === 'fr' ? 'Chargement de la traduction…' : 'جارٍ تحميل الترجمة…') + '</p>';
+        try {
+          var reader = await waitForDocxReader();
+          docxHandles[docxUrl] = await reader.mount(docxView, { url: docxUrl, lang: docxLang });
+        } catch (e) {
           docxView.innerHTML = '<p class="docx-error"><a class="btn btn-small" href="' + docxUrl + '?download=1">' +
             (pageLang === 'fr' ? 'Télécharger la traduction' : 'تنزيل ملف الترجمة') + '</a></p>';
         }
