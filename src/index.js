@@ -9,7 +9,6 @@ import { renderAdmin, renderResearcher } from './admin-views.js';
 import { getSessionUser, setSessionCookie } from './lib/auth.js';
 import { rateLimitCheck, rateLimitResponse } from './lib/ratelimit.js';
 import { googleStart, googleCallback } from './lib/google-auth.js';
-import { routeTranslationApi } from './translation.js';
 
 function json404() {
   return new Response(JSON.stringify({ error: 'غير موجود' }), {
@@ -84,11 +83,7 @@ export default {
       return res ?? json404();
     }
 
-    // ترجمة المحتوى: API خفيف داخل العامل، ومعالجة PDF/OCR في خدمة منفصلة.
-    if (pathname.startsWith('/api/v1/translate/') || pathname.startsWith('/api/v1/documents/')) {
-      const res = await routeTranslationApi(request, env);
-      if (res) return res;
-    }
+    // (أُزيلت منظومة الترجمة الآلية — تُدار الترجمات الآن كنظائر Word مرفوعة يدويًا)
 
     // صور حسابات الباحثين المخزنة في R2 — لا تُعرض إلا لجلسة باحث صالحة.
     const researcherAvatarMatch = pathname.match(/^\/researcher\/avatar(?:\/(\d+))?$/);

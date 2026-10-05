@@ -1,0 +1,90 @@
+/* SIDJIL — قارئ مستندات Word (النظائر المترجمة)
+   يعرض ملف .docx كصفحات متكيفة مع العرض عبر مكتبة docx-preview المضمّنة محليًا.
+   يُستخدم من قارئ الموقع (pdf-viewer.js) وقارئ الباحث (researcher-pdf.js).
+   الاستخدام: window.SidjilDocxReader.mount(container, { url, lang }) → Promise<handle>
+   حيث handle = { destroy() }.
+*/
+(function () {
+  'use strict';
+
+  function ensureLibs() {
+    return new Promise((resolve, reject) => {
+      if (window.docx && typeof window.docx.renderAsync === 'function' && window.JSZip) {
+        resolve();
+        return;
+      }
+      // انتظار تحميل السكربتات (defer) — مهلة 10 ثوانٍ
+      const t0 = Date.now();
+      const timer = setInterval(() => {
+        if (window.docx && typeof window.docx.renderAsync === 'function' && window.JSZip) {
+          clearInterval(timer);
+          resolve();
+        } else if (Date.now() - t0 > 10000) {
+          clearInterval(timer);
+          reject(new Error('تعذّر تحميل مكتبة عرض Word'));
+        }
+      }, 120);
+    });
+  }
+
+  async function mount(container, opts) {
+    const url = opts && opts.url;
+    const lang = (opts && opts.lang) || 'ar';
+    if (!container) throw new Error('حاوية العرض غير موجودة');
+    if (!url) throw new Error('رابط المستند غير محدد');
+
+    container.innerHTML = '';
+    container.classList.add('sidjil-docx-view');
+    container.setAttribute('lang', lang);
+    container.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+
+    const loading = document.createElement('p');
+    loading.className = 'docx-loading muted';
+    loading.textContent = lang === 'fr' ? 'Chargement de la traduction…' : 'جارٍ تحميل الترجمة…';
+    container.appendChild(loading);
+
+    let destroyed = false;
+    try {
+      await ensureLibs();
+      const resp = await fetch(url, { credentials: 'same-origin' });
+      if (!resp.ok) throw new Error('تعذّر جلب ملف الترجمة');
+      const blob = await resp.blob();
+      if (destroyed) return { destroy() {} };
+      loading.remove();
+      const pages = document.createElement('div');
+      pages.className = 'docx-pages';
+      container.appendChild(pages);
+      await window.docx.renderAsync(blob, pages, null, {
+        className: 'sidjil-docx',
+        inWrapper: true,
+        ignoreLastRenderedPageBreak: false,
+        renderHeaders: true,
+        renderFooters: true,
+        renderFootnotes: true,
+        renderEndnotes: true,
+      });
+      if (destroyed) { container.innerHTML = ''; return { destroy() {} }; }
+    } catch (e) {
+      if (!destroyed) {
+        container.innerHTML = '';
+        const err = document.createElement('p');
+        err.className = 'docx-error';
+        const dl = document.createElement('a');
+        dl.href = url + (url.includes('?') ? '&' : '?') + 'download=1';
+        dl.textContent = lang === 'fr' ? 'Télécharger la traduction' : 'تنزيل ملف الترجمة';
+        dl.className = 'btn btn-small';
+        err.textContent = (lang === 'fr' ? 'Affichage impossible dans le navigateur. ' : 'تعذّر العرض داخل المتصفح. ');
+        err.appendChild(dl);
+        container.appendChild(err);
+      }
+    }
+    return {
+      destroy() {
+        destroyed = true;
+        container.innerHTML = '';
+      },
+    };
+  }
+
+  window.SidjilDocxReader = { mount };
+})();

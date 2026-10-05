@@ -44,7 +44,7 @@ export function safeName(name) {
 
 /**
  * r2KeyFor({ark, type, kind, versionType, filename, sha8})
- * kind: 'original' | 'attachment' | 'derived' | 'thumbnail'
+ * kind: 'original' | 'attachment' | 'derived' | 'thumbnail' | 'translation'
  */
 export function r2KeyFor({ ark, type, kind, versionType, filename, sha8 }) {
   const dir = TYPE_DIRS[type] || 'documents';
@@ -60,6 +60,9 @@ export function r2KeyFor({ ark, type, kind, versionType, filename, sha8 }) {
   }
   if (kind === 'attachment') {
     return `originals/${dir}/${ark}/att-${sha8}-${safe}`;
+  }
+  if (kind === 'translation') {
+    return `translations/${dir}/${ark}/${sha8}-${safe}`;
   }
   // original
   return `originals/${dir}/${ark}/${sha8}-${safe}`;

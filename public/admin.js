@@ -312,30 +312,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ---------- حفظ الترجمة ----------
-  const btnSaveTrl = document.getElementById('btnSaveTrl');
-  if (btnSaveTrl) {
-    btnSaveTrl.addEventListener('click', async () => {
-      const id = btnSaveTrl.dataset.materialId;
-      const status = document.getElementById('trlStatus').value;
-      setLoading(btnSaveTrl, true);
-      try {
-        if (status === 'none') {
-          toast('اختر حالة الترجمة أولًا (غير مترجمة ليست حالة حفظ)', false);
-          return;
-        }
-        await api(`/api/v1/admin/materials/${id}/text`, 'PUT', {
-          translationText: document.getElementById('trlText').value,
-          translationStatus: status,
-          translator: document.getElementById('trlTranslator').value,
-          sourceLang: document.getElementById('trlSourceLang').value,
-        });
-        toast('تم حفظ الترجمة');
-      } catch (err) { toast(err.message, false); }
-      finally { setLoading(btnSaveTrl, false); }
-    });
-  }
-
   // ---------- إضافة علاقة مادة↔مادة ----------
   const relationForm = document.getElementById('relationForm');
   if (relationForm) {
@@ -478,158 +454,6 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) { toast(err.message, false); loadJobs(); }
       finally { setLoading(btnRunOcr, false); }
     });
-  }
-
-  // ---------- مقاطع الترجمة: مراجعة متوازية ----------
-  const segList = document.getElementById('segList');
-  if (segList) {
-    const mid = segList.dataset.materialId;
-    const segStatus = document.getElementById('segStatus');
-    const btnApproveTrl = document.getElementById('btnApproveTrl');
-    const btnDelTrl = document.getElementById('btnDelTrl');
-    const STATUS_AR = { machine: 'آلية', reviewed: 'مراجعة بشريًا', in_review: 'قيد المراجعة', approved: 'معتمدة' };
-    let currentTranslation = null;
-
-    function escHtml(s) {
-      return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
-    async function loadSegments() {
-      try {
-        const data = await api(`/api/v1/admin/materials/${mid}/translation-segments`, 'GET');
-        currentTranslation = data.translation;
-        const segs = data.segments || [];
-        if (!currentTranslation) {
-          segStatus.textContent = 'لا توجد ترجمة بعد — قسّم النص الفرنسي إلى مقاطع للبدء.';
-          segList.innerHTML = '';
-          btnApproveTrl.classList.add('hidden');
-          btnDelTrl.classList.add('hidden');
-          return;
-        }
-        segStatus.innerHTML = `الحالة: <strong>${STATUS_AR[currentTranslation.status] || currentTranslation.status}</strong> · ${segs.length} مقطعًا`;
-        btnApproveTrl.classList.toggle('hidden', currentTranslation.status === 'approved');
-        btnDelTrl.classList.remove('hidden');
-        segList.innerHTML = segs.map(s => `
-          <div class="seg-edit" data-seg="${s.id}">
-            <div class="seg-edit-head">
-              <span class="mono small">#${s.sequence_number}</span>
-              <label class="small">صفحة <input type="number" min="1" data-f="page_number" value="${s.page_number ?? ''}" dir="ltr" class="inp-xs"></label>
-              <select data-f="status" class="inp-xs">
-                <option value="machine"${s.status === 'machine' ? ' selected' : ''}>آلية</option>
-                <option value="reviewed"${s.status === 'reviewed' ? ' selected' : ''}>مراجعة</option>
-              </select>
-              <button class="btn btn-sm btn-primary" data-save-seg="${s.id}" type="button">حفظ المقطع</button>
-            </div>
-            <div class="grid-2">
-              <div class="field">
-                <label>النص الفرنسي (المصدر)</label>
-                <div class="text-block" dir="ltr" lang="fr">${escHtml(s.source_text)}</div>
-              </div>
-              <div class="field">
-                <label>الترجمة الآلية</label>
-                <textarea data-f="machine_translation" rows="4" dir="rtl" lang="ar">${escHtml(s.machine_translation || '')}</textarea>
-                <label>الترجمة المراجعة <span class="muted">(تُعرض للزائر بدل الآلية عند وجودها)</span></label>
-                <textarea data-f="reviewed_translation" rows="4" dir="rtl" lang="ar">${escHtml(s.reviewed_translation || '')}</textarea>
-              </div>
-            </div>
-          </div>`).join('');
-
-        segList.querySelectorAll('[data-save-seg]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const card = btn.closest('.seg-edit');
-            const segId = btn.dataset.saveSeg;
-            const payload = {};
-            card.querySelectorAll('[data-f]').forEach(el => {
-              const k = el.dataset.f;
-              payload[k] = el.value === '' ? null : el.value;
-            });
-            setLoading(btn, true);
-            try {
-              const r = await api(`/api/v1/admin/translation-segments/${segId}`, 'PATCH', payload);
-              toast('تم حفظ المقطع — حالة الترجمة: ' + (STATUS_AR[r.parentStatus] || r.parentStatus));
-              loadSegments();
-            } catch (err) { toast(err.message, false); }
-            finally { setLoading(btn, false); }
-          });
-        });
-      } catch (err) {
-        segStatus.textContent = 'تعذّر تحميل المقاطع: ' + err.message;
-      }
-    }
-    loadSegments();
-
-    // تقسيم النص إلى مقاطع
-    const btnSplitText = document.getElementById('btnSplitText');
-    const splitBox = document.getElementById('splitBox');
-    if (btnSplitText) {
-      btnSplitText.addEventListener('click', () => {
-        splitBox.classList.toggle('hidden');
-        const ta = document.getElementById('splitSource');
-        if (!ta.value.trim()) {
-          // تعبئة تلقائية من التفريغ إن وُجد
-          const manual = document.getElementById('trManual');
-          const auto = document.getElementById('trAuto');
-          ta.value = (manual && manual.value.trim()) || (auto && auto.value.trim()) || '';
-        }
-      });
-    }
-
-    const btnDoSplit = document.getElementById('btnDoSplit');
-    if (btnDoSplit) {
-      btnDoSplit.addEventListener('click', async () => {
-        const id = btnDoSplit.dataset.materialId;
-        const raw = document.getElementById('splitSource').value;
-        const parts = raw.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-        if (!parts.length) { toast('لا توجد مقاطع — افصل الفقرات بسطر فارغ', false); return; }
-        const firstPage = parseInt(document.getElementById('splitPage').value, 10);
-        const translator = document.getElementById('splitTranslator').value.trim();
-        const segments = parts.map((p, i) => ({
-          source_text: p,
-          page_number: Number.isFinite(firstPage) ? firstPage : null,
-        }));
-        if (!confirm(`إنشاء ${segments.length} مقطعًا؟\n(سيستبدل هذا أي ترجمة عربية سابقة للمادة)`)) return;
-        setLoading(btnDoSplit, true);
-        try {
-          await api(`/api/v1/admin/materials/${id}/translation-segments`, 'POST', {
-            segments, translator: translator || null,
-          });
-          toast(`تم إنشاء ${segments.length} مقطعًا`);
-          splitBox.classList.add('hidden');
-          loadSegments();
-        } catch (err) { toast(err.message, false); }
-        finally { setLoading(btnDoSplit, false); }
-      });
-    }
-
-    // اعتماد صريح
-    if (btnApproveTrl) {
-      btnApproveTrl.addEventListener('click', async () => {
-        if (!currentTranslation) return;
-        if (!confirm('اعتماد هذه الترجمة نهائيًا؟\nهذا إجراء صريح يُسجَّل في سجل العمليات.')) return;
-        setLoading(btnApproveTrl, true);
-        try {
-          await api(`/api/v1/admin/translations/${currentTranslation.id}/approve`, 'POST', {});
-          toast('تم اعتماد الترجمة');
-          loadSegments();
-        } catch (err) { toast(err.message, false); }
-        finally { setLoading(btnApproveTrl, false); }
-      });
-    }
-
-    // حذف الترجمة ومقاطعها
-    if (btnDelTrl) {
-      btnDelTrl.addEventListener('click', async () => {
-        if (!currentTranslation) return;
-        if (!confirm('حذف الترجمة وجميع مقاطعها؟ لا يمكن التراجع.')) return;
-        setLoading(btnDelTrl, true);
-        try {
-          await api(`/api/v1/admin/translations/${currentTranslation.id}`, 'DELETE');
-          toast('تم حذف الترجمة');
-          loadSegments();
-        } catch (err) { toast(err.message, false); }
-        finally { setLoading(btnDelTrl, false); }
-      });
-    }
   }
 
   // ---------- طابور المراجعة ----------
@@ -805,92 +629,198 @@ document.addEventListener('DOMContentLoaded', () => {
     loadGlossary();
   }
 
-  // ---------- إدارة ترجمة الكتب والوثائق ----------
-  const translationManage = document.querySelector('[data-translation-manage]');
-  if (translationManage) {
-    // صفحة الترجمة تتكون من بطاقتين منفصلتين: بدء الترجمة وجدول الوظائف.
-    // نستخدم نطاق الصفحة كلها حتى تعمل أزرار الجدول الموجودة في البطاقة الثانية.
-    const translationScope = translationManage.closest('main') || document;
-    const selectAll = translationScope.querySelector('[data-translation-select-all]');
-    const checks = () => Array.from(translationScope.querySelectorAll('[data-translation-job-check]'));
-    if (selectAll) selectAll.addEventListener('change', () => checks().forEach((c) => { c.checked = selectAll.checked; }));
-    translationManage.querySelector('[data-translation-batch-start]')?.addEventListener('click', async (e) => {
-      const ids = Array.from(document.getElementById('translationBatchMaterials')?.selectedOptions || []).map((o) => Number(o.value)).filter(Number.isFinite);
-      const source = document.getElementById('translationBatchSource')?.value || 'auto';
-      const targets = Array.from(document.getElementById('translationBatchTargets')?.selectedOptions || []).map((o) => o.value).filter(Boolean);
-      const mode = document.getElementById('translationBatchMode')?.value || 'translated';
-      const ocr = document.getElementById('translationBatchOcr')?.value || 'auto';
-      if (!ids.length) { toast('اختر ملفًا واحدًا على الأقل', false); return; }
-      if (!targets.length) { toast('اختر لغة هدف واحدة على الأقل', false); return; }
-      const validTargets = targets.filter((target) => source === 'auto' || source !== target);
-      if (!validTargets.length) { toast('لغة المصدر والهدف يجب أن تختلفا', false); return; }
-      const btn = e.currentTarget;
-      setLoading(btn, true);
-      let accepted = 0;
-      try {
-        for (const id of ids) {
-          for (const target of validTargets) {
-            try {
-              await api(`/api/v1/documents/${encodeURIComponent(id)}/translations`, 'POST', { source, target, mode, ocr });
-              accepted += 1;
-            } catch (error) {
-              toast(`تعذر بدء الملف #${id} → ${target}: ${error.message}`, false);
-            }
-          }
-        }
-        if (accepted) { toast(`بدأت ${accepted} وظيفة ترجمة في الخلفية`); setTimeout(() => location.reload(), 900); }
-      } finally { setLoading(btn, false); }
-    });
-    translationScope.querySelectorAll('[data-translation-job-delete]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        if (!confirm(`حذف وظيفة الترجمة ${btn.dataset.translationJobDelete} وملفها الناتج؟`)) return;
-        setLoading(btn, true);
-        try {
-          const result = await api(`/api/v1/admin/translation-jobs/${encodeURIComponent(btn.dataset.translationJobDelete)}`, 'DELETE');
-          btn.closest('tr')?.remove();
-          toast(result?.missing ? 'أزيلت الوظيفة القديمة من القائمة' : 'حُذفت وظيفة الترجمة وملفها');
-        } catch (error) { toast(error.message, false); setLoading(btn, false); }
-      });
-    });
-    translationScope.querySelector('[data-translation-cleanup]')?.addEventListener('click', async (e) => {
-      const days = Math.max(1, Math.min(3650, Number(document.getElementById('translationCleanupDays')?.value || 30)));
-      if (!confirm(`حذف وظائف الترجمة المكتملة أو الفاشلة الأقدم من ${days} يومًا؟`)) return;
-      const btn = e.currentTarget;
-      setLoading(btn, true);
-      try {
-        const result = await api('/api/v1/admin/translation-jobs/cleanup', 'POST', { beforeDays: days, includeFailed: true });
-        toast(`تم حذف ${result.deletedJobs || 0} وظيفة و${result.deletedCache || 0} من عناصر الكاش`);
-        setTimeout(() => location.reload(), 700);
-      } catch (error) { toast(error.message, false); }
-      finally { setLoading(btn, false); }
-    });
-  }
+
+  // ---------- قسم الترجمة الجديد: نظائر Word ----------
+  initTranslationSection();
 });
 
-// ---------- قائمة الجوال: إظهار/إخفاء الشريط الجانبي ----------
-(function initSideToggle() {
-  var btn = document.getElementById('sideToggle');
-  var sidebar = document.getElementById('adminNav');
-  var shell = document.querySelector('.admin-shell');
-  if (!btn || !sidebar || !shell) return;
-  function setOpen(open) {
-    sidebar.classList.toggle('open', open);
-    shell.classList.toggle('nav-open', open);
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-  btn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    setOpen(!sidebar.classList.contains('open'));
-  });
-  document.addEventListener('click', function (e) {
-    if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
-      setOpen(false);
+function initTranslationSection() {
+  const rowsEl = document.querySelector('[data-trl-rows]');
+  if (!rowsEl) return; // لسنا في صفحة الترجمة
+  const filtersForm = document.querySelector('[data-trl-filters]');
+  const pagerEl = document.querySelector('[data-trl-pager]');
+  const statsEl = document.getElementById('trlStats');
+  const requestsCard = document.querySelector('[data-trl-requests]');
+  const requestRows = document.querySelector('[data-trl-request-rows]');
+  const dialog = document.querySelector('[data-trl-dialog]');
+  const form = document.querySelector('[data-trl-form]');
+  const TARGETS = { fr: ['ar'], ar: ['fr'], en: ['ar', 'fr'] };
+  const LANG_NAME = { ar: 'العربية', fr: 'الفرنسية', en: 'الإنجليزية', undetermined: 'غير محددة' };
+  let state = { page: 1, q: '', lang: '', status: 'all' };
+
+  const escH = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const fmtSize = (b) => b == null ? '—' : b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+
+  async function load() {
+    const sp = new URLSearchParams({ page: state.page, perPage: 30 });
+    if (state.q) sp.set('q', state.q);
+    if (state.lang) sp.set('lang', state.lang);
+    if (state.status && state.status !== 'all') sp.set('status', state.status);
+    try {
+      const d = await api(`/api/v1/admin/translations/overview?${sp}`, 'GET');
+      renderStats(d.stats);
+      renderRows(d.items || []);
+      renderPager(d.total || 0, d.page || 1, d.perPage || 30);
+    } catch (e) {
+      rowsEl.innerHTML = `<tr><td colspan="4" class="muted">تعذّر التحميل: ${escH(e.message)}</td></tr>`;
     }
+  }
+
+  function renderStats(st) {
+    if (!statsEl || !st) return;
+    statsEl.innerHTML = [
+      ['ملفات قابلة للترجمة', st.total],
+      ['بانتظار النظير', st.awaiting],
+      ['لها نظير', st.ready],
+      ['لغة غير محددة', st.undetermined],
+      ['طلبات ترجمة جديدة', st.newRequests],
+    ].map(([t, n]) => `<div class="stat-card"><div class="stat-num">${n}</div><div class="stat-label">${t}</div></div>`).join('');
+  }
+
+  function renderRows(items) {
+    if (!items.length) {
+      rowsEl.innerHTML = '<tr><td colspan="4" class="muted">لا توجد ملفات مطابقة.</td></tr>';
+      return;
+    }
+    rowsEl.innerHTML = items.map((f) => {
+      const cps = (f.counterparts || []).map((c) =>
+        `<span class="trl-chip">→ ${LANG_NAME[c.target_lang] || c.target_lang} <a href="/file/${c.translation_file_id}?download=1" title="${escH(c.t_filename || '')}">⬇</a> <button type="button" class="link-danger" data-trl-del="${c.id}" title="حذف النظير">✕</button></span>`
+      ).join(' ') || '<span class="muted small">بانتظار النظير</span>';
+      const targets = TARGETS[f.lang] || [];
+      const uploadBtn = targets.length
+        ? `<button type="button" class="btn btn-small btn-primary" data-trl-upload="${f.id}" data-trl-filename="${escH(f.filename)}" data-trl-lang="${f.lang}">رفع نظير</button>`
+        : '<span class="muted small">حدد اللغة أولًا</span>';
+      return `<tr>
+        <td><strong>${escH(f.title_ar || f.title_orig || f.ark)}</strong><br><span class="mono small">${escH(f.ark)}</span><br><span class="muted small">${escH(f.filename)} · ${fmtSize(f.size)}</span></td>
+        <td><select data-trl-lang-sel="${f.id}" class="trl-lang-sel">
+          ${Object.entries(LANG_NAME).map(([v, l]) => `<option value="${v}"${f.lang === v ? ' selected' : ''}>${l}</option>`).join('')}
+        </select></td>
+        <td>${cps}</td>
+        <td>${uploadBtn}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderPager(total, page, perPage) {
+    if (!pagerEl) return;
+    const pages = Math.max(1, Math.ceil(total / perPage));
+    pagerEl.innerHTML = total <= perPage ? '' :
+      `<button class="btn btn-small" data-trl-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>→ السابق</button>
+       <span class="muted small">صفحة ${page} من ${pages} (${total})</span>
+       <button class="btn btn-small" data-trl-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>التالي ←</button>`;
+  }
+
+  // تغيير لغة ملف
+  rowsEl.addEventListener('change', async (e) => {
+    const sel = e.target.closest('[data-trl-lang-sel]');
+    if (!sel) return;
+    try {
+      await api(`/api/v1/admin/translations/files/${sel.dataset.trlLangSel}/lang`, 'PATCH', { lang: sel.value });
+      toast('حُفظت لغة الملف');
+      load();
+    } catch (err) { toast(err.message, false); load(); }
   });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') setOpen(false);
+
+  // حذف نظير
+  rowsEl.addEventListener('click', async (e) => {
+    const del = e.target.closest('[data-trl-del]');
+    const pg = e.target.closest('[data-trl-page]');
+    if (pg && !pg.disabled) { state.page = Number(pg.dataset.trlPage); load(); return; }
+    if (!del) return;
+    if (!confirm('حذف هذا النظير المترجم نهائيًا؟')) return;
+    try {
+      await api(`/api/v1/admin/translations/${del.dataset.trlDel}`, 'DELETE');
+      toast('حُذف النظير');
+      load();
+    } catch (err) { toast(err.message, false); }
   });
-  sidebar.querySelectorAll('.nav-item').forEach(function (a) {
-    a.addEventListener('click', function () { setOpen(false); });
+
+  // فتح نافذة الرفع
+  rowsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-trl-upload]');
+    if (!btn) return;
+    const srcLang = btn.dataset.trlLang;
+    const targets = TARGETS[srcLang] || [];
+    form.source_file_id.value = btn.dataset.trlUpload;
+    form.source_lang.value = srcLang;
+    form.target_lang.innerHTML = targets.map((t) => `<option value="${t}">${LANG_NAME[t]}</option>`).join('');
+    form.querySelector('[data-trl-form-title]').textContent = 'رفع نظير مترجم';
+    form.querySelector('[data-trl-form-sub]').textContent = `الملف الأصل: ${btn.dataset.trlFilename} (${LANG_NAME[srcLang]})`;
+    form.querySelector('[data-trl-form-error]').hidden = true;
+    form.reset();
+    form.source_file_id.value = btn.dataset.trlUpload;
+    form.source_lang.value = srcLang;
+    form.target_lang.innerHTML = targets.map((t) => `<option value="${t}">${LANG_NAME[t]}</option>`).join('');
+    if (dialog.showModal) dialog.showModal(); else dialog.setAttribute('open', '');
   });
-})();
+  form.querySelector('[data-trl-form-close]').addEventListener('click', () => { if (dialog.close) dialog.close(); else dialog.removeAttribute('open'); });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = form.querySelector('[data-trl-form-error]');
+    errEl.hidden = true;
+    const fd = new FormData(form);
+    const submitBtn = form.querySelector('[type=submit]');
+    submitBtn.disabled = true;
+    try {
+      const r = await fetch('/api/v1/admin/translations/upload', {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken() },
+        body: fd,
+        credentials: 'same-origin',
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'فشل الرفع');
+      toast('رُفع النظير المترجم');
+      if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
+      load();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    } finally { submitBtn.disabled = false; }
+  });
+
+  if (filtersForm) {
+    filtersForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(filtersForm);
+      state = { page: 1, q: String(fd.get('q') || '').trim(), lang: String(fd.get('lang') || ''), status: String(fd.get('status') || 'all') };
+      load();
+    });
+  }
+
+  // صندوق طلبات الترجمة
+  async function loadRequests() {
+    if (!requestsCard) return;
+    try {
+      const d = await api('/api/v1/admin/translations/requests?status=new', 'GET');
+      const items = d.items || [];
+      requestsCard.hidden = !items.length;
+      if (!items.length) return;
+      requestRows.innerHTML = items.map((r) =>
+        `<tr><td><strong>${escH(r.title_ar || r.title_orig || r.ark)}</strong><br><span class="mono small">${escH(r.ark)}</span></td>
+         <td class="muted small">${escH(r.source_filename || '—')}</td>
+         <td>${r.target_lang ? LANG_NAME[r.target_lang] : '—'}</td>
+         <td class="muted small">${escH((r.created_at || '').slice(0, 10))}</td>
+         <td><button class="btn btn-small" data-trl-req-done="${r.id}">تمت</button>
+             <button class="btn btn-small btn-ghost" data-trl-req-dismiss="${r.id}">تجاهل</button></td></tr>`
+      ).join('');
+    } catch { /* يُتجاهل */ }
+  }
+  if (requestRows) {
+    requestRows.addEventListener('click', async (e) => {
+      const done = e.target.closest('[data-trl-req-done]');
+      const dis = e.target.closest('[data-trl-req-dismiss]');
+      const id = done?.dataset.trlReqDone || dis?.dataset.trlReqDismiss;
+      if (!id) return;
+      try {
+        await api(`/api/v1/admin/translations/requests/${id}`, 'PATCH', { status: done ? 'done' : 'dismissed' });
+        toast('حُدّث الطلب');
+        loadRequests(); load();
+      } catch (err) { toast(err.message, false); }
+    });
+  }
+
+  load();
+  loadRequests();
+}

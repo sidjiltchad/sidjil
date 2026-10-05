@@ -1753,3 +1753,33 @@ textarea { border-radius: var(--shape-control); }
 .notice,
 .table-wrap,
 .table-container { border-radius: var(--shape-card); }
+
+/* ---------- قسم الترجمة الجديد: نظائر Word ---------- */
+.trl-filters { display: flex; flex-wrap: wrap; gap: .8rem; align-items: flex-end; margin-bottom: 1rem; }
+.trl-filters .field { min-width: 160px; }
+.trl-table td { vertical-align: top; }
+.trl-lang-sel { max-width: 140px; }
+.trl-chip { display: inline-block; background: color-mix(in srgb, var(--gold) 14%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent); border-radius: 999px; padding: .15rem .6rem; margin: .1rem; font-size: .8rem; white-space: nowrap; }
+.trl-chip a { text-decoration: none; margin-inline-start: .3rem; }
+.link-danger { background: none; border: 0; color: #b02a2a; cursor: pointer; font-size: .85rem; padding: 0 .2rem; }
+.trl-dialog { border: 0; padding: 0; background: transparent; }
+.trl-dialog::backdrop { background: rgba(0,0,0,.5); }
+.trl-dialog-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.4rem; min-width: min(420px, 90vw); display: flex; flex-direction: column; gap: .8rem; }
+.trl-dialog-card h3 { margin: 0; }
+.form-error { color: #b02a2a; font-size: .85rem; margin: 0; }
+.form-actions { display: flex; gap: .6rem; }
+
+/* ---------- شريط لغة القارئ في مساحة الباحث ---------- */
+.rpdf-langbar { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+.rpdf-langbar[hidden] { display: none; }
+.rpdf-langbtn { border: 1px solid var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); color: inherit; border-radius: 999px; padding: .35rem .9rem; font-size: .85rem; font-weight: 700; cursor: pointer; }
+.rpdf-langbtn:hover { background: color-mix(in srgb, var(--gold) 24%, transparent); }
+.rpdf-langbtn.active { background: var(--gold); color: #fff; }
+.rpdf-requestbtn { border-style: dashed; }
+.rpdf-docxview { width: 100%; }
+.rpdf-docxview[hidden] { display: none; }
+.rpdf-docxview .docx-wrapper { background: transparent; padding: 0; }
+.rpdf-docxview .docx { width: 100% !important; max-width: 720px; margin: 0 auto; background: transparent; padding: 0; box-shadow: none; }
+.rpdf-docxview .docx .docx-page { width: 100% !important; min-height: 0; margin: 0 auto .8rem; padding: 1.4rem 1.5rem; background: #fff; color: #111; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,.35); overflow-wrap: anywhere; }
+.rpdf-docxview .docx table { max-width: 100%; border-collapse: collapse; }
+.rpdf-docxview .docx img { max-width: 100%; height: auto; }

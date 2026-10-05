@@ -17,7 +17,7 @@ const toast = (...a) => (window.toast ? window.toast(...a) : alert(a[0]));
 
 const KIND_LABELS = { comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' };
 
-export async function mount(container, { url, materialId, materialTitle }) {
+export async function mount(container, { url, materialId, materialTitle, fileId, translations }) {
   container.innerHTML = '';
   container.classList.add('rpdf');
 
@@ -31,8 +31,10 @@ export async function mount(container, { url, materialId, materialTitle }) {
       <button type="button" data-rpdf-zoom-in aria-label="تكبير">+</button>
       <button type="button" data-rpdf-fit>ملاءمة</button>
     </div>
+    <div class="rpdf-langbar" data-rpdf-langbar hidden></div>
     <div class="rpdf-stage">
-      <div class="rpdf-page">
+      <div class="rpdf-docxview" data-rpdf-docxview hidden></div>
+      <div class="rpdf-page" data-rpdf-page>
         <canvas data-rpdf-canvas></canvas>
         <div class="rpdf-textlayer" data-rpdf-text></div>
       </div>
@@ -184,6 +186,83 @@ export async function mount(container, { url, materialId, materialTitle }) {
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------- تبديل لغة القراءة: نظير Word ----------
+  const langBar = container.querySelector('[data-rpdf-langbar]');
+  const docxView = container.querySelector('[data-rpdf-docxview]');
+  const pdfPage = container.querySelector('[data-rpdf-page]');
+  const trs = Array.isArray(translations) ? translations : [];
+  const docxHandles = {};
+  let activeLangBtn = null;
+  const langName = (l) => (l === 'ar' ? 'العربية' : 'الفرنسية');
+
+  function rpdfShowOriginal() {
+    if (activeLangBtn) { activeLangBtn.classList.remove('active'); activeLangBtn.textContent = activeLangBtn.dataset.labelRead; activeLangBtn = null; }
+    docxView.hidden = true;
+    pdfPage.hidden = false;
+    render();
+  }
+  async function rpdfShowDocx(btn) {
+    const docxUrl = btn.dataset.docx;
+    const docxLang = btn.dataset.docxLang || 'ar';
+    if (activeLangBtn === btn) { rpdfShowOriginal(); return; }
+    langBar.querySelectorAll('[data-rpdf-langbtn]').forEach((b) => { b.classList.remove('active'); b.textContent = b.dataset.labelRead; });
+    btn.classList.add('active');
+    btn.textContent = btn.dataset.labelBack;
+    activeLangBtn = btn;
+    hideQuote();
+    composer.hidden = true;
+    pdfPage.hidden = true;
+    docxView.hidden = false;
+    if (!docxHandles[docxUrl] && window.SidjilDocxReader && window.SidjilDocxReader.mount) {
+      try { docxHandles[docxUrl] = await window.SidjilDocxReader.mount(docxView, { url: docxUrl, lang: docxLang }); }
+      catch { /* القارئ يعرض الخطأ */ }
+    }
+  }
+  if (langBar) {
+    if (trs.length) {
+      langBar.hidden = false;
+      trs.forEach((c) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'rpdf-langbtn';
+        b.dataset.rpdfLangbtn = '1';
+        b.dataset.docx = '/file/' + c.translation_file_id;
+        b.dataset.docxLang = c.target_lang;
+        b.dataset.labelRead = 'اقرأ بـ' + langName(c.target_lang);
+        b.dataset.labelBack = 'اقرأ الأصل';
+        b.textContent = b.dataset.labelRead;
+        b.addEventListener('click', () => rpdfShowDocx(b));
+        langBar.appendChild(b);
+      });
+    } else if (materialId) {
+      langBar.hidden = false;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rpdf-langbtn rpdf-requestbtn';
+      b.textContent = 'اطلب ترجمة هذا الكتاب';
+      b.addEventListener('click', async () => {
+        if (b.disabled) return;
+        b.disabled = true;
+        const orig = b.textContent;
+        b.textContent = 'جارٍ الإرسال…';
+        try {
+          const r = await fetch('/api/v1/translation-requests', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ material_id: Number(materialId), source_file_id: fileId ? Number(fileId) : null }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || '');
+          b.textContent = d.duplicate ? 'طلبك مسجل لدينا بالفعل ✓' : 'وصلنا طلبك ✓';
+        } catch (e) {
+          b.textContent = orig;
+          b.disabled = false;
+          toast('تعذّر إرسال الطلب الآن. حاول لاحقًا.', false);
+        }
+      });
+      langBar.appendChild(b);
+    }
   }
 
   // ---------- التحميل ----------

@@ -7,7 +7,7 @@ import { normalizeText } from './db.js';
 /**
  * searchMaterials(db, params)
  * params = { q, type, fromYear, toYear, region, lang, personId, tagId,
- *            sourceId, collectionId, translationStatus, placeId,
+ *            sourceId, collectionId, placeId,
  *            page, perPage, publishedOnly=true }
  * @returns {Promise<{items, total, page, perPage}>}
  * كل عنصر: صف materials + snippet (مميز بـ <mark> عند وجود q)
@@ -24,7 +24,6 @@ export async function searchMaterials(db, params = {}) {
     tagId,
     sourceId,
     collectionId,
-    translationStatus,
     placeId,
     publishedOnly = true,
   } = params;
@@ -56,10 +55,6 @@ export async function searchMaterials(db, params = {}) {
   if (lang) {
     where.push('m.language = ?');
     binds.push(lang);
-  }
-  if (translationStatus) {
-    where.push('m.translation_status = ?');
-    binds.push(translationStatus);
   }
   if (sourceId) {
     where.push('m.source_id = ?');

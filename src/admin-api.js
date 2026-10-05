@@ -371,37 +371,25 @@ export async function routeAdminApi(req, env) {
   if (m && method === 'POST')
     return withJsonBody(req, (body) => admRelationCreate(env, user, req, m[1], body));
 
-  // مقاطع الترجمة (العرض الموازي)
-  m = rest.match(/^materials\/([^/]+)\/translation-segments$/);
-  if (m && method === 'GET') return admSegmentsList(env, m[1]);
-  if (m && method === 'POST')
-    return withJsonBody(req, (body) => admSegmentsCreate(env, user, req, m[1], body));
-
-  m = rest.match(/^translation-segments\/(\d+)$/);
-  if (m && method === 'PATCH')
-    return withJsonBody(req, (body) => admSegmentUpdate(env, user, req, parseInt(m[1], 10), body));
-
-  // اعتماد الترجمة: صريح فقط — لا يحدث تلقائيًا أبدًا
-  m = rest.match(/^translations\/(\d+)\/approve$/);
-  if (m && method === 'POST')
-    return withJsonBody(req, (body) => admTranslationApprove(env, user, req, parseInt(m[1], 10), body || {}));
-
-  m = rest.match(/^translations\/(\d+)$/);
-  if (m && method === 'DELETE') return admTranslationDelete(env, user, req, parseInt(m[1], 10));
-
-  // إدارة ترجمات المستندات الكاملة (وظائف الخلفية)
-  if (rest === 'translation-jobs' && method === 'GET') return admTranslationJobsList(env, url);
-  if (rest === 'translation-jobs/cleanup' && method === 'POST')
-    return withJsonBody(req, (body) => admTranslationJobsCleanup(env, user, req, body));
-  m = rest.match(/^translation-jobs\/([^/]+)$/);
-  if (m && method === 'DELETE') return admTranslationJobDelete(env, user, req, decodeURIComponent(m[1]));
-
-  // مسرد المصطلحات (تثبيت الأسماء قبل الترجمة الآلية)
+  // مسرد المصطلحات (مرجع لغوي للمترجمين)
   if (rest === 'glossary' && method === 'GET') return admGlossaryList(env, url);
   if (rest === 'glossary' && method === 'POST')
     return withJsonBody(req, (body) => admGlossaryAdd(env, user, req, body));
   m = rest.match(/^glossary\/(\d+)$/);
   if (m && method === 'DELETE') return admGlossaryDelete(env, user, req, parseInt(m[1], 10));
+
+  // ---------- قسم الترجمة الجديد: نظائر Word ----------
+  if (rest === 'translations/overview' && method === 'GET') return admTranslationOverview(env, url);
+  if (rest === 'translations/upload' && method === 'POST') return admTranslationUpload(env, user, req);
+  m = rest.match(/^translations\/files\/(\d+)\/lang$/);
+  if (m && method === 'PATCH')
+    return withJsonBody(req, (body) => admTranslationFileLang(env, user, req, parseInt(m[1], 10), body));
+  m = rest.match(/^translations\/(\d+)$/);
+  if (m && method === 'DELETE') return admTranslationDelete(env, user, req, parseInt(m[1], 10));
+  if (rest === 'translations/requests' && method === 'GET') return admTranslationRequests(env, url);
+  m = rest.match(/^translations\/requests\/(\d+)$/);
+  if (m && method === 'PATCH')
+    return withJsonBody(req, (body) => admTranslationRequestUpdate(env, user, req, parseInt(m[1], 10), body));
 
   // OCR اليدوي (لا يعمل تلقائيًا عند الرفع — تكلفة)
   m = rest.match(/^materials\/([^/]+)\/ocr$/);
@@ -484,7 +472,7 @@ async function admMaterialsList(env, url, user) {
   const [itemsRes, countRow] = await Promise.all([
     env.DB.prepare(
       `SELECT m.id, m.ark, m.type, m.title_ar, m.title_orig, m.year, m.date_text, m.language,
-              m.publish_status, m.review_note, m.translation_status, m.transcription_status,
+              m.publish_status, m.review_note, m.transcription_status,
               m.updated_at, u.username AS creator
        ${fromSql}${whereSql} ORDER BY m.updated_at DESC, m.id DESC LIMIT ? OFFSET ?`
     )
@@ -516,14 +504,12 @@ const MATERIAL_FIELDS = [
   'rights',
   'full_text',
   'transcription_status',
-  'translation_status',
   'publish_status',
 ];
 
 const PUBLISH_STATUSES = ['draft', 'in_review', 'published', 'hidden'];
 const DATE_CONFIDENCES = ['confirmed', 'approximate', 'probable', 'unknown'];
 const TRANSCRIPTION_STATUSES = ['none', 'auto', 'corrected'];
-const TRANSLATION_STATUSES = ['none', 'machine', 'in_review', 'reviewed', 'approved'];
 
 function pickMaterialFields(body) {
   const f = {};
@@ -551,8 +537,6 @@ function validateMaterialFields(f, isCreate) {
     throw new Error('مستوى ثقة المكان غير صالح');
   if (f.transcription_status && !TRANSCRIPTION_STATUSES.includes(f.transcription_status))
     throw new Error('حالة التفريغ غير صالحة');
-  if (f.translation_status && !TRANSLATION_STATUSES.includes(f.translation_status))
-    throw new Error('حالة الترجمة غير صالحة');
 }
 
 async function replaceLinks(db, materialId, body) {
@@ -684,7 +668,8 @@ async function admMaterialDelete(env, user, req, idOrArk) {
     db.prepare('DELETE FROM material_collections WHERE material_id = ?').bind(m.id),
     db.prepare('DELETE FROM image_versions WHERE material_id = ?').bind(m.id),
     db.prepare('DELETE FROM transcriptions WHERE material_id = ?').bind(m.id),
-    db.prepare('DELETE FROM translations WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM file_translations WHERE material_id = ?').bind(m.id),
+    db.prepare('DELETE FROM translation_requests WHERE material_id = ?').bind(m.id),
     db.prepare('DELETE FROM files WHERE material_id = ?').bind(m.id),
     db.prepare('UPDATE collections SET cover_material_id = NULL WHERE cover_material_id = ?').bind(m.id),
     db.prepare('DELETE FROM materials_fts WHERE ark = ?').bind(m.ark),
@@ -1186,23 +1171,6 @@ async function upsertTranscription(db, materialId, layer, text, lang) {
   }
 }
 
-async function getOrCreateTranslation(db, material, translator) {
-  let t = await db
-    .prepare("SELECT * FROM translations WHERE material_id = ? AND target_lang = 'ar' ORDER BY updated_at DESC")
-    .bind(material.id)
-    .first();
-  if (!t) {
-    const res = await db
-      .prepare(
-        "INSERT INTO translations (material_id, source_lang, target_lang, text, status, translator) VALUES (?, ?, 'ar', '', 'machine', ?)"
-      )
-      .bind(material.id, material.language || 'fr', translator || null)
-      .run();
-    t = await db.prepare('SELECT * FROM translations WHERE id = ?').bind(res.meta.last_row_id).first();
-  }
-  return t;
-}
-
 async function admMaterialText(env, user, req, idOrArk, body) {
   const db = env.DB;
   const m = await findMaterial(db, idOrArk);
@@ -1225,47 +1193,8 @@ async function admMaterialText(env, user, req, idOrArk, body) {
   const has = new Set(layers.results.map((r) => r.layer));
   const trStatus = has.has('manual') ? 'corrected' : has.has('auto') ? 'auto' : 'none';
 
-  let tlStatus = body.translationStatus;
-  if (tlStatus !== undefined && !TRANSLATION_STATUSES.includes(tlStatus)) {
-    return err('حالة الترجمة غير صالحة', 400);
-  }
-  if (body.translationText !== undefined || body.translator !== undefined || tlStatus !== undefined) {
-    const t = await getOrCreateTranslation(db, m, body.translator);
-    // إن كانت الترجمة تُدار بالمقاطع، يُمنع تعديل النص الموحد مباشرة (منعًا للتباعد)
-    if (body.translationText !== undefined) {
-      const segCount = await db
-        .prepare('SELECT COUNT(*) AS c FROM translation_segments WHERE translation_id = ?')
-        .bind(t.id)
-        .first();
-      if (segCount && segCount.c > 0) {
-        return err('هذه الترجمة تُدار بالمقاطع — عدّل المقاطع من واجهة المراجعة المتوازية', 400);
-      }
-    }
-    const sets = [];
-    const binds = [];
-    if (body.translationText !== undefined) {
-      sets.push('text = ?');
-      binds.push(String(body.translationText));
-    }
-    if (body.translator !== undefined) {
-      sets.push('translator = ?');
-      binds.push(body.translator || null);
-    }
-    if (tlStatus !== undefined) {
-      sets.push('status = ?');
-      binds.push(tlStatus);
-    }
-    sets.push("updated_at = datetime('now')");
-    await db.prepare(`UPDATE translations SET ${sets.join(', ')} WHERE id = ?`).bind(...binds, t.id).run();
-    changed.push('translation');
-  }
-
   const matSets = ['transcription_status = ?'];
   const matBinds = [trStatus];
-  if (tlStatus !== undefined) {
-    matSets.push('translation_status = ?');
-    matBinds.push(tlStatus);
-  }
   if (body.fullText !== undefined) {
     matSets.push('full_text = ?');
     matBinds.push(String(body.fullText));
@@ -1314,312 +1243,223 @@ async function admRelationCreate(env, user, req, idOrArk, body) {
   return json({ ok: true }, 201);
 }
 
-// ---------- مقاطع الترجمة (العرض الموازي) ----------
 
-const SEGMENT_STATUSES = ['machine', 'reviewed'];
+// ============================================================
+// قسم الترجمة الجديد: نظائر Word مرفوعة يدويًا
+// القاعدة: فرنسي→عربي، عربي→فرنسي، إنجليزي→عربي وفرنسي
+// ============================================================
 
-async function getMaterialTranslation(db, materialId) {
-  return db
-    .prepare("SELECT * FROM translations WHERE material_id = ? AND target_lang = 'ar' ORDER BY updated_at DESC")
-    .bind(materialId)
-    .first();
+const FILE_LANGS = ['ar', 'fr', 'en', 'undetermined'];
+const TARGET_LANGS = ['ar', 'fr'];
+
+/** اللغات الهدف المسموحة حسب لغة الملف الأصل */
+function allowedTargets(sourceLang) {
+  if (sourceLang === 'fr') return ['ar'];
+  if (sourceLang === 'ar') return ['fr'];
+  if (sourceLang === 'en') return ['ar', 'fr'];
+  return [];
 }
 
-/** سرد المقاطع (إن وُجدت) مع سجل الترجمة الأم */
-async function admSegmentsList(env, idOrArk) {
+const TRANSLATABLE_WHERE = `f.kind IN ('original','attachment') AND (
+  f.mime = 'application/pdf' OR f.mime LIKE '%word%'
+  OR lower(f.filename) LIKE '%.pdf' OR lower(f.filename) LIKE '%.doc' OR lower(f.filename) LIKE '%.docx'
+)`;
+
+/** نظرة عامة: كل الملفات القابلة للترجمة مصنفة لغويًا مع حالة نظائرها */
+async function admTranslationOverview(env, url) {
   const db = env.DB;
-  const m = await findMaterial(db, idOrArk);
-  if (!m) return err('المادة غير موجودة', 404);
-  const t = await getMaterialTranslation(db, m.id);
-  if (!t) return json({ translation: null, segments: [] });
-  const segs = await db
-    .prepare('SELECT * FROM translation_segments WHERE translation_id = ? ORDER BY sequence_number')
-    .bind(t.id)
-    .all();
-  return json({ translation: t, segments: segs.results });
-}
+  const sp = url.searchParams;
+  const page = Math.max(1, parseInt(sp.get('page'), 10) || 1);
+  const perPage = Math.min(100, Math.max(1, parseInt(sp.get('perPage'), 10) || 30));
+  const q = (sp.get('q') || '').trim();
+  const langF = sp.get('lang') || '';
+  const statusF = sp.get('status') || 'all'; // all|awaiting|ready
 
-/**
- * إنشاء ترجمة من مقاطع: body.segments = [{source_text, machine_translation?, page_number?}]
- * تستبدل أي ترجمة عربية سابقة للمادة (مع مقاطعها عبر CASCADE).
- */
-async function admSegmentsCreate(env, user, req, idOrArk, body) {
-  const db = env.DB;
-  const m = await findMaterial(db, idOrArk);
-  if (!m) return err('المادة غير موجودة', 404);
-  const segments = Array.isArray(body.segments) ? body.segments : [];
-  if (!segments.length) return err('المقاطع مطلوبة (مصفوفة segments غير فارغة)', 400);
-  if (segments.length > 2000) return err('عدد المقاطع يتجاوز الحد (2000)', 400);
-  for (const s of segments) {
-    if (!s || !String(s.source_text || '').trim()) return err('كل مقطع يحتاج source_text', 400);
-  }
-
-  const old = await getMaterialTranslation(db, m.id);
-  if (old) {
-    await db.prepare('DELETE FROM translations WHERE id = ?').bind(old.id).run();
-  }
-  const res = await db
-    .prepare(
-      "INSERT INTO translations (material_id, source_lang, target_lang, text, status, translator) VALUES (?, ?, 'ar', '', 'machine', ?)"
-    )
-    .bind(m.id, body.sourceLang || m.language || 'fr', body.translator || null)
-    .run();
-  const tid = res.meta.last_row_id;
-
-  const stmts = [];
-  let seq = 1;
-  for (const s of segments) {
-    stmts.push(
-      db
-        .prepare(
-          `INSERT INTO translation_segments
-           (translation_id, sequence_number, page_number, source_text, machine_translation, reviewed_translation, status)
-           VALUES (?, ?, ?, ?, ?, NULL, 'machine')`
-        )
-        .bind(
-          tid,
-          seq++,
-          asInt(s.page_number),
-          String(s.source_text),
-          s.machine_translation ? String(s.machine_translation) : null
-        )
-    );
-  }
-  await db.batch(stmts);
-
-  await db
-    .prepare("UPDATE materials SET translation_status = 'machine', updated_at = datetime('now') WHERE id = ?")
-    .bind(m.id)
-    .run();
-  await rebuildSearchBlob(db, m.id);
-  await audit(db, {
-    userId: user.id,
-    action: 'translation.segments_create',
-    target: m.ark,
-    detail: `${segments.length} مقطعًا`,
-    ip: clientIp(req),
-  });
-  return json({ ok: true, translationId: tid, count: segments.length }, 201);
-}
-
-/** تعديل مقطع: reviewed_translation + status (+ machine_translation + page_number) */
-async function admSegmentUpdate(env, user, req, segId, body) {
-  const db = env.DB;
-  const seg = await db
-    .prepare(
-      `SELECT ts.*, t.material_id, m.ark FROM translation_segments ts
-       JOIN translations t ON t.id = ts.translation_id
-       JOIN materials m ON m.id = t.material_id
-       WHERE ts.id = ?`
-    )
-    .bind(segId)
-    .first();
-  if (!seg) return err('المقطع غير موجود', 404);
-
-  const sets = [];
+  const where = [TRANSLATABLE_WHERE];
   const binds = [];
-  if (body.reviewed_translation !== undefined) {
-    sets.push('reviewed_translation = ?');
-    const v = String(body.reviewed_translation || '').trim();
-    binds.push(v ? v : null);
+  if (FILE_LANGS.includes(langF)) { where.push('f.lang = ?'); binds.push(langF); }
+  if (q) {
+    where.push('(f.filename LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ?)');
+    const like = `%${q}%`; binds.push(like, like, like, like);
   }
-  if (body.machine_translation !== undefined) {
-    sets.push('machine_translation = ?');
-    const v = String(body.machine_translation || '').trim();
-    binds.push(v ? v : null);
+  if (statusF === 'awaiting') {
+    where.push("NOT EXISTS (SELECT 1 FROM file_translations ft WHERE ft.source_file_id = f.id AND ft.status = 'ready')");
+  } else if (statusF === 'ready') {
+    where.push("EXISTS (SELECT 1 FROM file_translations ft WHERE ft.source_file_id = f.id AND ft.status = 'ready')");
   }
-  if (body.page_number !== undefined) {
-    sets.push('page_number = ?');
-    binds.push(asInt(body.page_number));
-  }
-  if (body.status !== undefined) {
-    if (!SEGMENT_STATUSES.includes(body.status)) return err('حالة المقطع غير صالحة', 400);
-    sets.push('status = ?');
-    binds.push(body.status);
-  }
-  if (!sets.length) return err('لا حقول للتعديل', 400);
-  sets.push("updated_at = datetime('now')");
-  await db
-    .prepare(`UPDATE translation_segments SET ${sets.join(', ')} WHERE id = ?`)
-    .bind(...binds, segId)
-    .run();
+  const whereSql = 'WHERE ' + where.join(' AND ');
+  const fromSql = `FROM files f JOIN materials m ON m.id = f.material_id ${whereSql}`;
 
-  // اشتقاق حالة الترجمة الأم من اكتمال مراجعة المقاطع (ليس اعتمادًا — الاعتماد صريح فقط)
-  const pending = await db
-    .prepare(
-      `SELECT COUNT(*) AS c FROM translation_segments
-       WHERE translation_id = ?
-         AND (status != 'reviewed' OR reviewed_translation IS NULL OR reviewed_translation = '')`
-    )
-    .bind(seg.translation_id)
-    .first();
-  const parentStatus = pending && pending.c > 0 ? 'in_review' : 'reviewed';
-  await db
-    .prepare("UPDATE translations SET status = ?, updated_at = datetime('now') WHERE id = ?")
-    .bind(parentStatus, seg.translation_id)
-    .run();
-  await db
-    .prepare("UPDATE materials SET translation_status = ?, updated_at = datetime('now') WHERE id = ?")
-    .bind(parentStatus, seg.material_id)
-    .run();
+  const [itemsRes, countRow, statsRes, reqCount] = await Promise.all([
+    db.prepare(
+      `SELECT f.id, f.material_id, f.filename, f.mime, f.size, f.lang, f.kind, f.created_at,
+              m.ark, m.title_ar, m.title_orig
+       ${fromSql} ORDER BY m.updated_at DESC, f.id DESC LIMIT ? OFFSET ?`
+    ).bind(...binds, perPage, (page - 1) * perPage).all(),
+    db.prepare(`SELECT COUNT(*) AS c ${fromSql}`).bind(...binds).first(),
+    db.prepare(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN f.lang = 'undetermined' THEN 1 ELSE 0 END) AS undetermined,
+         SUM(CASE WHEN EXISTS (SELECT 1 FROM file_translations ft WHERE ft.source_file_id = f.id AND ft.status = 'ready') THEN 1 ELSE 0 END) AS ready
+       FROM files f WHERE ${TRANSLATABLE_WHERE}`
+    ).first(),
+    db.prepare("SELECT COUNT(*) AS c FROM translation_requests WHERE status = 'new'").first(),
+  ]);
 
-  await rebuildSearchBlob(db, seg.material_id);
-  await touchMaterial(db, seg.material_id);
-  await audit(db, {
-    userId: user.id,
-    action: 'translation.segment_update',
-    target: seg.ark,
-    detail: `مقطع ${segId} ← ${body.status || 'تعديل نص'}`,
-    ip: clientIp(req),
+  const items = itemsRes.results || [];
+  const ids = items.map((r) => r.id);
+  let cpMap = new Map();
+  if (ids.length) {
+    const cps = await db.prepare(
+      `SELECT ft.*, tf.filename AS t_filename, tf.size AS t_size, tf.created_at AS t_created
+       FROM file_translations ft LEFT JOIN files tf ON tf.id = ft.translation_file_id
+       WHERE ft.source_file_id IN (${ids.map(() => '?').join(',')})`
+    ).bind(...ids).all();
+    for (const c of cps.results || []) {
+      if (!cpMap.has(c.source_file_id)) cpMap.set(c.source_file_id, []);
+      cpMap.get(c.source_file_id).push(c);
+    }
+  }
+  const total = Number(countRow?.c || 0);
+  const ready = Number(statsRes?.ready || 0);
+  const all = Number(statsRes?.total || 0);
+  return json({
+    items: items.map((r) => ({ ...r, counterparts: cpMap.get(r.id) || [] })),
+    total, page, perPage,
+    stats: {
+      total: all,
+      ready,
+      awaiting: all - ready,
+      undetermined: Number(statsRes?.undetermined || 0),
+      newRequests: Number(reqCount?.c || 0),
+    },
+    allowedTargets: { fr: ['ar'], ar: ['fr'], en: ['ar', 'fr'] },
   });
-  return json({ ok: true, parentStatus });
 }
 
-/** اعتماد الترجمة: إجراء إداري صريح — لا يحدث تلقائيًا أبدًا */
-async function admTranslationApprove(env, user, req, translationId, body) {
+/** رفع نظير Word لملف أصلي (بعد تحديد لغة الملف) */
+async function admTranslationUpload(env, user, req) {
   const db = env.DB;
-  const t = await db
-    .prepare(
-      `SELECT t.*, m.ark, m.id AS material_id FROM translations t
-       JOIN materials m ON m.id = t.material_id WHERE t.id = ?`
-    )
-    .bind(translationId)
-    .first();
-  if (!t) return err('الترجمة غير موجودة', 404);
+  let form;
+  try { form = await req.formData(); } catch { return err('نموذج الرفع غير صالح', 400); }
+  const sourceFileId = parseInt(form.get('source_file_id'), 10);
+  const sourceLang = String(form.get('source_lang') || '');
+  const targetLang = String(form.get('target_lang') || '');
+  const file = form.get('file');
+  if (!Number.isFinite(sourceFileId)) return err('حدد الملف الأصل أولًا', 400);
+  if (!['ar', 'fr', 'en'].includes(sourceLang)) return err('حدد لغة الملف الأصل (عربي/فرنسي/إنجليزي)', 400);
+  if (!allowedTargets(sourceLang).includes(targetLang)) {
+    return err(`لغة الهدف غير مسموحة للغة الأصل (${sourceLang})`, 400);
+  }
+  if (!file || typeof file.arrayBuffer !== 'function') return err('اختر ملف Word أولًا', 400);
+  const ext = String(file.name || '').split('.').pop().toLowerCase();
+  if (ext !== 'docx') return err('صيغة النظير يجب أن تكون Word (.docx) فقط', 400);
 
-  await db
-    .prepare("UPDATE translations SET status = 'approved', updated_at = datetime('now') WHERE id = ?")
-    .bind(translationId)
-    .run();
-  await db
-    .prepare("UPDATE materials SET translation_status = 'approved', updated_at = datetime('now') WHERE id = ?")
-    .bind(t.material_id)
-    .run();
-  await rebuildSearchBlob(db, t.material_id);
+  const src = await db.prepare(
+    `SELECT f.*, m.ark, m.type FROM files f JOIN materials m ON m.id = f.material_id WHERE f.id = ?`
+  ).bind(sourceFileId).first();
+  if (!src) return err('الملف الأصل غير موجود', 404);
+  if (!['original', 'attachment'].includes(src.kind)) return err('النظير يُرفع للملفات الأصلية فقط', 400);
+
+  // تحديث لغة الملف الأصل حسب تحديد الإدارة
+  await db.prepare('UPDATE files SET lang = ? WHERE id = ?').bind(sourceLang, src.id).run();
+
+  // استبدال: إن وُجد نظير سابق لنفس اللغة الهدف يُحذف ملفه من R2 أولًا
+  const existing = await db.prepare(
+    'SELECT ft.*, f.r2_key FROM file_translations ft LEFT JOIN files f ON f.id = ft.translation_file_id WHERE ft.source_file_id = ? AND ft.target_lang = ?'
+  ).bind(src.id, targetLang).first();
+  if (existing && existing.r2_key) {
+    await env.FILES.delete(existing.r2_key).catch(() => {});
+    if (existing.translation_file_id) {
+      await db.prepare('DELETE FROM files WHERE id = ?').bind(existing.translation_file_id).run();
+    }
+  }
+
+  let row;
+  try {
+    row = await putUpload(env, { materialId: src.material_id, ark: src.ark, type: src.type }, file, 'translation');
+  } catch (e) {
+    return err(e.message || 'فشل الرفع', 400);
+  }
+  await db.prepare('UPDATE files SET lang = ? WHERE id = ?').bind(targetLang, row.id).run();
+  await db.prepare(
+    `INSERT INTO file_translations (material_id, source_file_id, source_lang, target_lang, translation_file_id, status, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'ready', datetime('now'))
+     ON CONFLICT(source_file_id, target_lang) DO UPDATE SET
+       translation_file_id = excluded.translation_file_id,
+       source_lang = excluded.source_lang,
+       status = 'ready', updated_at = datetime('now')`
+  ).bind(src.material_id, src.id, sourceLang, targetLang, row.id).run();
+
+  // طلبات الترجمة المفتوحة لهذا الملف تُعتبر منجزة
+  await db.prepare("UPDATE translation_requests SET status = 'done' WHERE source_file_id = ? AND status = 'new'")
+    .bind(src.id).run();
+
   await audit(db, {
-    userId: user.id,
-    action: 'translation.approve',
-    target: t.ark,
-    detail: `اعتماد صريح${body && body.note ? ' — ' + String(body.note).slice(0, 200) : ''}`,
-    ip: clientIp(req),
+    userId: user.id, action: 'translation.upload', target: src.ark,
+    detail: `${src.filename} → ${targetLang} (${row.filename})`, ip: clientIp(req),
   });
-  return json({ ok: true, status: 'approved' });
+  return json({ ok: true, file: row, sourceLang, targetLang }, 201);
 }
 
-/** حذف الترجمة ومقاطعها (لإعادة التقسيم مثلًا) */
-async function admTranslationDelete(env, user, req, translationId) {
+/** تصنيف لغة ملف أصلي يدويًا */
+async function admTranslationFileLang(env, user, req, fileId, body) {
   const db = env.DB;
-  const t = await db
-    .prepare(
-      `SELECT t.*, m.ark FROM translations t
-       JOIN materials m ON m.id = t.material_id WHERE t.id = ?`
-    )
-    .bind(translationId)
-    .first();
-  if (!t) return err('الترجمة غير موجودة', 404);
-  await db.prepare('DELETE FROM translations WHERE id = ?').bind(translationId).run(); // CASCADE للمقاطع
-  await db
-    .prepare("UPDATE materials SET translation_status = 'none', updated_at = datetime('now') WHERE id = ?")
-    .bind(t.material_id)
-    .run();
-  await rebuildSearchBlob(db, t.material_id);
+  const lang = String(body?.lang || '');
+  if (!FILE_LANGS.includes(lang)) return err('اللغة غير صالحة', 400);
+  const f = await db.prepare('SELECT id FROM files WHERE id = ?').bind(fileId).first();
+  if (!f) return err('الملف غير موجود', 404);
+  await db.prepare('UPDATE files SET lang = ? WHERE id = ?').bind(lang, fileId).run();
+  await audit(db, { userId: user.id, action: 'translation.set_lang', target: `file:${fileId}`, detail: lang, ip: clientIp(req) });
+  return json({ ok: true, lang });
+}
+
+/** حذف نظير ترجمة (السجل + ملف R2) */
+async function admTranslationDelete(env, user, req, id) {
+  const db = env.DB;
+  const ft = await db.prepare(
+    'SELECT ft.*, f.r2_key, f.filename, m.ark FROM file_translations ft LEFT JOIN files f ON f.id = ft.translation_file_id LEFT JOIN materials m ON m.id = ft.material_id WHERE ft.id = ?'
+  ).bind(id).first();
+  if (!ft) return err('النظير غير موجود', 404);
+  if (ft.r2_key) await env.FILES.delete(ft.r2_key).catch(() => {});
+  if (ft.translation_file_id) await db.prepare('DELETE FROM files WHERE id = ?').bind(ft.translation_file_id).run();
+  await db.prepare('DELETE FROM file_translations WHERE id = ?').bind(id).run();
   await audit(db, {
-    userId: user.id,
-    action: 'translation.delete',
-    target: t.ark,
-    detail: `حذف ترجمة ${translationId} ومقاطعها`,
-    ip: clientIp(req),
+    userId: user.id, action: 'translation.delete', target: String(ft.ark || ''),
+    detail: `${ft.filename || ''} (${ft.target_lang})`, ip: clientIp(req),
   });
   return json({ ok: true });
 }
 
-// ---------- إدارة وظائف ترجمة الملفات الكاملة ----------
-
-async function admTranslationJobsList(env, url) {
+/** صندوق طلبات الترجمة الواردة من القرّاء */
+async function admTranslationRequests(env, url) {
   const db = env.DB;
-  const status = String(url.searchParams.get('status') || '').trim().toUpperCase();
-  const source = String(url.searchParams.get('source') || '').trim().toLowerCase();
-  const target = String(url.searchParams.get('target') || '').trim().toLowerCase();
-  const q = String(url.searchParams.get('q') || '').trim();
-  const { page, perPage, offset } = pageParams(url);
-  const where = [];
-  const binds = [];
-  if (status) { where.push('j.status = ?'); binds.push(status); }
-  if (source) { where.push('j.source_language = ?'); binds.push(source); }
-  if (target) { where.push('j.target_language = ?'); binds.push(target); }
-  if (q) {
-    where.push('(m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.ark LIKE ? OR j.id LIKE ?)');
-    const like = `%${q}%`;
-    binds.push(like, like, like, like);
-  }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const from = `FROM translation_jobs j
-    LEFT JOIN materials m ON m.id = j.material_id
-    LEFT JOIN files f ON f.id = j.file_id`;
-  const [rows, count] = await Promise.all([
-    db.prepare(`SELECT j.id, j.material_id, j.file_id, j.source_language, j.target_language,
-      j.output_mode, j.ocr_mode, j.status, j.progress, j.current_stage, j.page_count,
-      j.processed_pages, j.error_code, j.error_message, j.output_mime, j.output_size,
-      j.created_at, j.updated_at, j.completed_at, m.ark, m.title_ar, m.title_orig,
-      m.type, m.publish_status, f.filename
-      ${from} ${whereSql} ORDER BY j.created_at DESC LIMIT ? OFFSET ?`).bind(...binds, perPage, offset).all(),
-    db.prepare(`SELECT COUNT(*) AS c ${from} ${whereSql}`).bind(...binds).first(),
-  ]);
-  return json({ items: rows.results || [], total: Number(count?.c || 0), page, perPage });
+  const sp = url.searchParams;
+  const status = sp.get('status') || 'new';
+  const where = status === 'all' ? '' : 'WHERE r.status = ?';
+  const binds = status === 'all' ? [] : [status];
+  const rows = await db.prepare(
+    `SELECT r.*, m.ark, m.title_ar, m.title_orig, f.filename AS source_filename
+     FROM translation_requests r
+     JOIN materials m ON m.id = r.material_id
+     LEFT JOIN files f ON f.id = r.source_file_id
+     ${where} ORDER BY r.created_at DESC LIMIT 200`
+  ).bind(...binds).all();
+  return json({ items: rows.results || [] });
 }
 
-async function deleteTranslationJobRecord(env, job) {
+async function admTranslationRequestUpdate(env, user, req, id, body) {
   const db = env.DB;
-  if (job?.output_key) await env.FILES.delete(job.output_key).catch(() => {});
-  // العلاقات في المخطط تستخدم CASCADE، لكن الحذف الصريح يحافظ على التوافق مع قواعد قديمة.
-  await db.batch([
-    db.prepare('DELETE FROM translation_events WHERE job_id = ?').bind(job.id),
-    db.prepare('DELETE FROM translation_usage WHERE job_id = ?').bind(job.id),
-    db.prepare('DELETE FROM translation_jobs WHERE id = ?').bind(job.id),
-  ]);
+  const status = String(body?.status || '');
+  if (!['new', 'done', 'dismissed'].includes(status)) return err('الحالة غير صالحة', 400);
+  const r = await db.prepare('SELECT id FROM translation_requests WHERE id = ?').bind(id).first();
+  if (!r) return err('الطلب غير موجود', 404);
+  await db.prepare("UPDATE translation_requests SET status = ? WHERE id = ?").bind(status, id).run();
+  await audit(db, { userId: user.id, action: 'translation.request_update', target: `request:${id}`, detail: status, ip: clientIp(req) });
+  return json({ ok: true, status });
 }
 
-async function admTranslationJobDelete(env, user, req, jobId) {
-  const db = env.DB;
-  const job = await db.prepare(`SELECT j.*, m.ark, m.title_ar
-    FROM translation_jobs j LEFT JOIN materials m ON m.id = j.material_id WHERE j.id = ?`).bind(jobId).first();
-  // الحذف idempotent: قد تبقى صفوف قديمة في تبويب الإدارة بعد تنظيفها من جلسة أخرى.
-  // في هذه الحالة نعيد نجاحًا حتى لا يظل الزر عالقًا بسبب 404 غير مؤثر.
-  if (!job) return json({ ok: true, id: jobId, missing: true });
-  await deleteTranslationJobRecord(env, job);
-  await audit(db, {
-    userId: user.id,
-    action: 'translation_job.delete',
-    target: String(job.ark || job.material_id || job.id),
-    detail: `حذف وظيفة ${job.id} (${job.status})`,
-    ip: clientIp(req),
-  });
-  return json({ ok: true, id: job.id });
-}
-
-async function admTranslationJobsCleanup(env, user, req, body) {
-  const db = env.DB;
-  const days = Math.min(3650, Math.max(1, asInt(body?.beforeDays) || 30));
-  const includeFailed = body?.includeFailed !== false;
-  const cutoff = `-${days} days`;
-  const statuses = includeFailed ? ['COMPLETED', 'FAILED', 'CANCELLED'] : ['COMPLETED'];
-  const placeholders = statuses.map(() => '?').join(',');
-  const rows = await db.prepare(`SELECT * FROM translation_jobs
-    WHERE status IN (${placeholders}) AND updated_at < datetime('now', ?)
-    ORDER BY updated_at ASC LIMIT 500`).bind(...statuses, cutoff).all();
-  const jobs = rows.results || [];
-  for (const job of jobs) await deleteTranslationJobRecord(env, job);
-  // كاش النصوص لا يرتبط بوظيفة بعينها؛ نحذف القديم فقط ضمن نفس سياسة التنظيف.
-  const cache = await db.prepare("DELETE FROM translation_text_cache WHERE created_at < datetime('now', ?) ").bind(cutoff).run();
-  await audit(db, {
-    userId: user.id,
-    action: 'translation_job.cleanup',
-    target: 'translation_jobs',
-    detail: `حذف ${jobs.length} وظيفة قديمة و${Number(cache?.meta?.changes || 0)} من الكاش (أقدم من ${days} يومًا)`,
-    ip: clientIp(req),
-  });
-  return json({ ok: true, deletedJobs: jobs.length, deletedCache: Number(cache?.meta?.changes || 0), beforeDays: days });
-}
 
 // ---------- OCR اليدوي (لا يعمل تلقائيًا عند الرفع) ----------
 
@@ -1901,13 +1741,8 @@ const EXPORT_TABLES = [
   'files',
   'image_versions',
   'transcriptions',
-  'translations',
-  'translation_segments',
-  'translation_jobs',
-  'translation_text_cache',
-  'translation_usage',
-  'translation_events',
-  'translation_settings',
+  'file_translations',
+  'translation_requests',
   'processing_jobs',
   'glossary',
   'collections',

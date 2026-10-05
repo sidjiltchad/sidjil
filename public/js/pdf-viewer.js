@@ -206,4 +206,94 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   }).catch(function () {
     showError();
   });
+
+  /* ---------- تبديل لغة القراءة: نظير Word المترجم ---------- */
+  var docxView = box.querySelector('[data-docx-view]');
+  var toggleBtns = Array.prototype.slice.call(box.querySelectorAll('[data-doc-toggle]'));
+  var docxHandles = {}; // docxUrl -> handle
+  var activeDocxBtn = null;
+  var pageLang = document.documentElement.lang === 'fr' ? 'fr' : 'ar';
+
+  function setPdfControlsEnabled(on) {
+    box.classList.toggle('is-docx-mode', !on);
+  }
+
+  function showOriginal() {
+    if (activeDocxBtn) {
+      activeDocxBtn.textContent = activeDocxBtn.getAttribute('data-label-read');
+      activeDocxBtn.setAttribute('aria-pressed', 'false');
+      activeDocxBtn = null;
+    }
+    if (docxView) docxView.classList.add('hidden');
+    if (wrap) wrap.classList.remove('hidden');
+    setPdfControlsEnabled(true);
+    if (!readingMode) renderPage();
+  }
+
+  async function showDocx(btn) {
+    var docxUrl = btn.getAttribute('data-docx');
+    var docxLang = btn.getAttribute('data-docx-lang') || 'ar';
+    if (activeDocxBtn === btn) { showOriginal(); return; }
+    toggleBtns.forEach(function (b) {
+      b.textContent = b.getAttribute('data-label-read');
+      b.setAttribute('aria-pressed', 'false');
+    });
+    btn.textContent = btn.getAttribute('data-label-back');
+    btn.setAttribute('aria-pressed', 'true');
+    activeDocxBtn = btn;
+    if (readingMode) leaveReadingMode();
+    if (wrap) wrap.classList.add('hidden');
+    if (readingPages) readingPages.classList.add('hidden');
+    setPdfControlsEnabled(false);
+    if (docxView) {
+      docxView.classList.remove('hidden');
+      if (!docxHandles[docxUrl]) {
+        if (window.SidjilDocxReader && window.SidjilDocxReader.mount) {
+          try {
+            docxHandles[docxUrl] = await window.SidjilDocxReader.mount(docxView, { url: docxUrl, lang: docxLang });
+          } catch (e) { /* يعرض القارئ رسالة الخطأ بنفسه */ }
+        } else {
+          docxView.innerHTML = '<p class="docx-error"><a class="btn btn-small" href="' + docxUrl + '?download=1">' +
+            (pageLang === 'fr' ? 'Télécharger la traduction' : 'تنزيل ملف الترجمة') + '</a></p>';
+        }
+      }
+    }
+  }
+
+  toggleBtns.forEach(function (btn) {
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', function () { showDocx(btn); });
+  });
+
+  /* ---------- طلب ترجمة عند غياب النظير ---------- */
+  var requestBtn = box.querySelector('[data-request-translation]');
+  if (requestBtn) {
+    requestBtn.addEventListener('click', async function () {
+      if (requestBtn.disabled) return;
+      requestBtn.disabled = true;
+      var orig = requestBtn.textContent;
+      requestBtn.textContent = pageLang === 'fr' ? 'Envoi…' : 'جارٍ الإرسال…';
+      try {
+        var r = await fetch('/api/v1/translation-requests', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            material_id: Number(requestBtn.getAttribute('data-material-id')),
+            source_file_id: Number(requestBtn.getAttribute('data-file-id')) || null,
+          }),
+        });
+        var d = await r.json().catch(function () { return {}; });
+        if (!r.ok) throw new Error(d.error || '');
+        requestBtn.textContent = pageLang === 'fr'
+          ? (d.duplicate ? 'Demande déjà enregistrée ✓' : 'Demande envoyée ✓')
+          : (d.duplicate ? 'طلبك مسجل لدينا بالفعل ✓' : 'وصلنا طلبك ✓');
+      } catch (e) {
+        requestBtn.textContent = orig;
+        requestBtn.disabled = false;
+        alert(pageLang === 'fr'
+          ? 'Envoi impossible pour le moment. Réessayez plus tard.'
+          : 'تعذّر إرسال الطلب الآن. حاول لاحقًا.');
+      }
+    });
+  }
 })();

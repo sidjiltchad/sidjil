@@ -154,21 +154,34 @@ function openResearcherMaterialModal(trigger) {
     const readerBox = document.createElement('div');
     readerBox.className = 'researcher-material-modal-pdf-reader';
     media.appendChild(readerBox);
-    if (window.SidjilPdfReader && window.SidjilPdfReader.mount) {
-      window.SidjilPdfReader.mount(readerBox, {
-        url: d.materialPdf,
-        materialId: d.materialId || '',
-        materialTitle: d.materialTitle || 'الكتاب',
-      }).then(reader => { activePdfReader = reader; }).catch(() => {});
+    const pdfFileId = (String(d.materialPdf).match(/\/file\/(\d+)/) || [])[1] || '';
+    const mountReader = (translations) => {
+      if (window.SidjilPdfReader && window.SidjilPdfReader.mount) {
+        window.SidjilPdfReader.mount(readerBox, {
+          url: d.materialPdf,
+          materialId: d.materialId || '',
+          materialTitle: d.materialTitle || 'الكتاب',
+          fileId: pdfFileId,
+          translations: (translations || []).filter((c) => String(c.source_file_id) === String(pdfFileId)),
+        }).then(reader => { activePdfReader = reader; }).catch(() => {});
+      } else {
+        // بديل: iframe عند تعذر تحميل الوحدة
+        const frame = document.createElement('iframe');
+        frame.className = 'researcher-material-modal-pdf-frame';
+        frame.src = `${d.materialPdf}#toolbar=1&navpanes=0&view=FitH`;
+        frame.title = `قراءة ${d.materialTitle || 'الكتاب'}`;
+        frame.loading = 'eager';
+        frame.setAttribute('allowfullscreen', 'true');
+        readerBox.appendChild(frame);
+      }
+    };
+    if (d.materialId) {
+      fetch(`/api/v1/materials/${encodeURIComponent(d.materialId)}/translations`)
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((j) => mountReader(j.items || []))
+        .catch(() => mountReader([]));
     } else {
-      // بديل: iframe عند تعذر تحميل الوحدة
-      const frame = document.createElement('iframe');
-      frame.className = 'researcher-material-modal-pdf-frame';
-      frame.src = `${d.materialPdf}#toolbar=1&navpanes=0&view=FitH`;
-      frame.title = `قراءة ${d.materialTitle || 'الكتاب'}`;
-      frame.loading = 'eager';
-      frame.setAttribute('allowfullscreen', 'true');
-      readerBox.appendChild(frame);
+      mountReader([]);
     }
   } else if (d.materialImage) {
     const image = document.createElement('img');
@@ -201,20 +214,7 @@ function openResearcherMaterialModal(trigger) {
   });
   text.textContent = d.materialSummary || d.materialDescription || '';
   const materialId = d.materialId || '';
-  if (translate) {
-    translate.hidden = !d.materialPdf;
-    if (d.materialPdf) {
-      translate.dataset.translateDocument = materialId;
-      translate.dataset.translatePdf = d.materialPdf;
-      translate.dataset.translateTitle = d.materialTitle || '';
-      translate.dataset.translateOriginalDownload = d.materialPdfDownload || d.materialPdf;
-    } else {
-      delete translate.dataset.translateDocument;
-      delete translate.dataset.translatePdf;
-      delete translate.dataset.translateTitle;
-      delete translate.dataset.translateOriginalDownload;
-    }
-  }
+  if (translate) translate.hidden = true; // أُزيلت الترجمة الآلية — شريط اللغة داخل القارئ يتولى النظائر والطلبات
   if (download) {
     download.hidden = !d.materialPdf;
     if (d.materialPdf) {

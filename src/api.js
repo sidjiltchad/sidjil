@@ -43,6 +43,12 @@ async function inQuery(db, table, ids, cols = '*') {
 export async function routeApi(req, env) {
   const url = new URL(req.url);
   const path = normPath(url.pathname);
+
+  // طلب ترجمة من قارئ (زر «اطلب ترجمة هذا الكتاب»)
+  if (req.method === 'POST' && path === '/api/v1/translation-requests') {
+    return apiTranslationRequest(req, env);
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (path.startsWith('/api/v1/') || path.startsWith('/file/') || path.startsWith('/discussion-file/')) {
       return err('الطريقة غير مدعومة', 405);
@@ -82,6 +88,9 @@ export async function routeApi(req, env) {
   m = rest.match(/^collections\/(\d+)$/);
   if (m) return apiCollection(env, parseInt(m[1], 10));
 
+  m = rest.match(/^materials\/(\d+)\/translations$/);
+  if (m) return apiMaterialTranslations(env, parseInt(m[1], 10));
+
   if (['people', 'places', 'sources', 'tags', 'collections'].includes(rest)) {
     return apiList(env, url, rest);
   }
@@ -110,6 +119,70 @@ async function serveDiscussionImage(env, id) {
   return new Response(object.body, { headers });
 }
 
+// ---------- طلبات الترجمة من القرّاء ----------
+
+/**
+ * POST /api/v1/translation-requests {material_id, source_file_id?, target_lang?}
+ * - يرفض الطلب إن وُجد نظير جاهز للملف.
+ * - يمنع التكرار (نفس المادة + IP خلال 30 يومًا) ويحد المعدل (5/يوم لكل IP).
+ */
+async function apiTranslationRequest(req, env) {
+  const db = env.DB;
+  let body;
+  try { body = await req.json(); } catch { return err('طلب غير صالح', 400); }
+  const materialId = parseInt(body.material_id, 10);
+  const fileId = body.source_file_id != null && body.source_file_id !== '' ? parseInt(body.source_file_id, 10) : null;
+  const targetLang = body.target_lang && ['ar', 'fr'].includes(body.target_lang) ? body.target_lang : null;
+  if (!Number.isFinite(materialId)) return err('المادة غير محددة', 400);
+  const mat = await db
+    .prepare("SELECT id FROM materials WHERE id = ? AND publish_status = 'published'")
+    .bind(materialId).first();
+  if (!mat) return err('المادة غير موجودة', 404);
+  if (Number.isFinite(fileId)) {
+    const has = await db
+      .prepare("SELECT id FROM file_translations WHERE source_file_id = ? AND status = 'ready'")
+      .bind(fileId).first();
+    if (has) return err('الترجمة متوفرة بالفعل لهذا الملف', 409);
+  }
+  const ip = req.headers.get('cf-connecting-ip')
+    || String(req.headers.get('x-forwarded-for') || '').split(',')[0].trim()
+    || 'unknown';
+  const dup = await db.prepare(
+    `SELECT id FROM translation_requests
+     WHERE material_id = ? AND status = 'new' AND requester_ip = ?
+       AND created_at >= datetime('now', '-30 days')
+       AND ((source_file_id = ?) OR (source_file_id IS NULL AND ? IS NULL))`
+  ).bind(materialId, ip, fileId, fileId).first();
+  if (dup) return json({ ok: true, duplicate: true });
+  const dayCount = await db.prepare(
+    "SELECT COUNT(*) AS c FROM translation_requests WHERE requester_ip = ? AND created_at >= datetime('now', '-1 day')"
+  ).bind(ip).first();
+  if (Number(dayCount?.c || 0) >= 5) return err('تجاوزت الحد اليومي لطلبات الترجمة', 429);
+  let requesterId = null;
+  try { const u = await getSessionUser(req, env); requesterId = u?.id || null; } catch {}
+  await db.prepare(
+    'INSERT INTO translation_requests (material_id, source_file_id, target_lang, requester_id, requester_ip) VALUES (?, ?, ?, ?, ?)'
+  ).bind(materialId, Number.isFinite(fileId) ? fileId : null, targetLang, requesterId, ip).run();
+  return json({ ok: true }, 201);
+}
+
+// ---------- نظائر ترجمة مادة (للقارئ) ----------
+async function apiMaterialTranslations(env, materialId) {
+  const db = env.DB;
+  const mat = await db
+    .prepare("SELECT id FROM materials WHERE id = ? AND publish_status = 'published'")
+    .bind(materialId).first();
+  if (!mat) return err('المادة غير موجودة', 404);
+  const rows = await db.prepare(
+    `SELECT ft.source_file_id, ft.source_lang, ft.target_lang, ft.translation_file_id,
+            f.filename AS translation_filename, f.size AS translation_size
+     FROM file_translations ft
+     JOIN files f ON f.id = ft.translation_file_id
+     WHERE ft.material_id = ? AND ft.status = 'ready'`
+  ).bind(materialId).all();
+  return json({ items: rows.results || [] });
+}
+
 // ---------- البحث العام ----------
 
 async function apiSearch(req, env, url) {
@@ -125,7 +198,6 @@ async function apiSearch(req, env, url) {
     tagId: sp.get('tagId') || undefined,
     sourceId: sp.get('sourceId') || undefined,
     collectionId: sp.get('collectionId') || undefined,
-    translationStatus: sp.get('translationStatus') || undefined,
     placeId: sp.get('placeId') || undefined,
     page: sp.get('page') || 1,
     perPage: sp.get('perPage') || 20,
