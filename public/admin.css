@@ -2141,3 +2141,16 @@ textarea { border-radius: var(--shape-control); }
   .health-coverage-row { grid-template-columns: minmax(105px, 1fr) minmax(70px, 1.1fr) 38px; gap: .45rem; font-size: .76rem; }
   .content-health-table { min-width: 720px; }
 }
+
+/* ---------- تبويبات إدارة الترجمة ---------- */
+.translation-admin-tabs { display: flex; align-items: stretch; gap: .45rem; margin: 1rem 0 .9rem; padding: .35rem; overflow-x: auto; border: 1px solid var(--line-soft); border-radius: var(--shape-card); background: color-mix(in srgb, var(--surface-2) 82%, var(--card)); scrollbar-width: thin; }
+.translation-admin-tab { display: inline-flex; align-items: center; justify-content: center; flex: 1 0 auto; min-height: 44px; padding: .65rem 1rem; border: 1px solid transparent; border-radius: var(--shape-control); color: var(--muted); background: transparent; font-size: .86rem; font-weight: 750; text-decoration: none; white-space: nowrap; transition: color var(--tr), background var(--tr), border-color var(--tr), box-shadow var(--tr); }
+.translation-admin-tab:hover { color: var(--teal); background: color-mix(in srgb, var(--teal-soft) 55%, transparent); text-decoration: none; }
+.translation-admin-tab.is-active { color: var(--teal); border-color: color-mix(in srgb, var(--teal) 28%, var(--line)); background: var(--card); box-shadow: 0 4px 14px rgba(31,66,118,.08); }
+.translation-admin-panels { min-width: 0; }
+.translation-tab-panel { margin-bottom: 1rem; }
+.translation-tab-panel[hidden] { display: none !important; }
+@media (max-width: 640px) {
+  .translation-admin-tabs { margin-inline: -.15rem; }
+  .translation-admin-tab { min-height: 40px; padding-inline: .75rem; font-size: .78rem; }
+}

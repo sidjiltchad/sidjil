@@ -877,6 +877,33 @@ document.addEventListener('DOMContentLoaded', () => {
     loadGlossary();
   }
 
+  // ---------- تبويبات إدارة الترجمة ----------
+  const translationTabs = document.querySelector('[data-translation-tabs]');
+  if (translationTabs) {
+    const tabLinks = Array.from(translationTabs.querySelectorAll('[data-translation-tab-link]'));
+    const tabPanels = Array.from(document.querySelectorAll('[data-translation-tab-panel]'));
+    const validTabs = new Set(tabLinks.map((link) => link.dataset.translationTabLink));
+    const activateTranslationTab = (id, updateUrl = true) => {
+      const next = validTabs.has(id) ? id : tabLinks[0]?.dataset.translationTabLink;
+      if (!next) return;
+      tabLinks.forEach((link) => {
+        const selected = link.dataset.translationTabLink === next;
+        link.classList.toggle('is-active', selected);
+        link.setAttribute('aria-selected', selected ? 'true' : 'false');
+      });
+      tabPanels.forEach((panel) => { panel.hidden = panel.dataset.translationTabPanel !== next; });
+      if (updateUrl) {
+        const href = tabLinks.find((link) => link.dataset.translationTabLink === next)?.href;
+        if (href) window.history.replaceState({}, '', href);
+      }
+    };
+    tabLinks.forEach((link) => link.addEventListener('click', (event) => {
+      event.preventDefault();
+      activateTranslationTab(link.dataset.translationTabLink);
+    }));
+    window.addEventListener('popstate', () => activateTranslationTab(new URL(window.location.href).searchParams.get('tab'), false));
+  }
+
   // ---------- إدارة ترجمة الكتب والوثائق ----------
   const translationManage = document.querySelector('[data-translation-manage]');
   if (translationManage) {
