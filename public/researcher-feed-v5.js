@@ -157,7 +157,9 @@ async function openResearcherMaterialModal(trigger) {
   media.textContent = '';
   // نافذة التفاصيل لا تحمل عارض PDF. يفتح القارئ الموحد من زر القراءة فقط.
   media.classList.remove('researcher-material-modal-pdf');
-  const isArchivalText = d.materialLevel === 'archival_text';
+  // data-material-level هو الاسم المعروض بالعربية، بينما يحتفظ
+  // data-material-materiallevel بالقيمة المنطقية اللازمة للتمييز البرمجي.
+  const isArchivalText = d.materialMateriallevel === 'archival_text' || d.materialLevel === 'archival_text';
   media.hidden = isArchivalText || !!d.materialPdf;
   if (!d.materialPdf && d.materialImage) {
     const image = document.createElement('img');
