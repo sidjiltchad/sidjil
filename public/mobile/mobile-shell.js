@@ -295,7 +295,7 @@ async function loadReader(id, source) {
   try {
     const material = await materialClient.getMaterial(id);
     readerHost.replaceChildren();
-    materialReader = await mountPdfReader(readerHost, { material, source, onBack: () => navigation.navigate({ name: 'material', id }) });
+    materialReader = await mountPdfReader(readerHost, { material, source, onBack: () => navigation.back() });
   } catch (cause) { readerHost.replaceChildren(); addText(readerHost, 'p', cause?.message || 'تعذر تشغيل قارئ PDF.', 'mobile-feed-status'); }
 }
 
@@ -445,7 +445,7 @@ shell?.addEventListener('click', event => {
   const material = event.target.closest('[data-material-id]');
   if (material?.dataset.materialId && !event.target.closest('button[data-profile-id]')) navigateToMaterial(navigation, material.dataset.materialId);
 });
-materialBack?.addEventListener('click', () => navigation.navigate('feed'));
+materialBack?.addEventListener('click', () => navigation.back());
 shell?.querySelectorAll('[data-feed-filter]').forEach(button => button.addEventListener('click', () => {
   activeFilter = button.dataset.feedFilter || 'discover';
   updateFilterButtons();

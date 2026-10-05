@@ -48,10 +48,13 @@ export async function mountPdfReader(container, { material, source = 'original',
   const canvas = document.createElement('canvas'); canvas.className = 'mobile-reader-canvas'; canvas.dir = 'ltr'; canvas.style.direction = 'ltr';
   pageWrap.append(canvas); stage.append(pageWrap); container.append(toolbar, status, stage);
   const zoomBar = document.createElement('div'); zoomBar.className = 'mobile-reader-zoom';
+  const previous = document.createElement('button'); previous.type = 'button'; previous.textContent = '‹'; previous.setAttribute('aria-label', 'الصفحة السابقة');
+  const next = document.createElement('button'); next.type = 'button'; next.textContent = '›'; next.setAttribute('aria-label', 'الصفحة التالية');
   const minus = document.createElement('button'); minus.type = 'button'; minus.textContent = '−'; minus.setAttribute('aria-label', 'تصغير');
   const pageLabel = document.createElement('span'); pageLabel.className = 'mobile-reader-page-label';
   const plus = document.createElement('button'); plus.type = 'button'; plus.textContent = '+'; plus.setAttribute('aria-label', 'تكبير');
-  zoomBar.append(minus, pageLabel, plus); container.append(zoomBar);
+  const fullscreen = document.createElement('button'); fullscreen.type = 'button'; fullscreen.textContent = '⛶'; fullscreen.setAttribute('aria-label', 'ملء الشاشة');
+  zoomBar.append(previous, minus, pageLabel, plus, next, fullscreen); container.append(zoomBar);
 
   function setStatus(message, error = false) { status.textContent = message; status.classList.toggle('is-error', error); status.hidden = !message; }
   function setActiveTabs() { originalTab.classList.toggle('is-active', currentSource === 'original'); translationTab.classList.toggle('is-active', currentSource === 'translation'); }
@@ -101,6 +104,9 @@ export async function mountPdfReader(container, { material, source = 'original',
   translationTab.addEventListener('click', () => openSource('translation'));
   minus.addEventListener('click', () => { zoom = Math.max(.5, zoom - .1); render().catch(() => {}); });
   plus.addEventListener('click', () => { zoom = Math.min(3, zoom + .1); render().catch(() => {}); });
+  previous.addEventListener('click', () => { if (pdf && currentPage > 1) { currentPage -= 1; render().catch(() => {}); } });
+  next.addEventListener('click', () => { if (pdf && currentPage < pdf.numPages) { currentPage += 1; render().catch(() => {}); } });
+  fullscreen.addEventListener('click', () => { const target = container.closest('.mobile-reader-host-view') || container; if (!document.fullscreenElement) target.requestFullscreen?.({ navigationUI: 'hide' }).catch?.(() => {}); else document.exitFullscreen?.().catch?.(() => {}); });
   stage.addEventListener('wheel', event => { if (!event.ctrlKey) return; event.preventDefault(); zoom = Math.max(.5, Math.min(3, zoom + (event.deltaY < 0 ? .1 : -.1))); render().catch(() => {}); }, { passive: false });
   const onResize = () => render().catch(() => {}); globalThis.addEventListener?.('resize', onResize);
   translationTab.disabled = !material.translations.some(isPdf);

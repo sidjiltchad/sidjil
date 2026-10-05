@@ -41,6 +41,7 @@ export function classifyNavigationUrl(value, appOrigin = 'https://app.sidjil.org
 
 export function createNavigation({ onRoute, historyLike = globalThis.history, locationLike = globalThis.location, windowLike = globalThis } = {}) {
   let current = parseRoute(locationLike?.hash || '');
+  const stack = [current];
   let started = false;
   const emit = () => { if (typeof onRoute === 'function') onRoute({ ...current }); };
   const onHistory = () => { current = parseRoute(locationLike?.hash || ''); emit(); };
@@ -64,9 +65,19 @@ export function createNavigation({ onRoute, historyLike = globalThis.history, lo
     } else current = ROUTES.has(next?.name) ? { name: next.name } : { name: 'feed' };
     const hash = current.name === 'profile' ? `#profile/${current.id}` : current.name === 'material' ? `#material/${current.id}` : current.name === 'reader' ? `#material/${current.id}/read/${current.source}` : `#${current.name}`;
     try { historyLike?.pushState?.({ route: current }, '', hash); } catch { /* embedded WebView fallback */ }
+    stack.push({ ...current });
     emit();
     return { ...current };
   }
-  return { start, navigate, getRoute: () => ({ ...current }) };
+  function back() {
+    if (stack.length > 1) stack.pop();
+    const previous = stack[stack.length - 1] || { name: 'feed' };
+    current = { ...previous };
+    const hash = current.name === 'profile' ? `#profile/${current.id}` : current.name === 'material' ? `#material/${current.id}` : current.name === 'reader' ? `#material/${current.id}/read/${current.source}` : `#${current.name}`;
+    try { historyLike?.replaceState?.({ route: current }, '', hash); } catch { /* embedded WebView fallback */ }
+    emit();
+    return { ...current };
+  }
+  return { start, navigate, back, getRoute: () => ({ ...current }) };
 }
 

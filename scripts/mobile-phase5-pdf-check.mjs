@@ -38,6 +38,7 @@ assert.equal(nav.parseRoute('#material/17/read/translation').source, 'translatio
 const navigation = nav.createNavigation({ locationLike: navSandbox.location, historyLike: navSandbox.history, windowLike: navSandbox.window });
 assert.equal(nav.navigateToMaterialReader(navigation, '17', 'translation').source, 'translation');
 assert.equal(navSandbox.location.hash, '#material/17/read/translation');
+assert.equal(navigation.back().name, 'feed');
 
 assert.match(readerSource, /pdfjsLib\.GlobalWorkerOptions\.workerSrc/);
 assert.match(readerSource, /standard_fonts/);
@@ -45,6 +46,11 @@ assert.match(readerSource, /cmaps/);
 assert.match(readerSource, /withCredentials: true/);
 assert.match(readerSource, /canvas\.setAttribute\('dir', 'ltr'\)/);
 assert.match(readerSource, /generation/);
+assert.match(readerSource, /الصفحة السابقة/);
+assert.match(readerSource, /الصفحة التالية/);
+assert.match(readerSource, /ملء الشاشة/);
+assert.ok(!readerSource.includes('تحميل الأصل'));
+assert.ok(!readerSource.includes('مشاركة'));
 assert.ok(!/\bfetch\s*\(/.test(readerSource));
 assert.ok(!readerSource.includes('innerHTML'));
 assert.match(shellSource, /createMaterialClient/);
