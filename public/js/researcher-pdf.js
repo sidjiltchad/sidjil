@@ -49,6 +49,22 @@ export async function mount(container, options = {}) {
   const originalTab = container.querySelector('[data-rpdf-tab="original"]'), translationTab = container.querySelector('[data-rpdf-tab="translation"]'), originalButton = container.querySelector('[data-rpdf-original]'), requestButton = container.querySelector('[data-rpdf-request]');
   const state = { doc: null, pagesObserver: null, currentObserver: null, cancelled: false, zoom: 1, renderedZoom: 1, activeTranslation: null, viewMode: 0, currentPage: 1, controlsTimer: null, docxHandles: {}, quote: null, pointers: new Map(), pinchDistance: 0, pinchZoom: 1, lastTap: 0 };
   const trs = Array.isArray(translations) ? translations.filter((x) => x?.translation_file_id) : [];
+  let fullscreenTarget = null;
+
+  function enterFullscreen() {
+    const target = surface;
+    if (!target || fullscreenTarget || document.fullscreenElement || typeof target.requestFullscreen !== 'function') return;
+    fullscreenTarget = target;
+    try {
+      const result = target.requestFullscreen({ navigationUI: 'hide' });
+      if (result?.catch) result.catch(() => { fullscreenTarget = null; });
+    } catch { fullscreenTarget = null; }
+  }
+
+  function exitFullscreen() {
+    if (fullscreenTarget && document.fullscreenElement === fullscreenTarget && typeof document.exitFullscreen === 'function') document.exitFullscreen().catch(() => {});
+    fullscreenTarget = null;
+  }
 
   function setControlsVisible(visible = true) { controls.classList.toggle('is-visible', visible); controls.setAttribute('aria-hidden', visible ? 'false' : 'true'); surface.classList.toggle('is-ui-visible', visible); if (!visible) { const menu = container.querySelector('[data-rpdf-lang-menu]'); if (menu) menu.hidden = true; } clearTimeout(state.controlsTimer); if (visible) state.controlsTimer = setTimeout(() => setControlsVisible(false), 3000); }
   function interaction() { setControlsVisible(true); }
@@ -92,6 +108,9 @@ export async function mount(container, options = {}) {
   function showLanguageMenu() { const menu = container.querySelector('[data-rpdf-lang-menu]'); menu.replaceChildren(); if (trs.length <= 1) { selectTranslation(trs[0]); return; } trs.forEach((item) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = LANG_NAMES[item.target_lang] || item.target_lang; b.addEventListener('click', () => { menu.hidden = true; selectTranslation(item); }); menu.appendChild(b); }); menu.hidden = false; setControlsVisible(true); }
   async function requestTranslation() { if (!materialId || requestButton.disabled) return; requestButton.disabled = true; try { const response = await fetch('/api/v1/translation-requests', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...(csrfToken() ? { 'X-CSRF-Token': csrfToken() } : {}) }, body: JSON.stringify({ material_id: Number(materialId), source_file_id: Number(fileId) || null }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'تعذّر إرسال طلب الترجمة'); requestButton.textContent = '✓'; requestButton.title = data.duplicate ? 'طلب الترجمة مسجل مسبقًا' : 'تم إرسال طلب الترجمة'; } catch (error) { requestButton.disabled = false; toast(error.message || 'تعذّر إرسال الطلب', false); } }
   originalScroll.addEventListener('scroll', interaction, { passive: true }); translationScroll.addEventListener('scroll', interaction, { passive: true });
+  const wakeReader = (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; interaction(); enterFullscreen(); };
+  surface.addEventListener('pointerdown', wakeReader, { passive: true });
+  surface.addEventListener('touchstart', wakeReader, { passive: true });
   stage.addEventListener('pointerup', (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; const now = Date.now(); if (now - state.lastTap < 320) { state.zoom = state.zoom === 1 ? 2 : 1; rerenderAfterZoom(true); } state.lastTap = now; interaction(); });
   stage.addEventListener('pointerdown', (event) => { state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (state.pointers.size === 2) { const [a, b] = [...state.pointers.values()]; state.pinchDistance = Math.hypot(a.x - b.x, a.y - b.y); state.pinchZoom = state.zoom; } });
   stage.addEventListener('pointermove', (event) => { if (!state.pointers.has(event.pointerId)) return; state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (state.pointers.size === 2) { const [a, b] = [...state.pointers.values()], distance = Math.hypot(a.x - b.x, a.y - b.y); if (state.pinchDistance > 0) { state.zoom = Math.max(.5, Math.min(4, state.pinchZoom * distance / state.pinchDistance)); rerenderAfterZoom(); } } });
@@ -104,10 +123,11 @@ export async function mount(container, options = {}) {
   container.querySelector('[data-rpdf-composer-close]')?.addEventListener('click', () => { container.querySelector('[data-rpdf-composer]').hidden = true; });
   container.querySelector('[data-rpdf-composer]').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget, submit = form.querySelector('[type=submit]'), fd = new FormData(form); submit.disabled = true; try { await api('/api/v1/admin/discussions', 'POST', { kind: fd.get('kind') || 'critique', title: String(fd.get('title') || '').trim(), body: String(fd.get('body') || '').trim(), material_id: materialId ? Number(materialId) : null, quote_text: state.quote?.text || null, page_no: state.quote?.page || null }); toast('نُشر النقاش مرتبطًا بالمقطع ورقم الصفحة'); form.hidden = true; form.reset(); hideQuote(); } catch (error) { toast(error.message || 'تعذّر النشر', false); } submit.disabled = false; });
   async function loadPdf() { try { state.doc = await pdfjsLib.getDocument({ url, withCredentials: true, ...PDF_OPTIONS }).promise; if (!state.cancelled) { errorEl.hidden = true; buildPages(); } } catch { errorEl.hidden = false; } }
-  function close() { if (state.cancelled) return; state.cancelled = true; state.pagesObserver?.disconnect(); state.currentObserver?.disconnect(); clearTimeout(state.controlsTimer); Object.values(state.docxHandles).forEach((handle) => { try { handle?.destroy?.(); } catch {} }); document.body.classList.remove('rpdf-reader-open'); container.remove(); if (window.__sidjilResearcherReaderClose === close) delete window.__sidjilResearcherReaderClose; }
+  function close() { if (state.cancelled) return; state.cancelled = true; state.pagesObserver?.disconnect(); state.currentObserver?.disconnect(); clearTimeout(state.controlsTimer); exitFullscreen(); Object.values(state.docxHandles).forEach((handle) => { try { handle?.destroy?.(); } catch {} }); document.body.classList.remove('rpdf-reader-open'); container.remove(); if (window.__sidjilResearcherReaderClose === close) delete window.__sidjilResearcherReaderClose; }
   container.querySelector('[data-rpdf-retry]').addEventListener('click', () => { errorEl.hidden = true; loadPdf(); });
   translationTab.disabled = !trs.length;
   if (!trs.length) requestButton.hidden = !materialId;
+  enterFullscreen();
   await loadPdf(); setControlsVisible(false); return { destroy: close, close };
 }
 
