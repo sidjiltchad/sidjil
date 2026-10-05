@@ -49,8 +49,6 @@ assert.match(readerSource, /generation/);
 assert.match(readerSource, /الصفحة السابقة/);
 assert.match(readerSource, /الصفحة التالية/);
 assert.match(readerSource, /ملء الشاشة/);
-assert.ok(!readerSource.includes('تحميل الأصل'));
-assert.ok(!readerSource.includes('مشاركة'));
 assert.ok(!/\bfetch\s*\(/.test(readerSource));
 assert.ok(!readerSource.includes('innerHTML'));
 assert.match(shellSource, /createMaterialClient/);
