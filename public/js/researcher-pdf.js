@@ -160,7 +160,12 @@ export async function mount(container, options = {}) {
   }
   else requestButton.hidden = !materialId;
   enterFullscreen();
-  await loadPdf(); setControlsVisible(false); return { destroy: close, close };
+  await loadPdf();
+  if (options.initialTranslationId) {
+    const initial = trs.find((item) => Number(item.translation_file_id) === Number(options.initialTranslationId));
+    if (initial) await selectTranslation(initial);
+  }
+  setControlsVisible(false); return { destroy: close, close };
 }
 
 async function openResearcherReader(options = {}) {

@@ -49,6 +49,44 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   var readingSyncBusy = false;
   var readingViewMode = 0; // 0 الأصل، 1 الترجمة، 2 العرض الثنائي
   var pdfLoadPromise = null;
+  var sharedReaderPromise = null;
+
+  function waitForSharedReader(timeout) {
+    timeout = timeout || 15000;
+    if (window.SidjilOpenDocumentReader) return Promise.resolve(window.SidjilOpenDocumentReader);
+    if (sharedReaderPromise) return sharedReaderPromise;
+    sharedReaderPromise = new Promise(function (resolve, reject) {
+      var started = Date.now();
+      var timer = setInterval(function () {
+        if (window.SidjilOpenDocumentReader) {
+          clearInterval(timer);
+          resolve(window.SidjilOpenDocumentReader);
+        } else if (Date.now() - started >= timeout) {
+          clearInterval(timer);
+          reject(new Error('تعذّر تحميل قارئ الموقع'));
+        }
+      }, 100);
+    });
+    return sharedReaderPromise;
+  }
+
+  function openSharedReader(initialTranslationId) {
+    var translations = [];
+    try { translations = JSON.parse(box.getAttribute('data-translation-files') || '[]'); } catch (e) { translations = []; }
+    var fileId = Number(box.getAttribute('data-pdf-file-id')) || null;
+    var title = box.getAttribute('data-material-title') || '';
+    var readerOptions = {
+      url: url,
+      pdf: url,
+      fileId: fileId,
+      materialId: Number(box.getAttribute('data-material-id')) || null,
+      materialTitle: title,
+      originalDownload: fileId ? '/file/' + fileId + '?download=1&watermark=1' : url,
+      translations: translations,
+      initialTranslationId: initialTranslationId || null,
+    };
+    return waitForSharedReader().then(function (open) { return open(readerOptions); });
+  }
 
   function showError() {
     errEl.classList.remove('hidden');
@@ -263,8 +301,16 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   });
   if (hasReadingMode) {
     readBtn.addEventListener('click', function () {
-      if (readingMode) leaveReadingMode();
-      else enterReadingMode();
+      // يستخدم الموقع العام القارئ الموحد نفسه لمساحة الباحث، مع إبقاء
+      // القارئ القديم كخطة رجوع إذا تعذر تحميل الوحدة المشتركة.
+      if (window.SidjilOpenDocumentReader || !readingMode) {
+        openSharedReader().catch(function () {
+          if (readingMode) leaveReadingMode();
+          else enterReadingMode();
+        });
+      } else {
+        leaveReadingMode();
+      }
     });
     if (readingClose) readingClose.addEventListener('click', leaveReadingMode);
   }
@@ -412,6 +458,11 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
   toggleBtns.forEach(function (btn) {
     btn.setAttribute('aria-pressed', 'false');
     btn.addEventListener('click', async function () {
+      if (window.SidjilOpenDocumentReader || sharedReaderPromise) {
+        var translationId = (btn.getAttribute('data-docx') || '').match(/\/file\/(\d+)/);
+        openSharedReader(translationId ? Number(translationId[1]) : null).catch(function () { showDocx(btn); });
+        return;
+      }
       var wasActive = activeDocxBtn === btn;
       await showDocx(btn);
       if (readingMode) await setReadingView(wasActive ? 0 : 2);

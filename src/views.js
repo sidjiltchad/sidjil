@@ -115,6 +115,7 @@ ${ogUrl}
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css?v=20261011-reader-layout-fix">
+<link rel="stylesheet" href="/rpdf-reader.css?v=20261011-shared-reader">
 </head>`;
 }
 
@@ -790,10 +791,15 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
   }).join('');
   const requestBtn = counterparts.length ? '' :
     `<button type="button" class="btn btn-small btn-ghost" data-request-translation data-material-id="${esc(String(materialId))}" data-file-id="${esc(String(pf.id))}">${esc(t(lang, 'request_translation'))}</button>`;
+  const sharedTranslations = counterparts.map((c) => ({
+    translation_file_id: Number(c.translation_file_id),
+    target_lang: c.target_lang,
+    source_lang: c.source_lang || '',
+  }));
   return `
     <section class="doc-section" id="pdfViewer">
       <h2 class="doc-section-title">${esc(t(lang, 'pdf_viewer_label'))}</h2>
-      <div class="pdf-viewer" id="pdfViewerBox" data-pdf="/file/${pf.id}" data-pdf-file-id="${esc(String(pf.id))}" data-material-id="${esc(String(materialId))}">
+      <div class="pdf-viewer" id="pdfViewerBox" data-pdf="/file/${pf.id}" data-pdf-file-id="${esc(String(pf.id))}" data-material-id="${esc(String(materialId))}" data-material-title="${esc(documentTitle)}" data-translation-files="${esc(JSON.stringify(sharedTranslations))}">
         <div class="pdf-toolbar" role="toolbar" aria-label="${esc(t(lang, 'pdf_viewer_label'))}">
           <button type="button" class="btn btn-small" data-pdf-prev>${esc(t(lang, 'prev'))}</button>
           <span class="pdf-pageinfo"><span data-pdf-num>1</span> / <span data-pdf-count>…</span></span>
@@ -806,7 +812,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
           <button type="button" class="btn btn-small btn-primary" data-pdf-read data-read-label="${esc(t(lang, 'read_full_book'))}" data-close-label="${esc(t(lang, 'close_full_book'))}">${esc(t(lang, 'read_full_book'))}</button>
           ${toggleBtns}
           ${requestBtn}
-          <a class="btn btn-small btn-ghost" href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a>
+          <a class="btn btn-small btn-ghost" href="/file/${pf.id}?download=1&watermark=1">${esc(t(lang, 'download_original'))}</a>
         </div>
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap"><canvas data-pdf-canvas></canvas></div>
         <div class="docx-view hidden" data-docx-view aria-live="polite"></div>
@@ -829,10 +835,11 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
             </section>
           </div>
         </div>
-        <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a></p>
+        <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1&watermark=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
-    <script type="module" src="/js/pdf-viewer.js?v=20261011-reader-view-cycle"></script>
+    <script type="module" src="/js/researcher-pdf.js?v=20261011-shared-public-reader"></script>
+    <script type="module" src="/js/pdf-viewer.js?v=20261011-shared-public-reader"></script>
     <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
     <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
     <script src="/js/docx-reader.js?v=20261008-cache-safe" defer></script>`;
