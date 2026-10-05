@@ -1807,7 +1807,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
       const writeFullscreenPreference = (active) => {
         const value = active ? '1' : '0';
         try { localStorage.setItem(fullscreenPreferenceKey, value); } catch {}
-        try { document.cookie = `${fullscreenPreferenceKey}=${value}; Max-Age=31536000; Path=/; SameSite=Lax`; } catch {}
+        try { document.cookie = fullscreenPreferenceKey + '=' + value + '; Max-Age=31536000; Path=/; SameSite=Lax'; } catch {}
       };
       let fallbackFullscreen = readFullscreenPreference();
       let nativeFullscreenStarted = false;
