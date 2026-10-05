@@ -50,7 +50,9 @@ button { cursor: pointer; }
 .mobile-app-view { display: block; }
 .mobile-view[hidden], [hidden] { display: none !important; }
 .mobile-feed-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
+.mobile-feed-heading-actions { display: flex; align-items: center; gap: .5rem; }
 .mobile-session-chip { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9c7df; font-size: .83rem; }
+.mobile-refresh { width: 2.35rem; height: 2.35rem; border: 1px solid rgba(255,255,255,.15); border-radius: 50%; background: rgba(255,255,255,.07); color: #ffd879; font-size: 1.35rem; line-height: 1; }
 .mobile-feed-filters { display: flex; gap: .45rem; overflow-x: auto; padding: 1.1rem 0 .7rem; scrollbar-width: none; }
 .mobile-feed-filters::-webkit-scrollbar { display: none; }
 .mobile-feed-filters button { flex: 0 0 auto; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; padding: .48rem .85rem; background: rgba(255,255,255,.06); color: #b9c7df; }

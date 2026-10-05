@@ -9,6 +9,19 @@ export function parseRoute(hash = '') {
   return ROUTES.has(value) ? { name: value } : { name: 'feed' };
 }
 
+export function navigateToResearcherProfile(navigation, id) {
+  return navigation?.navigate?.({ name: 'profile', id });
+}
+
+export function classifyNavigationUrl(value, appOrigin = 'https://app.sidjil.org') {
+  try {
+    const url = new URL(String(value || ''), appOrigin);
+    const app = new URL(appOrigin);
+    if (!/^https?:$/.test(url.protocol)) return 'invalid';
+    return url.origin === app.origin ? 'internal' : 'external';
+  } catch { return 'invalid'; }
+}
+
 export function createNavigation({ onRoute, historyLike = globalThis.history, locationLike = globalThis.location, windowLike = globalThis } = {}) {
   let current = parseRoute(locationLike?.hash || '');
   const emit = () => { if (typeof onRoute === 'function') onRoute({ ...current }); };

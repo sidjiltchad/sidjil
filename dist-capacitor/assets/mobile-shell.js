@@ -3,7 +3,7 @@ import { resolveAppUrl } from './api-base.js';
 import { ApiError } from './api-client.js';
 import { getSession, login, logout } from './auth.js';
 import { createResearcherFeedClient } from './researcher-feed.js';
-import { createNavigation } from './navigation.js';
+import { createNavigation, navigateToResearcherProfile } from './navigation.js';
 
 const shell = document.querySelector('[data-mobile-shell]');
 const runtimeEl = shell?.querySelector('[data-runtime]');
@@ -24,6 +24,7 @@ const feedList = shell?.querySelector('[data-feed-list]');
 const feedStatus = shell?.querySelector('[data-feed-status]');
 const loadMoreButton = shell?.querySelector('[data-load-more]');
 const bottomNav = shell?.querySelector('.mobile-bottom-nav');
+const refreshButton = shell?.querySelector('[data-refresh]');
 const feedClient = createResearcherFeedClient();
 let activeFilter = 'discover';
 let feedRequestPending = false;
@@ -106,6 +107,9 @@ function addText(parent, tag, text, className = '') {
   const node = document.createElement(tag);
   if (className) node.className = className;
   node.textContent = text;
+  if (className === 'mobile-feed-title' || className === 'mobile-feed-excerpt') {
+    node.dir = /[\u0600-\u06ff]/u.test(String(text || '')) ? 'rtl' : 'ltr';
+  }
   parent.append(node);
   return node;
 }
@@ -222,7 +226,7 @@ const navigation = createNavigation({ onRoute: renderRoute });
 shell?.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigation.navigate(button.dataset.route)));
 shell?.addEventListener('click', event => {
   const author = event.target.closest('[data-profile-id]');
-  if (author?.dataset.profileId) navigation.navigate({ name: 'profile', id: author.dataset.profileId });
+  if (author?.dataset.profileId) navigateToResearcherProfile(navigation, author.dataset.profileId);
 });
 shell?.querySelectorAll('[data-feed-filter]').forEach(button => button.addEventListener('click', () => {
   activeFilter = button.dataset.feedFilter || 'discover';
@@ -231,6 +235,7 @@ shell?.querySelectorAll('[data-feed-filter]').forEach(button => button.addEventL
   loadFeed({ reset: true });
 }));
 loadMoreButton?.addEventListener('click', () => loadFeed({ reset: false }));
+refreshButton?.addEventListener('click', () => loadFeed({ reset: true }));
 function retry() {
   if (!navigator.onLine) return showOfflineState();
   bootstrapSession();

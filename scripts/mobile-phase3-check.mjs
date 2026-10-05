@@ -33,12 +33,22 @@ assert.equal(calls[1].path, '/researcher/feed?feed=latest&limit=18&format=json&c
 assert.equal(state.items.length, 1);
 assert.equal(sandbox.__feed.mergeFeedItems([{ id: 1, kind: 'material' }], [{ id: 1, kind: 'material' }, { id: 2, kind: 'material' }]).length, 2);
 
-const navSandbox = { history: { pushState(_state, _title, hash) { navSandbox.location.hash = hash; } }, location: { hash: '' }, window: { addEventListener() {}, removeEventListener() {} } };
+const navSandbox = { URL, history: { pushState(_state, _title, hash) { navSandbox.location.hash = hash; } }, location: { hash: '' }, window: { addEventListener() {}, removeEventListener() {} } };
 navSandbox.globalThis = navSandbox;
-vm.runInNewContext(navigationSource.replace(/^export /gm, '') + '\nthis.__nav = { parseRoute, createNavigation };', navSandbox);
+vm.runInNewContext(navigationSource.replace(/^export /gm, '') + '\nthis.__nav = { parseRoute, createNavigation, navigateToResearcherProfile, classifyNavigationUrl };', navSandbox);
 assert.equal(navSandbox.__nav.parseRoute('#profile/12').name, 'profile');
 assert.equal(navSandbox.__nav.parseRoute('#profile/12').id, '12');
 assert.equal(navSandbox.__nav.parseRoute('#unknown').name, 'feed');
+assert.equal(navSandbox.__nav.classifyNavigationUrl('/researcher/profile/2'), 'internal');
+assert.equal(navSandbox.__nav.classifyNavigationUrl('https://example.com'), 'external');
+assert.equal(navSandbox.__nav.classifyNavigationUrl('javascript:alert(1)'), 'invalid');
+assert.equal(sandbox.__feed.normalizeFeedResponse({ html: '<script>alert(1)</script>' }).items.length, 0);
+assert.equal(sandbox.__feed.normalizeFeedResponse(null).hasMore, false);
+assert.ok(shellSource.includes('textContent'));
+assert.doesNotMatch(shellSource, /innerHTML/);
+assert.ok(shellSource.includes('data-refresh'));
+assert.ok(shellSource.includes('NETWORK_ERROR'));
+assert.ok(shellSource.includes('AUTH_REQUIRED'));
 
 assert.match(shellSource, /createResearcherFeedClient/);
 assert.match(shellSource, /createNavigation/);
