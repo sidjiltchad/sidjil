@@ -378,6 +378,9 @@ export async function routeAdminApi(req, env) {
   m = rest.match(/^glossary\/(\d+)$/);
   if (m && method === 'DELETE') return admGlossaryDelete(env, user, req, parseInt(m[1], 10));
 
+  // ---------- هجرة مؤقتة لمرة واحدة (0035) — تُحذف بعد التطبيق ----------
+  if (rest === '_migrate-0035' && method === 'GET') return admMigrate0035(env, user, req);
+
   // ---------- قسم الترجمة الجديد: نظائر Word ----------
   if (rest === 'translations/overview' && method === 'GET') return admTranslationOverview(env, url);
   if (rest === 'translations/upload' && method === 'POST') return admTranslationUpload(env, user, req);
@@ -1243,6 +1246,65 @@ async function admRelationCreate(env, user, req, idOrArk, body) {
   return json({ ok: true }, 201);
 }
 
+
+// ============================================================
+// هجرة 0035 لمرة واحدة عبر المتصفح (مؤقتة — تُحذف بعد التطبيق)
+// تتطلب جلسة إدارة صالحة. آمنة عند التكرار.
+// ============================================================
+async function admMigrate0035(env, user, req) {
+  const db = env.DB;
+  const results = [];
+  async function run(label, sql) {
+    try {
+      await db.prepare(sql).run();
+      results.push({ label, ok: true });
+    } catch (e) {
+      results.push({ label, ok: false, error: String(e.message || e).slice(0, 200) });
+    }
+  }
+  await run('files.lang', "ALTER TABLE files ADD COLUMN lang TEXT NOT NULL DEFAULT 'undetermined'");
+  await run('file_translations', `CREATE TABLE IF NOT EXISTS file_translations (
+    id INTEGER PRIMARY KEY,
+    material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    source_file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    source_lang TEXT NOT NULL,
+    target_lang TEXT NOT NULL,
+    translation_file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'ready',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(source_file_id, target_lang)
+  )`);
+  await run('idx_file_translations_material', 'CREATE INDEX IF NOT EXISTS idx_file_translations_material ON file_translations(material_id)');
+  await run('idx_file_translations_source', 'CREATE INDEX IF NOT EXISTS idx_file_translations_source ON file_translations(source_file_id)');
+  await run('translation_requests', `CREATE TABLE IF NOT EXISTS translation_requests (
+    id INTEGER PRIMARY KEY,
+    material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    source_file_id INTEGER REFERENCES files(id) ON DELETE SET NULL,
+    target_lang TEXT,
+    requester_id INTEGER,
+    requester_ip TEXT,
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
+  await run('idx_translation_requests_status', 'CREATE INDEX IF NOT EXISTS idx_translation_requests_status ON translation_requests(status, created_at)');
+  for (const t of ['translation_segments', 'translation_events', 'translation_usage', 'translation_text_cache', 'translation_settings', 'translation_jobs', 'translations']) {
+    await run('drop ' + t, `DROP TABLE IF EXISTS ${t}`);
+  }
+  const check = await db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('file_translations','translation_requests','translations','translation_jobs')"
+  ).all();
+  const names = (check.results || []).map((r) => r.name);
+  const langCol = await db.prepare("SELECT COUNT(*) AS c FROM pragma_table_info('files') WHERE name='lang'").first();
+  await audit(db, { userId: user.id, action: 'db.migrate_0035', target: 'production', ip: clientIp(req) });
+  return json({
+    ok: names.includes('file_translations') && names.includes('translation_requests')
+      && !names.includes('translations') && !names.includes('translation_jobs')
+      && Number(langCol?.c || 0) === 1,
+    steps: results,
+    tables: names,
+  });
+}
 
 // ============================================================
 // قسم الترجمة الجديد: نظائر Word مرفوعة يدويًا
