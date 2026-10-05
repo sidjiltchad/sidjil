@@ -832,7 +832,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
         <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
-    <script type="module" src="/js/pdf-viewer.js?v=20261006-docx-ready"></script>
+    <script type="module" src="/js/pdf-viewer.js?v=20261009-bilingual-reader"></script>
     <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
     <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
     <script src="/js/docx-reader.js?v=20261008-cache-safe" defer></script>`;
