@@ -16,5 +16,8 @@
     "test:smoke": "node scripts/smoke-test.mjs",
     "telegram:setup": "node scripts/telegram-setup.mjs"
   },
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  }
 }

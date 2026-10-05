@@ -4,6 +4,7 @@
 // ============================================================
 
 import { TYPE_DIRS } from './db.js';
+import { addSidjilWatermark } from './pdf-watermark.js';
 
 /** الحد الأقصى لحجم الرفع: 100MB */
 export const MAX_UPLOAD = 100 * 1024 * 1024;
@@ -116,7 +117,7 @@ export async function putUpload(env, { materialId, ark, type }, file, kind = 'or
  * - يتحقق أن المادة منشورة (published) ما لم تكن الجلسة إدارية
  * - download=1 → Content-Disposition: attachment
  */
-export async function serveFile(env, fileId, { download = false, admin = false } = {}) {
+export async function serveFile(env, fileId, { download = false, admin = false, watermark = false } = {}) {
   const file = await env.DB.prepare('SELECT * FROM files WHERE id = ?').bind(fileId).first();
   if (!file) {
     return jsonError('الملف غير موجود', 404);
@@ -142,17 +143,30 @@ export async function serveFile(env, fileId, { download = false, admin = false }
     return jsonError('الملف غير موجود في التخزين', 404);
   }
 
-  const headers = new Headers();
   const contentType = file.mime || obj.httpMetadata?.contentType || 'application/octet-stream';
+  let body = obj.body;
+  let bodySize = obj.size;
+  const isPdf = /^application\/pdf$/i.test(contentType) || /\.pdf$/i.test(file.filename || '');
+  if (watermark && isPdf) {
+    try {
+      const stamped = await addSidjilWatermark(await obj.arrayBuffer());
+      body = stamped;
+      bodySize = stamped.byteLength;
+    } catch {
+      return jsonError('تعذّر تجهيز نسخة PDF المصدّرة', 500);
+    }
+  }
+
+  const headers = new Headers();
   headers.set('Content-Type', contentType);
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable'); // المفاتيح مُعنوَنة بالبصمة
-  if (obj.size != null) headers.set('Content-Length', String(obj.size));
+  headers.set('Cache-Control', watermark ? 'private, no-store' : 'public, max-age=31536000, immutable'); // المفاتيح مُعنوَنة بالبصمة
+  if (bodySize != null) headers.set('Content-Length', String(bodySize));
   if (download) {
     const asciiName = safeName(file.filename).replace(/[^\x20-\x7E]/g, '_') || 'file';
     headers.set('Content-Disposition', `attachment; filename="${asciiName}"`);
   }
 
-  return new Response(obj.body, { status: 200, headers });
+  return new Response(body, { status: 200, headers });
 }
 
 function jsonError(message, status) {

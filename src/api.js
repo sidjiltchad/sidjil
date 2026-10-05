@@ -57,6 +57,8 @@ export async function routeApi(req, env) {
     const user = await getSessionUser(req, env);
     return serveFile(env, parseInt(m[1], 10), {
       download: url.searchParams.get('download') === '1',
+      // كل تنزيل PDF يمر عبر نسخة تحمل علامة سِجِل المائية.
+      watermark: url.searchParams.get('watermark') === '1' || url.searchParams.get('download') === '1',
       // لا يكفي وجود جلسة؛ الباحث لا يتجاوز حالة النشر.
       admin: Boolean(user && (user.role === 'admin' || Number(user.is_super_admin) === 1)),
     });

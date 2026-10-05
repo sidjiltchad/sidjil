@@ -29,7 +29,7 @@ export async function mount(container, options = {}) {
             <button type="button" class="rpdf-reader-tab is-active" data-rpdf-tab="original" role="tab" aria-selected="true">الأصل</button>
           </div>
           <div class="rpdf-reader-tab-slot">
-            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="translation" aria-label="تحميل الترجمة" title="تحميل الترجمة" href="#" download hidden>↓</a>
+            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="translation" aria-label="تصدير الترجمة PDF" title="تصدير الترجمة PDF" href="#" hidden>↓</a>
             <button type="button" class="rpdf-reader-tab" data-rpdf-tab="translation" role="tab" aria-selected="false">الترجمة</button>
           </div>
         </div>
@@ -83,6 +83,28 @@ export async function mount(container, options = {}) {
     translationTab.setAttribute('aria-selected', hasTranslation ? 'true' : 'false');
   }
   function setDirection(lang) { const rtl = lang === 'ar'; translationPane.dir = rtl ? 'rtl' : 'ltr'; docxView.dir = rtl ? 'rtl' : 'ltr'; docxView.lang = lang || ''; translationTab.textContent = `الترجمة · ${LANG_NAMES[lang] || lang}`; }
+  function exportTranslationPdf() {
+    if (!state.activeTranslation || !docxView || !docxView.textContent.trim()) { toast('لم تكتمل الترجمة بعد', false); return; }
+    const popup = window.open('', '_blank');
+    if (!popup) { toast('اسمح بفتح نافذة التصدير لإنشاء PDF', false); return; }
+    const lang = state.activeTranslation.target_lang || 'ar';
+    const rtl = lang === 'ar';
+    const title = escapeHtml(materialTitle || 'ترجمة سِجِل');
+    const content = docxView.innerHTML;
+    const logo = `${location.origin}/sidjil-logo.png`;
+    popup.document.open();
+    popup.document.write(`<!doctype html><html lang="${escapeHtml(lang)}" dir="${rtl ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><title>${title}</title><style>
+      @page{size:auto;margin:18mm 16mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#172033}
+      body{font-family:"Noto Naskh Arabic","Noto Sans Arabic",Tahoma,Arial,sans-serif;line-height:1.9;font-size:16px;direction:${rtl ? 'rtl' : 'ltr'}}
+      main{position:relative;z-index:1;max-width:190mm;margin:0 auto;white-space:normal;overflow-wrap:anywhere}
+      main h1,main h2,main h3,main h4{font-weight:800;line-height:1.45;margin:1.3em 0 .55em;break-after:avoid}
+      main p{margin:.55em 0;text-align:justify}main table{max-width:100%;border-collapse:collapse}main img{max-width:100%;height:auto}
+      .watermark{position:fixed;z-index:0;inset:0;display:grid;place-items:center;pointer-events:none}
+      .watermark img{width:50%;max-width:105mm;height:auto;opacity:.16}
+      @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.watermark{position:fixed}}
+    </style></head><body><div class="watermark"><img src="${logo}" alt=""></div><main>${content}</main><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350));</script></body></html>`);
+    popup.document.close();
+  }
   function setPage(page) { if (state.doc) state.currentPage = Math.min(state.doc.numPages, Math.max(1, page)); }
   function clearRenderedPages() { pagesEl.querySelectorAll('.rpdf-page').forEach((box) => { const canvas = box.querySelector('canvas'); const text = box.querySelector('.rpdf-textlayer'); if (canvas) { canvas.width = 0; canvas.height = 0; canvas.removeAttribute('data-rendered'); } if (text) text.replaceChildren(); }); }
   async function renderPage(pageNo, box) {
@@ -106,9 +128,9 @@ export async function mount(container, options = {}) {
     if (state.docxHandles[docxUrl]) { docxView.classList.remove('is-loading'); return; }
     docxView.innerHTML = '<p class="docx-loading muted">جارٍ تحميل الترجمة…</p>';
     try { const reader = await waitForDocxReader(); state.docxHandles[docxUrl] = await reader.mount(docxView, { url: docxUrl, lang: item.target_lang || 'ar', textOnly: true }); docxView.classList.remove('is-loading'); }
-    catch { docxView.classList.remove('is-loading'); docxView.innerHTML = `<p class="docx-error">تعذّر عرض الترجمة داخل المتصفح. <a href="${escapeHtml(docxUrl)}?download=1">تنزيل ملف الترجمة</a> <button type="button" data-rpdf-translation-retry>إعادة المحاولة</button></p>`; docxView.querySelector('[data-rpdf-translation-retry]')?.addEventListener('click', () => { delete state.docxHandles[docxUrl]; loadTranslation(item); }); }
+    catch { docxView.classList.remove('is-loading'); docxView.innerHTML = `<p class="docx-error">تعذّر عرض الترجمة داخل المتصفح. <button type="button" data-rpdf-translation-retry>إعادة المحاولة</button></p>`; docxView.querySelector('[data-rpdf-translation-retry]')?.addEventListener('click', () => { delete state.docxHandles[docxUrl]; loadTranslation(item); }); }
   }
-  async function selectTranslation(item) { if (!item) return; state.activeTranslation = item; state.viewMode = 1; translationDownloadLink.href = `/file/${item.translation_file_id}?download=1`; translationDownloadLink.hidden = false; updateLayout(); await loadTranslation(item); setControlsVisible(true); }
+  async function selectTranslation(item) { if (!item) return; state.activeTranslation = item; state.viewMode = 1; translationDownloadLink.href = '#'; translationDownloadLink.hidden = false; updateLayout(); await loadTranslation(item); setControlsVisible(true); }
   function showLanguageMenu() { const menu = container.querySelector('[data-rpdf-lang-menu]'); menu.replaceChildren(); if (trs.length <= 1) { selectTranslation(trs[0]); return; } trs.forEach((item) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = LANG_NAMES[item.target_lang] || item.target_lang; b.addEventListener('click', () => { menu.hidden = true; selectTranslation(item); }); menu.appendChild(b); }); menu.hidden = false; setControlsVisible(true); }
   async function requestTranslation() { if (!materialId || requestButton.disabled) return; requestButton.disabled = true; try { const response = await fetch('/api/v1/translation-requests', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...(csrfToken() ? { 'X-CSRF-Token': csrfToken() } : {}) }, body: JSON.stringify({ material_id: Number(materialId), source_file_id: Number(fileId) || null }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'تعذّر إرسال طلب الترجمة'); requestButton.textContent = '✓'; requestButton.title = data.duplicate ? 'طلب الترجمة مسجل مسبقًا' : 'تم إرسال طلب الترجمة'; } catch (error) { requestButton.disabled = false; toast(error.message || 'تعذّر إرسال الطلب', false); } }
   originalScroll.addEventListener('scroll', interaction, { passive: true }); translationScroll.addEventListener('scroll', interaction, { passive: true });
@@ -129,9 +151,13 @@ export async function mount(container, options = {}) {
   async function loadPdf() { try { state.doc = await pdfjsLib.getDocument({ url, withCredentials: true, ...PDF_OPTIONS }).promise; if (!state.cancelled) { errorEl.hidden = true; buildPages(); } } catch { errorEl.hidden = false; } }
   function close() { if (state.cancelled) return; state.cancelled = true; state.pagesObserver?.disconnect(); state.currentObserver?.disconnect(); clearTimeout(state.controlsTimer); exitFullscreen(); Object.values(state.docxHandles).forEach((handle) => { try { handle?.destroy?.(); } catch {} }); document.body.classList.remove('rpdf-reader-open'); container.remove(); if (window.__sidjilResearcherReaderClose === close) delete window.__sidjilResearcherReaderClose; }
   container.querySelector('[data-rpdf-retry]').addEventListener('click', () => { errorEl.hidden = true; loadPdf(); });
-  originalDownloadLink.href = originalDownload || url;
+  originalDownloadLink.href = `${originalDownload || url}${String(originalDownload || url).includes('?') ? '&' : '?'}download=1&watermark=1`;
   translationTab.disabled = !trs.length;
-  if (trs.length) { translationDownloadLink.href = `/file/${trs[0].translation_file_id}?download=1`; translationDownloadLink.hidden = false; }
+  if (trs.length) {
+    translationDownloadLink.href = '#';
+    translationDownloadLink.hidden = false;
+    translationDownloadLink.addEventListener('click', (event) => { event.preventDefault(); exportTranslationPdf(); });
+  }
   else requestButton.hidden = !materialId;
   enterFullscreen();
   await loadPdf(); setControlsVisible(false); return { destroy: close, close };

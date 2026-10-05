@@ -1738,7 +1738,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
 <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
 <script src="/js/docx-reader.js?v=20261011-text-reader" defer></script>
-<script type="module" src="/js/researcher-pdf.js?v=20261011-researcher-reader-tab-downloads"></script>
+<script type="module" src="/js/researcher-pdf.js?v=20261011-researcher-reader-pdf-export"></script>
 <script src="/researcher-feed-v5.js?v=20261004-reader-flow-v1" defer></script>
 
 <script>

@@ -9,6 +9,7 @@ import { renderAdmin, renderResearcher } from './admin-views.js';
 import { getSessionUser, setSessionCookie } from './lib/auth.js';
 import { rateLimitCheck, rateLimitResponse } from './lib/ratelimit.js';
 import { googleStart, googleCallback } from './lib/google-auth.js';
+import { addSidjilWatermark } from './lib/pdf-watermark.js';
 
 function json404() {
   return new Response(JSON.stringify({ error: 'غير موجود' }), {
@@ -116,19 +117,32 @@ async function handleRequest(request, env, ctx) {
       const object = await env.FILES.get(issue.r2_key, request.headers.has('range') ? { range: request.headers } : undefined);
       if (!object) return new Response('غير موجود', { status: 404 });
       const disposition = new URL(request.url).searchParams.has('download') ? 'attachment' : 'inline';
+      let body = object.body;
+      let bodySize = object.size;
+      const shouldWatermark = url.searchParams.has('download') || url.searchParams.get('watermark') === '1';
+      // النسخة المصدّرة فقط تُختم؛ القراءة العادية تبقى قابلة للـ Range وPDF.js.
+      if (shouldWatermark && !request.headers.has('range')) {
+        try {
+          const stamped = await addSidjilWatermark(await object.arrayBuffer());
+          body = stamped;
+          bodySize = stamped.byteLength;
+        } catch {
+          return new Response('تعذّر تجهيز نسخة PDF المصدّرة', { status: 500 });
+        }
+      }
       const headers = new Headers({
         'Content-Type': 'application/pdf',
         'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(issue.filename)}`,
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': shouldWatermark ? 'private, no-store' : 'public, max-age=3600',
         'X-Content-Type-Options': 'nosniff',
         'Accept-Ranges': 'bytes',
       });
-      if (object.size != null) headers.set('Content-Length', String(object.size));
+      if (bodySize != null) headers.set('Content-Length', String(bodySize));
       if (object.range) {
         headers.set('Content-Range', `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${issue.size}`);
         return new Response(object.body, { status: 206, headers });
       }
-      return new Response(object.body, { headers });
+      return new Response(body, { headers });
     }
 
     // app.sidjil.org is the isolated researcher application. Its entry points
