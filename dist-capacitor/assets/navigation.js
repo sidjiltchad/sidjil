@@ -24,9 +24,12 @@ export function classifyNavigationUrl(value, appOrigin = 'https://app.sidjil.org
 
 export function createNavigation({ onRoute, historyLike = globalThis.history, locationLike = globalThis.location, windowLike = globalThis } = {}) {
   let current = parseRoute(locationLike?.hash || '');
+  let started = false;
   const emit = () => { if (typeof onRoute === 'function') onRoute({ ...current }); };
   const onHistory = () => { current = parseRoute(locationLike?.hash || ''); emit(); };
   function start() {
+    if (started) { emit(); return () => {}; }
+    started = true;
     windowLike?.addEventListener?.('popstate', onHistory);
     windowLike?.addEventListener?.('hashchange', onHistory);
     emit();
