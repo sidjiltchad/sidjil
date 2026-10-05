@@ -286,10 +286,10 @@ function withSecurityHeaders(response) {
     "frame-ancestors 'self'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    "connect-src 'self' https://api.cloudflare.com https://*.sidjil.org",
+    "connect-src 'self' https://api.cloudflare.com https://*.sidjil.org https://cloudflareinsights.com https://*.cloudflareinsights.com",
     "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
     "object-src 'self' blob:"
   ].join('; '));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
