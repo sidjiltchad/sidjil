@@ -1993,6 +1993,61 @@ function researcherMaterialCard(m, feed, verified) {
   </article>`;
 }
 
+// تمثيل JSON صغير لموجز تطبيق الباحث. يبقى HTML السابق للويب، بينما يستخدم
+// الـShell هذا الشكل دون إعادة تفسير HTML قادم من الخادم.
+function researcherMaterialFeedItem(m) {
+  const creatorId = Number(m.creator_id) || 0;
+  const title = m.title_ar || m.title_orig || m.ark || 'مادة بلا عنوان';
+  return {
+    kind: 'material',
+    id: Number(m.id) || 0,
+    ark: String(m.ark || ''),
+    type: String(m.type || ''),
+    materialLevel: String(m.material_level || ''),
+    title: String(title),
+    titleOriginal: String(m.title_orig || ''),
+    description: String(m.description || ''),
+    summary: String(m.summary || ''),
+    year: m.year == null ? '' : String(m.year),
+    dateText: String(m.date_text || ''),
+    author: String(m.author || ''),
+    photographer: String(m.photographer || ''),
+    archiveRef: String(m.archive_ref || ''),
+    updatedAt: String(m.updated_at || ''),
+    approvedAt: String(m.approved_at || ''),
+    discussionsCount: Number(m.discussions_count || 0),
+    sourceName: String(m.source_name_ar || m.source_name || ''),
+    placeName: String(m.place_name || ''),
+    creator: creatorId ? {
+      id: creatorId,
+      name: String(m.creator_name || m.author_name || 'باحث'),
+      // لا نرسل مسار avatar_r2 المحمي إلى العميل الأصلي؛ الـShell يعرض
+      // الحرف الأول إن لم يكن هناك رابط عام.
+      avatarUrl: String(m.creator_avatar_url || ''),
+    } : null,
+    thumbnailUrl: m.thumb_id ? `/file/${encodeURIComponent(Number(m.thumb_id))}` : '',
+    hasPdf: Boolean(m.pdf_id),
+  };
+}
+
+function researcherDiscussionFeedItem(d) {
+  return {
+    kind: 'discussion',
+    id: Number(d.id) || 0,
+    title: String(d.title || ''),
+    body: String(d.body || ''),
+    discussionKind: String(d.kind || 'comment'),
+    createdAt: String(d.created_at || ''),
+    author: {
+      id: Number(d.author_id) || 0,
+      name: String(d.author_name || 'باحث'),
+    },
+    materialTitle: String(d.material_title || ''),
+    materialArk: String(d.material_ark || ''),
+    repliesCount: Number(d.replies_count || 0),
+  };
+}
+
 async function attachDiscussionImages(db, rows) {
   const ids = [...new Set((rows || []).map(row => Number(row.id)).filter(Number.isFinite))];
   if (!ids.length) return rows;
@@ -2152,6 +2207,7 @@ async function loadResearcherPublishedFeed(env, user, { feed = 'discover', secti
     : '';
   return {
     html: pageRows.map(m => researcherMaterialCard(m, safeFeed, verified)).join(''),
+    items: pageRows.map(researcherMaterialFeedItem),
     cursor: cursor || '',
     nextCursor,
     hasMore,
@@ -2169,12 +2225,15 @@ function researcherFeedJson(data, status = 200) {
 async function researcherFeedPartial(env, user, req) {
   const url = new URL(req.url);
   const feed = url.searchParams.get('feed') || 'discover';
+  const jsonOnly = url.searchParams.get('format') === 'json';
   if (feed === 'following') {
-    return researcherFeedJson(await loadResearcherFollowingFeed(env, user, {
+    const result = await loadResearcherFollowingFeed(env, user, {
       search: url.searchParams.get('search'),
       cursor: url.searchParams.get('cursor'),
       limit: url.searchParams.get('limit'),
-    }));
+    });
+    if (jsonOnly) delete result.html;
+    return researcherFeedJson(result);
   }
   const section = url.searchParams.get('section');
   const sectionId = section && /^\d+$/.test(section) ? Number(section) : null;
@@ -2185,6 +2244,7 @@ async function researcherFeedPartial(env, user, req) {
     cursor: url.searchParams.get('cursor'),
     limit: url.searchParams.get('limit'),
   });
+  if (jsonOnly) delete result.html;
   return researcherFeedJson(result);
 }
 
@@ -2248,8 +2308,8 @@ async function loadResearcherFollowingFeed(env, user, { search = '', cursor = ''
   await attachDiscussionImages(env.DB, fDiscs.results || []);
   const verified = Number(user.is_verified) === 1;
   const merged = [
-    ...((fMats.results || []).map(m => ({ sort: String(m.sort_date || ''), id: Number(m.id), kind: 'material', html: researcherMaterialCard(m, 'following', verified) }))),
-    ...((fDiscs.results || []).map(d => ({ sort: String(d.sort_date || ''), id: Number(d.id), kind: 'discussion', html: researcherDiscussionCard(d) }))),
+    ...((fMats.results || []).map(m => ({ sort: String(m.sort_date || ''), id: Number(m.id), kind: 'material', html: researcherMaterialCard(m, 'following', verified), item: researcherMaterialFeedItem(m) }))),
+    ...((fDiscs.results || []).map(d => ({ sort: String(d.sort_date || ''), id: Number(d.id), kind: 'discussion', html: researcherDiscussionCard(d), item: researcherDiscussionFeedItem(d) }))),
   ].sort((a, b) => b.sort < a.sort ? -1 : b.sort > a.sort ? 1 : b.id - a.id || (b.kind < a.kind ? -1 : b.kind > a.kind ? 1 : 0));
   const page = merged.slice(0, safeLimit);
   const hasMore = merged.length > safeLimit;
@@ -2257,6 +2317,7 @@ async function loadResearcherFollowingFeed(env, user, { search = '', cursor = ''
   const nextCursor = hasMore && last ? encodeResearcherCursor({ sort_date: last.sort, id: last.id, kind: last.kind }) : '';
   return {
     html: page.map(x => x.html).join(''),
+    items: page.map(x => x.item),
     cursor: cursor || '',
     nextCursor,
     hasMore,

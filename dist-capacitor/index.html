@@ -12,26 +12,22 @@
   <body>
     <div class="mobile-app-shell" data-mobile-shell>
       <header class="mobile-app-header">
-        <a class="mobile-brand" href="#home" aria-label="مساحة الباحث">
+        <button class="mobile-brand" type="button" data-route="feed" aria-label="موجز الباحث">
           <img src="./assets/sidjil-logo.png" alt="سِجِل" width="42" height="42">
           <span>مساحة الباحث</span>
-        </a>
+        </button>
         <span class="mobile-runtime" data-runtime aria-live="polite">جارٍ التهيئة…</span>
       </header>
       <main class="mobile-app-main" id="mobile-main" tabindex="-1">
-        <section class="mobile-hero" aria-labelledby="mobile-title">
-          <p class="mobile-eyebrow">SIDJIL</p>
-          <h1 id="mobile-title">مجتمع الباحثين</h1>
-          <p>مساحة موحدة لقراءة المصادر، ومناقشتها، والمساهمة في الأرشيف الرقمي.</p>
-        </section>
         <section class="mobile-state is-loading" data-loading-state aria-live="polite">
           <span class="mobile-spinner" aria-hidden="true"></span>
           <strong>جارٍ التحقق من الجلسة…</strong>
           <span>يتم الاتصال بمساحة الباحث بأمان.</span>
         </section>
         <section class="mobile-auth-card" data-login-state hidden aria-labelledby="mobile-login-title">
-          <h2 id="mobile-login-title">تسجيل الدخول</h2>
-          <p>أدخل بيانات حساب الباحث للوصول إلى مساحة سِجِل.</p>
+          <p class="mobile-eyebrow">سِجِل</p>
+          <h1 id="mobile-login-title">تسجيل الدخول</h1>
+          <p>أدخل بيانات حساب الباحث للوصول إلى موجز المجتمع.</p>
           <form data-login-form novalidate>
             <label>اسم المستخدم<input name="username" type="text" autocomplete="username" required></label>
             <label>كلمة المرور<input name="password" type="password" autocomplete="current-password" required></label>
@@ -39,29 +35,38 @@
             <span class="mobile-form-message" data-login-message role="status"></span>
           </form>
         </section>
-        <section class="mobile-auth-card" data-authenticated-state hidden aria-labelledby="mobile-authenticated-title">
-          <p class="mobile-eyebrow">جلسة الباحث</p>
-          <h2 id="mobile-authenticated-title">تم تسجيل الدخول بنجاح</h2>
-          <p data-session-user></p>
-          <p class="mobile-session-status" data-session-status>الجلسة محفوظة عبر Cookie آمنة.</p>
-          <button type="button" data-logout>تسجيل الخروج</button>
-          <span class="mobile-form-message" data-session-message role="status"></span>
+        <section class="mobile-app-view" data-app-state hidden>
+          <div class="mobile-view" data-view="feed">
+            <div class="mobile-feed-heading">
+              <div><p class="mobile-eyebrow">مجتمع الباحثين</p><h1>موجز الباحث</h1></div>
+              <span class="mobile-session-chip" data-session-user></span>
+            </div>
+            <div class="mobile-feed-filters" role="tablist" aria-label="تصفية الموجز">
+              <button type="button" role="tab" data-feed-filter="discover" aria-selected="true">اكتشف</button>
+              <button type="button" role="tab" data-feed-filter="latest" aria-selected="false">الأحدث</button>
+              <button type="button" role="tab" data-feed-filter="official" aria-selected="false">اعتمادات الإدارة</button>
+              <button type="button" role="tab" data-feed-filter="following" aria-selected="false">المتابَعون</button>
+            </div>
+            <div class="mobile-feed-list" data-feed-list aria-live="polite"></div>
+            <div class="mobile-feed-status" data-feed-status hidden role="status"></div>
+            <button class="mobile-load-more" type="button" data-load-more hidden>تحميل المزيد</button>
+          </div>
+          <div class="mobile-view" data-view="profile" hidden>
+            <p class="mobile-eyebrow">مجتمع الباحثين</p><h1>صفحة الباحث</h1>
+            <section class="mobile-placeholder-card"><span class="mobile-avatar" data-profile-avatar>ب</span><h2 data-profile-title>باحث</h2><p>ستظهر هنا منشورات الباحث ومناقشاته في المرحلة التالية.</p></section>
+          </div>
+          <div class="mobile-view" data-view="account" hidden>
+            <p class="mobile-eyebrow">الحساب</p><h1>حسابي</h1>
+            <section class="mobile-placeholder-card"><span class="mobile-avatar">س</span><h2 data-account-name>باحث</h2><p class="mobile-session-status">الجلسة محفوظة عبر Cookie آمنة.</p><button type="button" data-logout>تسجيل الخروج</button><span class="mobile-form-message" data-session-message role="status"></span></section>
+          </div>
         </section>
-        <section class="mobile-state is-offline" data-offline-state hidden role="status">
-          <strong>لا يوجد اتصال بالشبكة</strong>
-          <span>تحقق من الاتصال ثم أعد المحاولة.</span>
-          <button type="button" data-retry>إعادة المحاولة</button>
-        </section>
-        <section class="mobile-state is-error" data-error-state hidden role="alert">
-          <strong>تعذر تهيئة التطبيق</strong>
-          <span data-error-message>حاول مرة أخرى.</span>
-          <button type="button" data-retry>إعادة المحاولة</button>
-        </section>
+        <section class="mobile-state is-offline" data-offline-state hidden role="status"><strong>لا يوجد اتصال بالشبكة</strong><span>تحقق من الاتصال ثم أعد المحاولة.</span><button type="button" data-retry>إعادة المحاولة</button></section>
+        <section class="mobile-state is-error" data-error-state hidden role="alert"><strong>تعذر تهيئة التطبيق</strong><span data-error-message>حاول مرة أخرى.</span><button type="button" data-retry>إعادة المحاولة</button></section>
       </main>
       <nav class="mobile-bottom-nav" aria-label="تنقل مساحة الباحث">
-        <a class="is-active" href="#home">الرئيسية</a>
-        <a href="#community">المجتمع</a>
-        <a href="#account">حسابي</a>
+        <button type="button" data-route="feed" data-nav-route="feed" class="is-active">الموجز</button>
+        <button type="button" data-route="profile" data-nav-route="profile">المجتمع</button>
+        <button type="button" data-route="account" data-nav-route="account">حسابي</button>
       </nav>
     </div>
     <script type="module" src="./assets/mobile-shell.js"></script>

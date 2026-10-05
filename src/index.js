@@ -18,6 +18,13 @@ function json404() {
   });
 }
 
+function researcherSessionJsonError() {
+  return new Response(JSON.stringify({ error: 'انتهت جلسة الباحث. سجّل الدخول من جديد.' }), {
+    status: 401,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
 function clientIp(req) {
   return (
     req.headers.get('CF-Connecting-IP') ||
@@ -55,7 +62,10 @@ function capacitorOrigin(request, env) {
 function withCapacitorCors(request, env, response) {
   if (!(response instanceof Response)) return response;
   const origin = capacitorOrigin(request, env);
-  if (!origin || !new URL(request.url).pathname.startsWith('/api/v1/admin/')) return response;
+  const pathname = new URL(request.url).pathname;
+  const allowedPath = pathname.startsWith('/api/v1/admin/')
+    || pathname === '/researcher/feed';
+  if (!origin || !allowedPath) return response;
   const headers = new Headers(response.headers);
   headers.set('Access-Control-Allow-Origin', origin);
   headers.set('Access-Control-Allow-Credentials', 'true');
@@ -95,7 +105,7 @@ async function handleRequest(request, env, ctx) {
 
     // Capacitor's bundled shell uses a controlled HTTPS localhost origin.
     // Reply to its preflight without touching authentication or the database.
-    if (request.method === 'OPTIONS' && pathname.startsWith('/api/v1/admin/') && capacitorOrigin(request, env)) {
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/api/v1/admin/') || pathname === '/researcher/feed') && capacitorOrigin(request, env)) {
       return new Response(null, {
         status: 204,
         headers: {
@@ -297,6 +307,11 @@ async function handleRequest(request, env, ctx) {
     if (pathname === '/researcher' || (pathname.startsWith('/researcher/') && pathname !== '/researcher/register')) {
       const user = await getSessionUser(request, env);
       if (!user) {
+        // الـShell يتعامل مع موجز الباحث كـJSON؛ لا نعيده إلى صفحة HTML
+        // عند انتهاء الجلسة حتى يستطيع العميل عرض حالة تسجيل الدخول مباشرة.
+        if (pathname === '/researcher/feed' && capacitorOrigin(request, env)) {
+          return researcherSessionJsonError();
+        }
         const loginUrl = new URL('/discussions', request.url);
         const next = `${pathname}${url.search}`;
         loginUrl.searchParams.set('next', next);
