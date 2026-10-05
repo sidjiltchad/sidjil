@@ -20,6 +20,7 @@
     "mobile:open": "npx cap open android",
     "test": "node scripts/ci-contract.mjs",
     "test:mobile": "node scripts/mobile-phase1-check.mjs",
+    "test:mobile:auth": "node scripts/mobile-phase2-check.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "telegram:setup": "node scripts/telegram-setup.mjs"
   },
