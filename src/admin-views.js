@@ -1643,7 +1643,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261005-researcher-fullscreen-v2">
+<link rel="stylesheet" href="/admin.css?v=20261005-researcher-actions-v3">
 </head>
 <body class="researcher-body">
 <script>
@@ -1754,7 +1754,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
 <script src="/js/docx-reader.js?v=20261011-text-reader" defer></script>
 <script type="module" src="/js/researcher-pdf.js?v=20261011-researcher-reader-pdf-export"></script>
-<script src="/researcher-feed-v5.js?v=20261004-reader-flow-v1" defer></script>
+<script src="/researcher-feed-v5.js?v=20261005-researcher-actions-v2" defer></script>
 
 <script>
 (() => {
