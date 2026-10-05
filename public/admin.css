@@ -1031,6 +1031,52 @@ input[type="checkbox"], input[type="radio"] {
   .researcher-body .researcher-main { padding-bottom: calc(5.8rem + env(safe-area-inset-bottom)); }
 }
 
+/* قارئ مساحة الباحث: طبقة قراءة مستقلة، تراكبية، ومتجاوبة */
+body.rpdf-reader-open { overflow: hidden; }
+.rpdf-reader-host { position: fixed; inset: 0; z-index: 2400; }
+.rpdf-reader-overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 8, 13, .76); color: #e8edf5; }
+.rpdf-reader-surface { position: relative; display: flex; flex-direction: column; width: min(1100px, 100%); height: min(94dvh, 900px); overflow: hidden; background: #0b0e13; border: 1px solid rgba(255,255,255,.12); border-radius: 20px; box-shadow: 0 28px 90px rgba(0,0,0,.48); transition: transform .28s cubic-bezier(.2,.8,.2,1); }
+.rpdf-reader-grab { flex: 0 0 26px; display: grid; place-items: center; cursor: grab; touch-action: none; }
+.rpdf-reader-grab span { display: block; width: 48px; height: 4px; border-radius: 999px; background: rgba(255,255,255,.5); }
+.rpdf-reader-stage { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; gap: 1px; background: #27303b; }
+.rpdf-reader-stage.is-dual { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+.rpdf-pane { min-width: 0; min-height: 0; overflow: hidden; background: #20262f; position: relative; }
+.rpdf-pane-label { position: absolute; z-index: 2; top: 10px; inset-inline: 12px; display: flex; justify-content: space-between; padding: 6px 10px; border-radius: 999px; background: rgba(13,18,25,.7); color: #e9eef7; font-size: .74rem; pointer-events: none; }
+.rpdf-pane-scroll { height: 100%; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 48px 14px 90px; touch-action: pan-y; }
+.rpdf-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; min-width: 100%; direction: ltr; }
+.rpdf-page { position: relative; flex: none; min-height: 180px; background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.28); }
+.rpdf-page canvas { display: block; max-width: none; background: #fff; direction: ltr !important; }
+.rpdf-textlayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; direction: ltr !important; }
+.rpdf-textlayer span { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.rpdf-textlayer ::selection { background: rgba(30, 92, 170, .3); }
+.rpdf-docx-scroll { background: #f8fafc; color: #1f2937; }
+.rpdf-docxview { --reader-word-scale: 1; min-height: 100%; padding: 54px clamp(14px, 3vw, 42px) 110px; background: #fff; font-family: var(--font-body, system-ui, sans-serif); font-size: calc(1rem * var(--reader-word-scale)); }
+.rpdf-docxview[dir="rtl"] { direction: rtl; text-align: justify; }
+.rpdf-docxview[dir="ltr"] { direction: ltr; text-align: justify; }
+.rpdf-docxview.is-loading { opacity: .55; }
+.rpdf-reader-controls { position: absolute; z-index: 8; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 6px; padding: 7px; border: 1px solid rgba(255,255,255,.15); border-radius: 999px; background: rgba(13,18,25,.78); box-shadow: 0 10px 30px rgba(0,0,0,.35); opacity: 0; pointer-events: none; transform: translate(-50%, 12px); transition: opacity .2s, transform .2s; }
+.rpdf-reader-controls.is-visible { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.rpdf-reader-controls button, .rpdf-reader-controls a { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #f4f7fb; text-decoration: none; font-size: 1.05rem; cursor: pointer; }
+.rpdf-reader-controls button:hover, .rpdf-reader-controls a:hover, .rpdf-reader-controls .is-active { background: rgba(255,255,255,.18); }
+.rpdf-reader-controls [hidden] { display: none; }
+.rpdf-reader-lang-menu { position: absolute; z-index: 10; left: 50%; bottom: 72px; display: flex; gap: 4px; padding: 6px; border-radius: 12px; background: #131a23; box-shadow: 0 10px 30px rgba(0,0,0,.35); transform: translateX(-50%); }
+.rpdf-reader-lang-menu button { border: 0; border-radius: 8px; padding: .45rem .7rem; background: transparent; color: #fff; font: inherit; cursor: pointer; white-space: nowrap; }
+.rpdf-reader-lang-menu button:hover { background: rgba(255,255,255,.14); }
+.rpdf-quote-btn { position: absolute; z-index: 9; border: 0; border-radius: 999px; padding: .45rem .7rem; background: var(--teal, #0d9488); color: #fff; cursor: pointer; }
+.rpdf-composer { position: absolute; z-index: 9; inset-inline: 12px; bottom: 72px; max-height: 48%; overflow: auto; padding: .8rem; border: 1px solid var(--line); border-radius: 14px; background: var(--card, #fff); color: var(--ink, #111827); box-shadow: 0 12px 32px rgba(0,0,0,.35); }
+.rpdf-error { position: absolute; inset: 50% 20px auto; z-index: 7; transform: translateY(-50%); padding: 1rem; border-radius: 12px; background: #fff; color: #9f1239; text-align: center; }
+.rpdf-error button { border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+@media (max-width: 700px) {
+  .rpdf-reader-overlay { place-items: stretch; background: #0b0e13; }
+  .rpdf-reader-surface { width: 100%; height: 100dvh; max-height: none; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .rpdf-reader-stage.is-dual { grid-template-columns: 1fr; grid-template-rows: minmax(0,1fr) minmax(0,1fr); }
+  .rpdf-pane-label { top: 8px; }
+  .rpdf-pane-scroll { padding-inline: 8px; }
+  .rpdf-reader-controls { bottom: max(9px, env(safe-area-inset-bottom)); }
+  .rpdf-reader-controls button, .rpdf-reader-controls a { width: 36px; height: 36px; }
+  .rpdf-composer { bottom: 66px; max-height: 55%; }
+}
+
 /* ---------- موجز الباحث — توزيع اجتماعي واضح ---------- */
 .researcher-shell { grid-template-columns: minmax(0, 1fr); }
 .researcher-shell .main { grid-column: 1 / -1; }
@@ -2332,3 +2378,15 @@ textarea { border-radius: var(--shape-control); }
 }
 .translation-stats{display:flex;gap:.6rem;flex-wrap:wrap;margin:1rem 0}.translation-stats span{padding:.45rem .75rem;border:1px solid var(--line,#ddd);border-radius:999px;background:var(--surface,#fff)}.translation-admin-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0}.translation-admin-tab{border:1px solid var(--line,#ddd);background:var(--surface,#fff);padding:.65rem 1rem;border-radius:.7rem;cursor:pointer}.translation-admin-tab.is-active{background:var(--primary,#123d78);color:#fff}
 .translation-search{max-width:42rem;margin:1rem 0}.translation-search .field{margin:0}
+
+/* قارئ الباحث: هذه القواعد تأتي بعد أنماط القارئ القديم حتى لا تتداخل معه. */
+.rpdf-reader-root .rpdf-reader-stage { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; gap: 1px; background: #27303b; }
+.rpdf-reader-root .rpdf-reader-stage.is-dual { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+.rpdf-reader-root .rpdf-pane { display: block; min-width: 0; min-height: 0; overflow: hidden; background: #20262f; }
+.rpdf-reader-root .rpdf-pane-scroll { height: 100%; overflow: auto; padding: 48px 14px 90px; }
+.rpdf-reader-root .rpdf-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 16px; width: auto; min-width: 100%; }
+.rpdf-reader-root .rpdf-page { display: block; width: max-content; min-height: 180px; margin-inline: auto; overflow: visible; content-visibility: visible; contain: none; box-shadow: 0 5px 18px rgba(0,0,0,.28); }
+.rpdf-reader-root .rpdf-page canvas { margin-top: 0; }
+.rpdf-reader-root .rpdf-textlayer { inset: 0; }
+.rpdf-reader-root .rpdf-translation-pane[hidden] { display: none; }
+@media (max-width: 700px) { .rpdf-reader-root .rpdf-reader-stage.is-dual { grid-template-columns: 1fr; grid-template-rows: minmax(0,1fr) minmax(0,1fr); } .rpdf-reader-root .rpdf-pane-scroll { padding-inline: 8px; } }
