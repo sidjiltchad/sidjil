@@ -1974,12 +1974,12 @@ function researcherMaterialCard(m, feed, verified) {
     ${detailsButton}
     ${excerpt ? `<p class="researcher-feed-excerpt">${esc(String(excerpt).slice(0, 420))}</p>` : ''}
     <div class="researcher-feed-actions">
-      <button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="material" data-target-id="${esc(m.id)}" data-reaction-kind="like" aria-pressed="false">♡ أعجبني <span data-social-count>0</span></button>
-      <button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="material" data-target-id="${esc(m.id)}" aria-pressed="false">🔖 حفظ</button>
-      <button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="material" data-target-id="${esc(m.id)}">⚑ بلّغ</button>
-      ${discussionAction('comment', '💬 علّق')}
-      ${discussionAction('text', '📝 لخّص')}
-      ${discussionAction('review', '✦ راجع')}
+      <button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="material" data-target-id="${esc(m.id)}" data-reaction-kind="useful" aria-pressed="false" aria-label="مفيد"><span class="researcher-action-icon" aria-hidden="true">✦</span><span data-social-label>مفيد</span><span data-social-count>0</span></button>
+      <button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="material" data-target-id="${esc(m.id)}" aria-pressed="false" aria-label="حفظ"><span class="researcher-action-icon" aria-hidden="true">🔖</span><span data-social-label>حفظ</span></button>
+      <button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="material" data-target-id="${esc(m.id)}" aria-label="الإبلاغ"><span class="researcher-action-icon" aria-hidden="true">⚑</span><span data-social-label>بلّغ</span></button>
+      ${discussionAction('comment', '<span class="researcher-action-icon" aria-hidden="true">💬</span><span>علّق</span>')}
+      ${discussionAction('text', '<span class="researcher-action-icon" aria-hidden="true">📝</span><span>لخّص</span>')}
+      ${discussionAction('review', '<span class="researcher-action-icon" aria-hidden="true">✦</span><span>راجع</span>')}
       <span class="feed-discussion-count">${Number(m.discussions_count || 0)} نقاش</span>
     </div>
     ${inlineComposer}
@@ -2012,7 +2012,7 @@ function researcherDiscussionCard(d) {
     <h3><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">${esc(d.title)}</a></h3><p>${esc(String(d.body || '').slice(0, 360))}</p>
     ${researcherDiscussionImagesMarkup(d)}
     ${d.material_title ? `<div class="post-linked">حول: ${esc(d.material_title || d.material_ark)}</div>` : ''}
-    <div class="researcher-feed-actions"><button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="discussion" data-target-id="${esc(d.id)}" data-reaction-kind="like" aria-pressed="false">♡ أعجبني <span data-social-count>0</span></button><button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="discussion" data-target-id="${esc(d.id)}" aria-pressed="false">🔖 حفظ</button><button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="discussion" data-target-id="${esc(d.id)}">⚑ بلّغ</button><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}">💬 فتح والرد</a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
+    <div class="researcher-feed-actions"><button class="researcher-feed-action-trigger social-reaction-button" type="button" data-social-reaction data-target-type="discussion" data-target-id="${esc(d.id)}" data-reaction-kind="useful" aria-pressed="false" aria-label="مفيد"><span class="researcher-action-icon" aria-hidden="true">✦</span><span data-social-label>مفيد</span><span data-social-count>0</span></button><button class="researcher-feed-action-trigger social-bookmark-button" type="button" data-social-bookmark data-target-type="discussion" data-target-id="${esc(d.id)}" aria-pressed="false" aria-label="حفظ"><span class="researcher-action-icon" aria-hidden="true">🔖</span><span data-social-label>حفظ</span></button><button class="researcher-feed-action-trigger social-report-button" type="button" data-social-report data-target-type="discussion" data-target-id="${esc(d.id)}" aria-label="الإبلاغ"><span class="researcher-action-icon" aria-hidden="true">⚑</span><span data-social-label>بلّغ</span></button><a href="/researcher/discussions?focus=${encodeURIComponent(d.id)}"><span class="researcher-action-icon" aria-hidden="true">💬</span><span>فتح والرد</span></a><span class="feed-discussion-count">${Number(d.replies_count || 0)} رد</span></div>
   </article>`;
 }
 

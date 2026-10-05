@@ -173,12 +173,12 @@ async function apiReaction(env, req, user) {
   const existing = await env.DB.prepare('SELECT id, kind FROM social_reactions WHERE actor_id = ? AND target_type = ? AND target_id = ?').bind(user.id, type, targetId).first();
   if (existing && existing.kind === kind) {
     await env.DB.prepare('DELETE FROM social_reactions WHERE id = ?').bind(existing.id).run();
-    return json({ ok: true, active: false, kind, count: Number((await env.DB.prepare('SELECT COUNT(*) AS c FROM social_reactions WHERE target_type = ? AND target_id = ?').bind(type, targetId).first())?.c || 0) });
+    return json({ ok: true, active: false, kind, count: Number((await env.DB.prepare('SELECT COUNT(*) AS c FROM social_reactions WHERE target_type = ? AND target_id = ? AND kind = ?').bind(type, targetId, kind).first())?.c || 0) });
   }
   if (existing) await env.DB.prepare('UPDATE social_reactions SET kind = ?, created_at = datetime(\'now\') WHERE id = ?').bind(kind, existing.id).run();
   else await env.DB.prepare('INSERT INTO social_reactions (actor_id, target_type, target_id, kind) VALUES (?, ?, ?, ?)').bind(user.id, type, targetId, kind).run();
   await audit(env.DB, { userId: user.id, action: 'social.reaction', target: `${type}:${targetId}`, detail: kind, ip: clientIp(req) });
-  return json({ ok: true, active: true, kind, count: Number((await env.DB.prepare('SELECT COUNT(*) AS c FROM social_reactions WHERE target_type = ? AND target_id = ?').bind(type, targetId).first())?.c || 0) });
+  return json({ ok: true, active: true, kind, count: Number((await env.DB.prepare('SELECT COUNT(*) AS c FROM social_reactions WHERE target_type = ? AND target_id = ? AND kind = ?').bind(type, targetId, kind).first())?.c || 0) });
 }
 
 async function apiReactionStatus(env, req, user) {

@@ -1040,7 +1040,7 @@ function initResearcherPage() {
         if (bookmark.disabled) return;
         bookmark.disabled = true;
         socialRequest('/api/v1/social/bookmark', { target_type: bookmark.dataset.targetType, target_id: bookmark.dataset.targetId })
-          .then((data) => { bookmark.setAttribute('aria-pressed', data.saved ? 'true' : 'false'); bookmark.classList.toggle('is-active', !!data.saved); bookmark.lastChild.textContent = data.saved ? '🔖 محفوظ' : '🔖 حفظ'; })
+          .then((data) => { bookmark.setAttribute('aria-pressed', data.saved ? 'true' : 'false'); bookmark.classList.toggle('is-active', !!data.saved); const label = bookmark.querySelector('[data-social-label]'); if (label) label.textContent = data.saved ? 'محفوظ' : 'حفظ'; })
           .catch((error) => toast(error.message, false))
           .finally(() => { bookmark.disabled = false; });
         return;
@@ -1057,7 +1057,7 @@ function initResearcherPage() {
           target_id: Number(report.dataset.targetId),
           reason: reason.trim().slice(0, 80),
         })
-          .then(() => { report.textContent = '✓ تم البلاغ'; report.classList.add('is-active'); })
+          .then(() => { const icon = report.querySelector('.researcher-action-icon'); if (icon) icon.textContent = '✓'; const label = report.querySelector('[data-social-label]'); if (label) label.textContent = 'تم البلاغ'; report.classList.add('is-active'); })
           .catch((error) => toast(error.message, false))
           .finally(() => { report.disabled = false; });
         return;
