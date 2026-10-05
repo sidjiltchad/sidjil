@@ -21,6 +21,8 @@ await cp(join(mobileSource, 'api-client.js'), join(output, 'assets', 'api-client
 await cp(join(mobileSource, 'auth.js'), join(output, 'assets', 'auth.js'));
 await cp(join(mobileSource, 'researcher-feed.js'), join(output, 'assets', 'researcher-feed.js'));
 await cp(join(mobileSource, 'navigation.js'), join(output, 'assets', 'navigation.js'));
+await cp(join(mobileSource, 'researcher-search.js'), join(output, 'assets', 'researcher-search.js'));
+await cp(join(mobileSource, 'researcher-profile.js'), join(output, 'assets', 'researcher-profile.js'));
 await cp(join(root, 'public', 'sidjil-logo.png'), join(output, 'assets', 'sidjil-logo.png'));
 for (const file of ['ibm-plex-sans-arabic-400.woff2', 'ibm-plex-sans-arabic-700.woff2']) {
   await cp(join(root, 'public', 'fonts', file), join(output, 'fonts', file));

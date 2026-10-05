@@ -71,7 +71,10 @@ export async function apiFetch(path, options = {}) {
     });
   } catch (error) {
     timed.cancel();
-    if (error?.name === 'AbortError') throw new ApiError('انتهت مهلة الاتصال بالخادم.', { code: 'TIMEOUT' });
+    if (error?.name === 'AbortError') {
+      if (signal?.aborted) throw new ApiError('أُلغي الطلب السابق.', { code: 'ABORTED' });
+      throw new ApiError('انتهت مهلة الاتصال بالخادم.', { code: 'TIMEOUT' });
+    }
     throw new ApiError('تعذر الاتصال بالخادم. تحقق من اتصالك بالإنترنت.', { code: 'NETWORK_ERROR' });
   }
   timed.cancel();
