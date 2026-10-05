@@ -27,6 +27,7 @@ await cp(join(mobileSource, 'researcher-search.js'), join(output, 'assets', 'res
 await cp(join(mobileSource, 'researcher-profile.js'), join(output, 'assets', 'researcher-profile.js'));
 await cp(join(mobileSource, 'material.js'), join(output, 'assets', 'material.js'));
 await cp(join(mobileSource, 'pdf-reader.js'), join(output, 'assets', 'pdf-reader.js'));
+await cp(join(mobileSource, 'native-files.js'), join(output, 'assets', 'native-files.js'));
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.min.mjs'), join(output, 'assets', 'pdfjs', 'pdf.min.mjs'));
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.worker.min.mjs'), join(output, 'assets', 'pdfjs', 'pdf.worker.min.mjs'));
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'cmaps'), join(output, 'assets', 'pdfjs', 'cmaps'), { recursive: true });

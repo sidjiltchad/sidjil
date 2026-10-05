@@ -22,7 +22,7 @@ function readerSource(material, source) {
 }
 export function resolveReaderSource(material, source = 'original') { return readerSource(material, source); }
 
-export async function mountPdfReader(container, { material, source = 'original', onBack } = {}) {
+export async function mountPdfReader(container, { material, source = 'original', fileActions = null, onBack } = {}) {
   if (!container || !material) throw new Error('المادة غير محددة');
   let currentSource = source === 'translation' ? 'translation' : 'original';
   let generation = 0;
@@ -42,11 +42,16 @@ export async function mountPdfReader(container, { material, source = 'original',
   const originalTab = document.createElement('button'); originalTab.type = 'button'; originalTab.textContent = 'الأصل';
   const translationTab = document.createElement('button'); translationTab.type = 'button'; translationTab.textContent = 'الترجمة';
   tabs.append(originalTab, translationTab); toolbar.append(back, heading, tabs);
+  const fileBar = document.createElement('div'); fileBar.className = 'mobile-reader-file-actions';
+  const fileStatus = document.createElement('span'); fileStatus.className = 'mobile-reader-file-status'; fileStatus.setAttribute('role', 'status');
+  const actionButtons = new Map();
+  [['download', 'حفظ'], ['share', 'مشاركة'], ['open', 'فتح خارجيًا']].forEach(([action, label]) => { const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.dataset.fileAction = action; fileBar.append(button); actionButtons.set(action, button); });
+  fileBar.append(fileStatus); 
   const status = document.createElement('div'); status.className = 'mobile-reader-status'; status.setAttribute('role', 'status');
   const stage = document.createElement('div'); stage.className = 'mobile-reader-stage'; stage.dir = 'rtl';
   const pageWrap = document.createElement('div'); pageWrap.className = 'mobile-reader-page-wrap'; pageWrap.dir = 'ltr';
   const canvas = document.createElement('canvas'); canvas.className = 'mobile-reader-canvas'; canvas.dir = 'ltr'; canvas.style.direction = 'ltr';
-  pageWrap.append(canvas); stage.append(pageWrap); container.append(toolbar, status, stage);
+  pageWrap.append(canvas); stage.append(pageWrap); container.append(toolbar, fileBar, status, stage);
   const zoomBar = document.createElement('div'); zoomBar.className = 'mobile-reader-zoom';
   const previous = document.createElement('button'); previous.type = 'button'; previous.textContent = '‹'; previous.setAttribute('aria-label', 'الصفحة السابقة');
   const next = document.createElement('button'); next.type = 'button'; next.textContent = '›'; next.setAttribute('aria-label', 'الصفحة التالية');
@@ -59,6 +64,9 @@ export async function mountPdfReader(container, { material, source = 'original',
   function setStatus(message, error = false) { status.textContent = message; status.classList.toggle('is-error', error); status.hidden = !message; }
   function setActiveTabs() { originalTab.classList.toggle('is-active', currentSource === 'original'); translationTab.classList.toggle('is-active', currentSource === 'translation'); }
   function updateHeading() { heading.textContent = `${material.title} · ${currentSource === 'translation' ? 'الترجمة' : 'الأصل'}`; }
+  function selectedFile() { if (currentSource === 'translation') return material.translations.find(item => isPdf(item)) || null; return material.original || null; }
+  function updateFileActions() { const file = selectedFile(); fileBar.hidden = !fileActions || !file; actionButtons.forEach(button => { button.disabled = !file; }); }
+  async function runFileAction(action) { const file = selectedFile(); if (!file || !fileActions || actionButtons.get(action)?.disabled) return; const button = actionButtons.get(action); button.disabled = true; fileStatus.textContent = action === 'download' ? 'جارٍ الحفظ…' : action === 'share' ? 'جارٍ تجهيز المشاركة…' : 'جارٍ تجهيز الفتح…'; try { const fn = action === 'download' ? fileActions.downloadFile : action === 'share' ? fileActions.shareFile : fileActions.openFile; const result = await fn(file, { title: material.title, variant: currentSource, onProgress: value => { if (value != null) fileStatus.textContent = `جارٍ تجهيز الملف… ${Math.round(value * 100)}%`; } }); fileStatus.textContent = action === 'download' ? `تم حفظ ${result.filename}.` : action === 'share' ? 'تم فتح المشاركة.' : 'تم فتح قائمة التطبيقات.'; } catch (error) { fileStatus.textContent = error?.message || 'تعذر تنفيذ العملية.'; } finally { button.disabled = false; } }
   function cleanupDocument() { try { renderTask?.cancel?.(); } catch {} try { loadTask?.destroy?.(); } catch {} try { pdf?.destroy?.(); } catch {} renderTask = null; loadTask = null; pdf = null; }
   function resizeCanvas(viewport) {
     const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
@@ -85,7 +93,7 @@ export async function mountPdfReader(container, { material, source = 'original',
   async function openSource(nextSource) {
     const selected = readerSource(material, nextSource);
     currentSource = nextSource;
-    generation += 1; const generationAtStart = generation; currentPage = 1; zoom = 1; setActiveTabs(); updateHeading(); cleanupDocument();
+    generation += 1; const generationAtStart = generation; currentPage = 1; zoom = 1; setActiveTabs(); updateHeading(); updateFileActions(); cleanupDocument();
     if (!selected) { setStatus(nextSource === 'translation' ? 'لا توجد ترجمة PDF متاحة لهذه المادة.' : 'ملف PDF الأصلي غير متاح.', true); return; }
     setStatus('جارٍ تحميل الملف…');
     try {
@@ -106,10 +114,12 @@ export async function mountPdfReader(container, { material, source = 'original',
   plus.addEventListener('click', () => { zoom = Math.min(3, zoom + .1); render().catch(() => {}); });
   previous.addEventListener('click', () => { if (pdf && currentPage > 1) { currentPage -= 1; render().catch(() => {}); } });
   next.addEventListener('click', () => { if (pdf && currentPage < pdf.numPages) { currentPage += 1; render().catch(() => {}); } });
+  actionButtons.forEach((button, action) => button.addEventListener('click', () => runFileAction(action)));
   fullscreen.addEventListener('click', () => { const target = container.closest('.mobile-reader-host-view') || container; if (!document.fullscreenElement) target.requestFullscreen?.({ navigationUI: 'hide' }).catch?.(() => {}); else document.exitFullscreen?.().catch?.(() => {}); });
   stage.addEventListener('wheel', event => { if (!event.ctrlKey) return; event.preventDefault(); zoom = Math.max(.5, Math.min(3, zoom + (event.deltaY < 0 ? .1 : -.1))); render().catch(() => {}); }, { passive: false });
   const onResize = () => render().catch(() => {}); globalThis.addEventListener?.('resize', onResize);
   translationTab.disabled = !material.translations.some(isPdf);
+  updateFileActions();
   await openSource(currentSource);
   return { destroy() { destroyed = true; generation += 1; globalThis.removeEventListener?.('resize', onResize); cleanupDocument(); container.replaceChildren(); }, setSource: openSource };
 }

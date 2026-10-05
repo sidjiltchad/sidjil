@@ -77,6 +77,7 @@ function withCapacitorCors(request, env, response) {
   headers.set('Access-Control-Allow-Credentials', 'true');
   headers.set('Access-Control-Allow-Headers', 'Accept, Content-Type, X-CSRF-Token');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  if (pathname.startsWith('/file/')) headers.set('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, Content-Type, ETag, Accept-Ranges, Content-Range');
   const vary = headers.get('Vary') || '';
   if (!/(^|,\s*)Origin(,|$)/i.test(vary)) headers.append('Vary', 'Origin');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });

@@ -8,6 +8,7 @@ import { createResearcherSearchClient } from './researcher-search.js';
 import { getResearcherProfile } from './researcher-profile.js';
 import { createMaterialClient } from './material.js';
 import { mountPdfReader } from './pdf-reader.js';
+import { createNativeFilesClient, NativeFileError } from './native-files.js';
 
 const shell = document.querySelector('[data-mobile-shell]');
 const runtimeEl = shell?.querySelector('[data-runtime]');
@@ -48,6 +49,7 @@ const readerHost = shell?.querySelector('[data-mobile-reader]');
 const feedClient = createResearcherFeedClient();
 const searchClient = createResearcherSearchClient();
 const materialClient = createMaterialClient();
+const nativeFiles = createNativeFilesClient();
 let activeFilter = 'discover';
 let feedRequestPending = false;
 let profileRequestId = 0;
@@ -249,6 +251,26 @@ function materialDetailRow(label, value) {
   return row;
 }
 
+async function runFileAction(file, action, title, variant, statusEl) {
+  if (!file || !file.url) return;
+  statusEl.textContent = action === 'download' ? 'جارٍ حفظ الملف…' : action === 'share' ? 'جارٍ تجهيز المشاركة…' : 'جارٍ تجهيز الفتح الخارجي…';
+  try {
+    const handler = action === 'download' ? nativeFiles.downloadFile : action === 'share' ? nativeFiles.shareFile : nativeFiles.openFile;
+    const result = await handler(file, { title, variant, onProgress: value => { if (value != null) statusEl.textContent = `${action === 'download' ? 'جارٍ حفظ الملف' : 'جارٍ تجهيز الملف'}… ${Math.round(value * 100)}%`; } });
+    statusEl.textContent = action === 'download' ? `تم حفظ ${result.filename} داخل مساحة التطبيق.` : action === 'share' ? 'تم فتح نافذة المشاركة.' : 'تم فتح قائمة التطبيقات المناسبة.';
+  } catch (error) {
+    if (error instanceof NativeFileError && error.code === 'AUTH_REQUIRED') return showLogin(error.message);
+    statusEl.textContent = error?.message || 'تعذر تنفيذ عملية الملف.';
+  }
+}
+
+function fileActions(file, title, variant, statusEl) {
+  const wrap = document.createElement('div'); wrap.className = 'mobile-file-actions';
+  const label = variant === 'translation' ? 'الترجمة' : 'الأصل'; addText(wrap, 'strong', label, 'mobile-file-actions-label');
+  [['download', 'حفظ'], ['share', 'مشاركة'], ['open', 'فتح خارجيًا']].forEach(([action, text]) => { const button = document.createElement('button'); button.type = 'button'; button.textContent = text; button.addEventListener('click', async () => { button.disabled = true; try { await runFileAction(file, action, title, variant, statusEl); } finally { button.disabled = false; } }); wrap.append(button); });
+  return wrap;
+}
+
 function renderMaterialDetails(material) {
   if (!materialDetails) return;
   materialDetails.replaceChildren();
@@ -271,6 +293,11 @@ function renderMaterialDetails(material) {
   if (pdfTranslations.length) { const translate = document.createElement('button'); translate.type = 'button'; translate.className = 'mobile-secondary-action'; translate.textContent = 'قراءة الترجمة'; translate.addEventListener('click', () => navigateToMaterialReader(navigation, material.id, 'translation')); actions.append(translate); }
   else if (material.translations.length) addText(actions, 'span', 'توجد ترجمة مرفوعة بصيغة غير PDF.', 'mobile-feed-meta');
   materialDetails.append(actions);
+  const fileStatus = document.createElement('p'); fileStatus.className = 'mobile-file-status'; fileStatus.setAttribute('role', 'status');
+  if (material.original) materialDetails.append(fileActions(material.original, material.title, 'original', fileStatus));
+  const translationFile = material.translations.find(item => item.url);
+  if (translationFile) materialDetails.append(fileActions(translationFile, material.title, 'translation', fileStatus));
+  materialDetails.append(fileStatus);
   if (material.fullText) { addText(materialDetails, 'h2', 'النص المفرغ', 'mobile-material-section-title'); const text = addText(materialDetails, 'div', material.fullText, 'mobile-material-text'); text.dir = /[\u0600-\u06ff]/u.test(material.fullText) ? 'rtl' : 'ltr'; }
 }
 
@@ -295,7 +322,7 @@ async function loadReader(id, source) {
   try {
     const material = await materialClient.getMaterial(id);
     readerHost.replaceChildren();
-    materialReader = await mountPdfReader(readerHost, { material, source, onBack: () => navigation.back() });
+    materialReader = await mountPdfReader(readerHost, { material, source, fileActions: nativeFiles, onBack: () => navigation.back() });
   } catch (cause) { readerHost.replaceChildren(); addText(readerHost, 'p', cause?.message || 'تعذر تشغيل قارئ PDF.', 'mobile-feed-status'); }
 }
 
@@ -483,6 +510,7 @@ async function bootstrapSession() {
     if (sessionUser) sessionUser.textContent = 'مرحبًا ' + name;
     if (accountName) accountName.textContent = name;
     showApp();
+    nativeFiles.cleanupTemporaryFiles().catch(() => {});
     updateFilterButtons();
     navigation.start();
   } catch (cause) {

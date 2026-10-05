@@ -129,6 +129,11 @@ button.mobile-search-result { cursor: pointer; }
 .mobile-secondary-action { color: #815511; background: #fffaf0; }
 .mobile-material-section-title { font-size: 1.1rem; margin: 1.3rem 0 .5rem; }
 .mobile-material-text { white-space: pre-wrap; line-height: 2; text-align: justify; overflow-wrap: anywhere; }
+.mobile-file-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .65rem; padding: .55rem 0; border-top: 1px solid rgba(24,37,57,.08); }
+.mobile-file-actions-label { min-width: 4.5rem; color: #46536b; }
+.mobile-file-actions button, .mobile-reader-file-actions button { border: 1px solid rgba(169,107,18,.35); border-radius: 999px; padding: .38rem .7rem; color: #815511; background: #fffaf0; cursor: pointer; font: inherit; font-size: .82rem; }
+.mobile-file-actions button:disabled, .mobile-reader-file-actions button:disabled { opacity: .55; cursor: wait; }
+.mobile-file-status { min-height: 1.3rem; color: #65738a; font-size: .8rem; }
 .mobile-reader-host-view { position: fixed; inset: 0; z-index: 80; background: #0b0e13; padding: 0; overflow: hidden; }
 .mobile-reader-host-view > [data-mobile-reader] { height: 100%; }
 .mobile-reader-view { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; min-height: 100%; color: #eaf0fb; background: #0b0e13; }
@@ -142,6 +147,8 @@ button.mobile-search-result { cursor: pointer; }
 .mobile-reader-tabs button:disabled { opacity: .4; cursor: not-allowed; }
 .mobile-reader-status { min-height: 1.45rem; padding: .35rem .8rem; color: #c7d2e4; text-align: center; font-size: .82rem; }
 .mobile-reader-status.is-error { color: #ffb2b2; }
+.mobile-reader-file-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: .35rem; min-height: 2.4rem; padding: .3rem .6rem; background: rgba(11,14,19,.92); }
+.mobile-reader-file-status { color: #c7d2e4; font-size: .75rem; }
 .mobile-reader-stage { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: .75rem; background: #202733; touch-action: pan-x pan-y; }
 .mobile-reader-page-wrap { width: max-content; min-width: 100%; margin: 0 auto; background: #fff; box-shadow: 0 10px 28px rgba(0,0,0,.3); }
 .mobile-reader-canvas { display: block; max-width: none; background: #fff; }
