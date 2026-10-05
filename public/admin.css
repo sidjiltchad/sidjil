@@ -783,12 +783,12 @@ input[type="checkbox"], input[type="radio"] {
 /* ============================================================
    مساحة الباحث — واجهة اجتماعية للنشر والمراجعة
    ============================================================ */
-.researcher-body { background: #eef2f7; }
+.researcher-body { min-height: 100dvh; min-height: 100svh; overflow-x: hidden; overscroll-behavior-y: none; background: #eef2f7; }
 [data-theme="dark"] .researcher-body { background: #0b1220; }
-.researcher-shell { display: grid; grid-template-columns: 276px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+.researcher-shell { display: grid; grid-template-columns: 276px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; min-height: 100dvh; min-height: 100svh; }
 .researcher-shell .topbar { display: flex; grid-column: 1 / -1; grid-row: 1; min-width: 0; }
 .researcher-shell .sidebar { grid-column: 1; grid-row: 2; }
-.researcher-shell .main { grid-column: 2; grid-row: 2; }
+.researcher-shell .main { grid-column: 2; grid-row: 2; width: 100%; max-width: none; min-height: calc(100dvh - 68px); }
 .researcher-shell .sidebar { width: 276px; }
 .researcher-main { max-width: 1440px; padding: 1.4rem clamp(1rem, 3vw, 3rem) 5rem; }
 .researcher-content { max-width: none; min-width: 0; }
@@ -1042,7 +1042,7 @@ input[type="checkbox"], input[type="radio"] {
   }
   .researcher-feed-tabs::-webkit-scrollbar,
   .researcher-category-tabs::-webkit-scrollbar { display: none; }
-  .researcher-main { padding: 1rem .75rem 5.5rem; }
+  .researcher-main { padding: 1rem 0 5.5rem; }
   .researcher-shell .topbar { gap: .45rem; padding-inline: .65rem; }
   .researcher-brand-logo, .researcher-logo { width: 40px; height: 40px; }
   .researcher-top-nav { overflow-x: auto; scrollbar-width: none; white-space: nowrap; margin-inline-start: .2rem; }
@@ -1074,6 +1074,17 @@ input[type="checkbox"], input[type="radio"] {
   .researcher-bottom-nav a:active { transform: scale(.94); }
   /* مساحة سفلية حتى لا يختفي المحتوى خلف الشريط العائم */
   .researcher-body .researcher-main { padding-bottom: calc(5.8rem + env(safe-area-inset-bottom)); }
+}
+
+/* وضع التطبيق الكامل: يملأ مساحة العرض المتاحة ويحترم نتوءات الهاتف. */
+body.researcher-fullscreen,
+body.researcher-fullscreen .researcher-shell { min-height: 100dvh; min-height: 100svh; }
+body.researcher-fullscreen .researcher-shell .topbar { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
+body.researcher-fullscreen .researcher-shell .main { min-height: 100dvh; }
+@media (display-mode: fullscreen) {
+  body.researcher-body { min-height: 100dvh; }
+  .researcher-shell .topbar { padding-top: max(10px, env(safe-area-inset-top, 0px)); }
+  .researcher-shell .main { min-height: 100dvh; }
 }
 
 /* قارئ مساحة الباحث: طبقة قراءة مستقلة، تراكبية، ومتجاوبة */

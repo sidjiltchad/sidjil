@@ -1580,6 +1580,7 @@ const SJ_ICONS = {
   logout: SJ_SVG('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>'),
   send: SJ_SVG('<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/>'),
   share: SJ_SVG('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>'),
+  fullscreen: SJ_SVG('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
   image: SJ_SVG('<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'),
   file: SJ_SVG('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>'),
 };
@@ -1640,7 +1641,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261005-material-card-v3">
+<link rel="stylesheet" href="/admin.css?v=20261005-researcher-fullscreen-v1">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1671,6 +1672,7 @@ ${csrfMeta}
             </button>
             <button class="language-preview" type="button" disabled aria-label="اللغة الفرنسية، ستتوفر لاحقًا" title="ستتوفر لاحقًا"><span class="language-preview-code">FR</span><span>Français</span></button>
           </div>
+          <button type="button" class="researcher-account-nav-link researcher-fullscreen-toggle" id="researcherFullscreenToggle" aria-pressed="false"><span class="ran-icon" aria-hidden="true">${SJ_ICONS.fullscreen}</span><span data-fullscreen-label>ملء الشاشة</span></button>
           <button type="button" data-account-logout><span class="ran-icon" aria-hidden="true">${SJ_ICONS.logout}</span><span>تسجيل الخروج</span></button>
         </div>
       </div>
@@ -1780,6 +1782,33 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
         if (!menu.contains(event.target) && !account.contains(event.target)) setAccountOpen(false);
       });
       document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setAccountOpen(false); });
+    }
+    const fullscreenToggle = document.getElementById('researcherFullscreenToggle');
+    if (fullscreenToggle && !fullscreenToggle.dataset.sjBound) {
+      fullscreenToggle.dataset.sjBound = '1';
+      const label = fullscreenToggle.querySelector('[data-fullscreen-label]');
+      const setFullscreenState = () => {
+        const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+        fullscreenToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
+        if (label) label.textContent = active ? 'الخروج من ملء الشاشة' : 'ملء الشاشة';
+        document.body.classList.toggle('researcher-fullscreen', active);
+      };
+      fullscreenToggle.addEventListener('click', async () => {
+        try {
+          if (document.fullscreenElement || document.webkitFullscreenElement) {
+            if (document.exitFullscreen) await document.exitFullscreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          } else if (document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+          } else if (document.documentElement.webkitRequestFullscreen) {
+            document.documentElement.webkitRequestFullscreen();
+          }
+        } catch { /* يتطلب المتصفح نقرة المستخدم للسماح بملء الشاشة */ }
+        setFullscreenState();
+      });
+      document.addEventListener('fullscreenchange', setFullscreenState);
+      document.addEventListener('webkitfullscreenchange', setFullscreenState);
+      setFullscreenState();
     }
   };
   init();
