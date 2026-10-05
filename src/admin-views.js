@@ -1640,7 +1640,7 @@ ${csrfMeta}
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/admin.css?v=20261011-researcher-reader-fix5">
+<link rel="stylesheet" href="/admin.css?v=20261005-material-card-v1">
 </head>
 <body class="researcher-body">
 <div class="admin-shell researcher-shell">
@@ -1792,13 +1792,49 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || /^(localh
 const DISCUSSION_KIND_LABELS = { comment: 'تعليق', review: 'مراجعة', critique: 'نقد', idea: 'فكرة', text: 'تلخيص / وصف' };
 
 /* بطاقة مادة في موجز مساحة الباحث (تُستخدم في: اكتشف / الأحدث / المتابَعون / الاعتمادات) */
+function researcherMaterialVisualKind(material) {
+  const level = String(material?.material_level || '').trim();
+  if (level === 'archival_image' || String(material?.type || '') === 'image') return 'image';
+  if (level === 'archival_text') return 'text';
+  return 'book';
+}
+
+function researcherMaterialVisualMarkup(material, title, visualKind, materialData) {
+  const hasPreview = Boolean(material?.thumb_id);
+  if (visualKind === 'image') {
+    return hasPreview
+      ? `<button class="researcher-material-visual researcher-image-visual researcher-media-trigger" type="button" data-material-lightbox="/file/${material.thumb_id}" aria-label="تكبير الصورة ${esc(title)}"><img class="researcher-feed-image" src="/file/${material.thumb_id}" alt="${esc(title)}" loading="lazy"><span class="researcher-visual-badge">صورة أرشيفية</span></button>`
+      : `<button class="researcher-material-visual researcher-image-visual researcher-feed-placeholder researcher-media-trigger" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}"><span class="researcher-empty-visual-icon" aria-hidden="true">▧</span><span>صورة أرشيفية بلا معاينة</span></button>`;
+  }
+
+  if (visualKind === 'text') {
+    const excerpt = String(material?.summary || material?.description || '').trim().slice(0, 280);
+    return `<button class="researcher-material-visual researcher-text-visual researcher-media-trigger" type="button" data-material-details ${materialData} aria-label="قراءة النص المفرغ ${esc(title)}">
+      <span class="researcher-text-visual-header"><span class="researcher-visual-icon" aria-hidden="true">¶</span><span><strong>مادة أرشيفية مفرغة</strong><small>نص موثق قابل للقراءة</small></span></span>
+      <span class="researcher-text-visual-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      ${excerpt ? `<span class="researcher-text-visual-excerpt">${esc(excerpt)}</span>` : '<span class="researcher-text-visual-excerpt">افتح التفاصيل لقراءة النص المفرغ كاملًا.</span>'}
+    </button>`;
+  }
+
+  const bookStatus = material?.pdf_id
+    ? 'كتاب أرشيفي · ملف PDF متاح'
+    : String(material?.material_level || '') === 'archival_book_unavailable'
+      ? 'كتاب أرشيفي · بيانات ببليوغرافية'
+      : 'كتاب أو مؤلف · بطاقة تعريفية';
+  const author = String(material?.author || '').trim();
+  return `<button class="researcher-material-visual researcher-book-visual researcher-media-trigger" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل الكتاب ${esc(title)}">
+    <span class="researcher-book-cover${hasPreview ? ' has-cover' : ''}">${hasPreview ? `<img src="/file/${material.thumb_id}" alt="غلاف ${esc(title)}" loading="lazy">` : `<span class="researcher-book-cover-mark" aria-hidden="true">سِجِل</span><span class="researcher-book-cover-title">${esc(title)}</span>`}</span>
+    <span class="researcher-book-info"><strong>${esc(bookStatus)}</strong>${author ? `<small>${esc(author)}</small>` : '<small>تفاصيل المصدر داخل البطاقة</small>'}</span>
+  </button>`;
+}
+
 function researcherMaterialCard(m, feed, verified) {
   const title = m.title_ar || m.title_orig || m.ark;
   const inlineId = `researcherInlineDiscussion${m.id}`;
-  const materialData = researcherMaterialData(m, m.thumb_id);
-  const image = m.thumb_id
-    ? `<button class="researcher-media-trigger" type="button" data-material-lightbox="/file/${m.thumb_id}" aria-label="عرض الصورة ${esc(title)}"><img class="researcher-feed-image" src="/file/${m.thumb_id}" alt="${esc(title)}" loading="lazy"></button>`
-    : `<button class="researcher-media-trigger researcher-feed-placeholder" type="button" data-material-details ${materialData} aria-label="عرض تفاصيل ${esc(title)}">${esc(TYPE_LABELS[m.type] || m.type)}</button>`;
+  const visualKind = researcherMaterialVisualKind(m);
+  // النص المفرغ لا يتوقع صورة غلاف حتى إن وُجد ملف مصغر بالخطأ في فهرس الأصول.
+  const materialData = researcherMaterialData(m, visualKind === 'text' ? '' : m.thumb_id);
+  const visual = researcherMaterialVisualMarkup(m, title, visualKind, materialData);
   const detailsButton = `<button class="researcher-details-btn" type="button" data-material-details ${materialData}>عرض التفاصيل</button>`;
   const excerpt = (m.type === 'document' && ['auto', 'corrected'].includes(String(m.transcription_status || '')))
     ? '' : (m.summary || m.description || '');
@@ -1847,12 +1883,12 @@ function researcherMaterialCard(m, feed, verified) {
   const cardAvatar = creatorId
     ? `<a class="post-avatar feed-brand-avatar" href="/researcher/profile/${encodeURIComponent(creatorId)}" aria-label="صفحة ${esc(cardAuthor)}">${avatar}</a>`
     : `<span class="post-avatar feed-brand-avatar" aria-label="أرشيف سِجِل">${avatar}</span>`;
-  return `<article class="researcher-feed-post social-card">
+  return `<article class="researcher-feed-post researcher-material-kind-${visualKind} social-card" data-material-level="${esc(m.material_level || '')}">
     ${officialNotice}
     ${sourceBlock}
     <div class="post-head">${cardAvatar}<div><strong>${esc(cardAuthor)}</strong><div class="post-meta">${esc(MATERIAL_LEVEL_LABELS[m.material_level] || TYPE_LABELS[m.type] || m.type)}${m.year ? ` · ${esc(m.year)}` : ''} · ${fmtDate(m.updated_at)}</div></div><span class="post-kind-label">منشور</span></div>
     <button class="researcher-feed-title researcher-material-trigger" type="button" data-material-details ${materialData}>${esc(title)}</button>
-    ${image}
+    ${visual}
     ${detailsButton}
     ${excerpt ? `<p class="researcher-feed-excerpt">${esc(String(excerpt).slice(0, 420))}</p>` : ''}
     <div class="researcher-feed-actions">
