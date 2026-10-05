@@ -25,6 +25,7 @@
     "test:mobile:search-profile": "node scripts/mobile-phase4-search-profile-check.mjs",
     "test:mobile:pdf": "node scripts/mobile-phase5-pdf-check.mjs",
     "test:mobile:files": "node scripts/mobile-phase6-files-check.mjs",
+    "test:mobile:word-upload": "node scripts/mobile-phase7-word-upload-check.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "telegram:setup": "node scripts/telegram-setup.mjs"
   },
