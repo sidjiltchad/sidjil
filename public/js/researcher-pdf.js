@@ -24,8 +24,14 @@ export async function mount(container, options = {}) {
       <div class="rpdf-reader-surface" data-rpdf-surface>
         <div class="rpdf-reader-grab" data-rpdf-grab aria-label="اسحب للأسفل لإغلاق القارئ"><span></span></div>
         <div class="rpdf-reader-tabs" data-rpdf-tabs role="tablist" aria-label="لغة القراءة">
-          <button type="button" class="rpdf-reader-tab is-active" data-rpdf-tab="original" role="tab" aria-selected="true">الأصل</button>
-          <button type="button" class="rpdf-reader-tab" data-rpdf-tab="translation" role="tab" aria-selected="false">الترجمة</button>
+          <div class="rpdf-reader-tab-slot">
+            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="original" aria-label="تحميل الأصل" title="تحميل الأصل" href="#" download>↓</a>
+            <button type="button" class="rpdf-reader-tab is-active" data-rpdf-tab="original" role="tab" aria-selected="true">الأصل</button>
+          </div>
+          <div class="rpdf-reader-tab-slot">
+            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="translation" aria-label="تحميل الترجمة" title="تحميل الترجمة" href="#" download hidden>↓</a>
+            <button type="button" class="rpdf-reader-tab" data-rpdf-tab="translation" role="tab" aria-selected="false">الترجمة</button>
+          </div>
         </div>
         <div class="rpdf-reader-stage" data-rpdf-stage>
           <section class="rpdf-pane rpdf-original-pane" data-rpdf-original-pane aria-label="الملف الأصلي"><div class="rpdf-pane-scroll" data-rpdf-original-scroll tabindex="0"><div class="rpdf-pdf-pages" data-rpdf-pages></div></div></section>
@@ -45,7 +51,7 @@ export async function mount(container, options = {}) {
   const overlay = container.querySelector('[data-rpdf-overlay]'), surface = container.querySelector('[data-rpdf-surface]'), stage = container.querySelector('[data-rpdf-stage]');
   const originalScroll = container.querySelector('[data-rpdf-original-scroll]'), translationScroll = container.querySelector('[data-rpdf-translation-scroll]'), pagesEl = container.querySelector('[data-rpdf-pages]');
   const originalPane = container.querySelector('[data-rpdf-original-pane]'), translationPane = container.querySelector('[data-rpdf-translation-pane]'), docxView = container.querySelector('[data-rpdf-docxview]'), errorEl = container.querySelector('[data-rpdf-error]'), controls = container.querySelector('[data-rpdf-controls]');
-  const originalTab = container.querySelector('[data-rpdf-tab="original"]'), translationTab = container.querySelector('[data-rpdf-tab="translation"]'), requestButton = container.querySelector('[data-rpdf-request]');
+  const originalTab = container.querySelector('[data-rpdf-tab="original"]'), translationTab = container.querySelector('[data-rpdf-tab="translation"]'), originalDownloadLink = container.querySelector('[data-rpdf-tab-download="original"]'), translationDownloadLink = container.querySelector('[data-rpdf-tab-download="translation"]'), requestButton = container.querySelector('[data-rpdf-request]');
   const state = { doc: null, pagesObserver: null, currentObserver: null, cancelled: false, zoom: 1, renderedZoom: 1, activeTranslation: null, viewMode: 0, currentPage: 1, controlsTimer: null, docxHandles: {}, quote: null, pointers: new Map(), pinchDistance: 0, pinchZoom: 1, lastTap: 0 };
   const trs = Array.isArray(translations) ? translations.filter((x) => x?.translation_file_id) : [];
   let fullscreenTarget = null;
@@ -102,7 +108,7 @@ export async function mount(container, options = {}) {
     try { const reader = await waitForDocxReader(); state.docxHandles[docxUrl] = await reader.mount(docxView, { url: docxUrl, lang: item.target_lang || 'ar', textOnly: true }); docxView.classList.remove('is-loading'); }
     catch { docxView.classList.remove('is-loading'); docxView.innerHTML = `<p class="docx-error">تعذّر عرض الترجمة داخل المتصفح. <a href="${escapeHtml(docxUrl)}?download=1">تنزيل ملف الترجمة</a> <button type="button" data-rpdf-translation-retry>إعادة المحاولة</button></p>`; docxView.querySelector('[data-rpdf-translation-retry]')?.addEventListener('click', () => { delete state.docxHandles[docxUrl]; loadTranslation(item); }); }
   }
-  async function selectTranslation(item) { if (!item) return; state.activeTranslation = item; state.viewMode = 1; updateLayout(); await loadTranslation(item); setControlsVisible(true); }
+  async function selectTranslation(item) { if (!item) return; state.activeTranslation = item; state.viewMode = 1; translationDownloadLink.href = `/file/${item.translation_file_id}?download=1`; translationDownloadLink.hidden = false; updateLayout(); await loadTranslation(item); setControlsVisible(true); }
   function showLanguageMenu() { const menu = container.querySelector('[data-rpdf-lang-menu]'); menu.replaceChildren(); if (trs.length <= 1) { selectTranslation(trs[0]); return; } trs.forEach((item) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = LANG_NAMES[item.target_lang] || item.target_lang; b.addEventListener('click', () => { menu.hidden = true; selectTranslation(item); }); menu.appendChild(b); }); menu.hidden = false; setControlsVisible(true); }
   async function requestTranslation() { if (!materialId || requestButton.disabled) return; requestButton.disabled = true; try { const response = await fetch('/api/v1/translation-requests', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', ...(csrfToken() ? { 'X-CSRF-Token': csrfToken() } : {}) }, body: JSON.stringify({ material_id: Number(materialId), source_file_id: Number(fileId) || null }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'تعذّر إرسال طلب الترجمة'); requestButton.textContent = '✓'; requestButton.title = data.duplicate ? 'طلب الترجمة مسجل مسبقًا' : 'تم إرسال طلب الترجمة'; } catch (error) { requestButton.disabled = false; toast(error.message || 'تعذّر إرسال الطلب', false); } }
   originalScroll.addEventListener('scroll', interaction, { passive: true }); translationScroll.addEventListener('scroll', interaction, { passive: true });
@@ -123,8 +129,10 @@ export async function mount(container, options = {}) {
   async function loadPdf() { try { state.doc = await pdfjsLib.getDocument({ url, withCredentials: true, ...PDF_OPTIONS }).promise; if (!state.cancelled) { errorEl.hidden = true; buildPages(); } } catch { errorEl.hidden = false; } }
   function close() { if (state.cancelled) return; state.cancelled = true; state.pagesObserver?.disconnect(); state.currentObserver?.disconnect(); clearTimeout(state.controlsTimer); exitFullscreen(); Object.values(state.docxHandles).forEach((handle) => { try { handle?.destroy?.(); } catch {} }); document.body.classList.remove('rpdf-reader-open'); container.remove(); if (window.__sidjilResearcherReaderClose === close) delete window.__sidjilResearcherReaderClose; }
   container.querySelector('[data-rpdf-retry]').addEventListener('click', () => { errorEl.hidden = true; loadPdf(); });
+  originalDownloadLink.href = originalDownload || url;
   translationTab.disabled = !trs.length;
-  if (!trs.length) requestButton.hidden = !materialId;
+  if (trs.length) { translationDownloadLink.href = `/file/${trs[0].translation_file_id}?download=1`; translationDownloadLink.hidden = false; }
+  else requestButton.hidden = !materialId;
   enterFullscreen();
   await loadPdf(); setControlsVisible(false); return { destroy: close, close };
 }
