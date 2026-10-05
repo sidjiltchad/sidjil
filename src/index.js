@@ -46,7 +46,7 @@ function publicHomeCacheKey(request) {
 }
 
 const RESEARCHER_APP_HOST = 'app.sidjil.org';
-const DEFAULT_CAPACITOR_ORIGINS = new Set(['https://localhost']);
+const DEFAULT_CAPACITOR_ORIGINS = new Set(['https://localhost', 'capacitor://localhost']);
 
 function capacitorOrigin(request, env) {
   const origin = String(request.headers.get('Origin') || '').trim();
@@ -55,7 +55,10 @@ function capacitorOrigin(request, env) {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
-  const allowed = configured.length ? new Set(configured) : DEFAULT_CAPACITOR_ORIGINS;
+  // Keep the two official Capacitor origins enabled even when production
+  // configuration supplies additional origins. An env override must extend
+  // the safe baseline, otherwise a native build silently loses CORS access.
+  const allowed = new Set([...DEFAULT_CAPACITOR_ORIGINS, ...configured]);
   return allowed.has(origin) ? origin : '';
 }
 
