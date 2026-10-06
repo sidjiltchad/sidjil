@@ -120,18 +120,23 @@ export async function searchMaterials(db, params = {}) {
     const hasArabic = /[\u0600-\u06ff]/u.test(String(q));
     if (hasArabic) {
       const tokens = normalizedQuery.split(/\s+/).filter(Boolean).slice(0, 12);
+      const rawTokens = String(q).trim().split(/\s+/).filter(Boolean).slice(0, 12);
       if (tokens.length) {
         likeSearch = true;
-        const tokenClauses = tokens.map(() => `(
-          m.search_blob LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.title_fr LIKE ? OR m.description_fr LIKE ? OR m.summary_fr LIKE ? OR m.notable_quote_fr LIKE ?
-          OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
-          OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
-          OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND tfq.filename LIKE ?)
-        )`);
+        const tokenClauses = tokens.map((token, index) => {
+          const rawToken = rawTokens[index] || token;
+          return `(
+            m.search_blob LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.title_fr LIKE ? OR m.description_fr LIKE ? OR m.summary_fr LIKE ? OR m.notable_quote_fr LIKE ?
+            OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
+            OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
+            OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND tfq.filename LIKE ?)
+          )`;
+        });
         where.push(`(${tokenClauses.join(' AND ')})`);
-        for (const token of tokens) {
-          const pattern = `%${token}%`;
-          binds.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+        for (const [index, token] of tokens.entries()) {
+          const normalizedPattern = `%${token}%`;
+          const rawPattern = `%${rawTokens[index] || token}%`;
+          binds.push(normalizedPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern);
         }
       }
     } else {
@@ -140,7 +145,8 @@ export async function searchMaterials(db, params = {}) {
     if (ftsQuery) {
       joins.push('LEFT JOIN materials_fts ON materials_fts.ark = m.ark');
       const tokens = normalizeText(q).split(/\s+/).map((token) => token.replace(/["*:()]/g, '')).filter(Boolean).slice(0, 12);
-      const directClauses = tokens.map(() => `(
+      const rawTokens = String(q).trim().split(/\s+/).map((token) => token.replace(/["*:()]/g, '')).filter(Boolean).slice(0, 12);
+      const directClauses = tokens.map((token, index) => `(
         m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.title_fr LIKE ? OR m.search_blob LIKE ?
         OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
         OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
@@ -148,9 +154,10 @@ export async function searchMaterials(db, params = {}) {
       )`).join(' AND ');
       where.push(`(m.ark IN (SELECT fts.ark FROM materials_fts fts WHERE materials_fts MATCH ?)${directClauses ? ` OR (${directClauses})` : ''})`);
       binds.push(ftsQuery);
-      for (const token of tokens) {
-        const pattern = `%${token}%`;
-        binds.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+      for (const [index, token] of tokens.entries()) {
+        const normalizedPattern = `%${token}%`;
+        const rawPattern = `%${rawTokens[index] || token}%`;
+        binds.push(rawPattern, rawPattern, rawPattern, normalizedPattern, rawPattern, rawPattern, rawPattern);
       }
     }
   }
