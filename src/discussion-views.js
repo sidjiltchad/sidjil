@@ -203,7 +203,7 @@ async function materialDiscussionsReadOnlyPage(ctx, materialId) {
       <p class="page-desc">${esc(lang === 'fr' ? 'Discussions des chercheurs liées à cette matière — lecture seule.' : 'نقاشات الباحثين المرتبطة بهذه المادة — للعرض فقط.')}</p>
     </header>
     <section class="social-card social-feed-intro"><strong>${esc(materialTitle)}</strong><span>${esc(lang === 'fr' ? 'Discussions publiées par les chercheurs.' : 'النقاشات المنشورة من الباحثين.')}</span></section>
-    <div class="discussion-readonly-list">${cards || `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`}</div>
+    <div class="discussion-readonly-list">${cards}</div>
   </div>`;
   return layout(ctx, { title: `${t(lang, 'discussions_title')} — ${materialTitle}`, description: materialTitle, active: '/discussions', content });
 }
@@ -342,7 +342,7 @@ export async function discussionPage(ctx, id) {
     </article>
     <section class="d-replies" id="replies">
       <h2>${esc(t(lang, 'replies_label'))} (${replies.length})</h2>
-      ${roots.length ? roots.map((r) => replyHTML(r, false)).join('') : `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`}
+      ${roots.length ? roots.map((r) => replyHTML(r, false)).join('') : ''}
     </section>
     ${replyForm}
   </div>
