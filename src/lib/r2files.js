@@ -145,14 +145,20 @@ export async function putUpload(env, { materialId, ark, type }, file, kind = 'or
  * - download=1 → Content-Disposition: attachment
  */
 export async function serveFile(env, fileId, { download = false, admin = false, watermark = false } = {}) {
-  const file = await env.DB.prepare('SELECT * FROM files WHERE id = ?').bind(fileId).first();
+  // لا نحتاج بقية أعمدة files لتقديم الكائن من R2؛ إبقاء الاستعلام ضيقًا
+  // يقلل حجم الصف المنقول من D1 في كل طلب قراءة/تنزيل.
+  const file = await env.DB
+    .prepare('SELECT material_id, filename, mime, r2_key FROM files WHERE id = ?')
+    .bind(fileId)
+    .first();
   if (!file) {
     return jsonError('الملف غير موجود', 404);
   }
 
   if (!admin) {
     const mat = await env.DB
-      .prepare('SELECT publish_status, full_text FROM materials WHERE id = ?')
+      // لا نعيد النص الكامل من D1 لمجرد فحص وجوده؛ نحتاج علمًا منطقيًا فقط.
+      .prepare("SELECT publish_status, CASE WHEN full_text IS NOT NULL AND full_text <> '' THEN 1 ELSE 0 END AS has_full_text FROM materials WHERE id = ?")
       .bind(file.material_id)
       .first();
     if (!mat || mat.publish_status !== 'published') {
@@ -160,7 +166,7 @@ export async function serveFile(env, fileId, { download = false, admin = false, 
     }
     const textualOriginal = /(?:docx?|txt|md)$/i.test(file.filename || '')
       || /^(text\/plain|text\/markdown|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/i.test(file.mime || '');
-    if (textualOriginal && mat.full_text) {
+    if (textualOriginal && Number(mat.has_full_text) === 1) {
       return jsonError('هذا المستند متاح كنص موثق داخل المنصة', 403);
     }
   }
