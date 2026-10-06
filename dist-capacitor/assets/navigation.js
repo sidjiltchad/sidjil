@@ -1,4 +1,4 @@
-const ROUTES = new Set(['feed', 'search', 'profile', 'account', 'new', 'material', 'reader']);
+const ROUTES = new Set(['feed', 'search', 'profile', 'discussions', 'account', 'notifications', 'settings', 'new', 'material', 'reader']);
 
 export function parseRoute(hash = '') {
   const value = String(hash || '').replace(/^#/, '').trim();
@@ -70,8 +70,15 @@ export function createNavigation({ onRoute, historyLike = globalThis.history, lo
     return { ...current };
   }
   function back() {
+    // A deep link or a restored WebView can start with a non-feed route and
+    // an otherwise empty local stack. In that case Android back must still
+    // have a safe in-app destination instead of falling through to exitApp.
     if (stack.length > 1) stack.pop();
-    const previous = stack[stack.length - 1] || { name: 'feed' };
+    else if (current.name !== 'feed') {
+      current = { name: 'feed' };
+      stack[0] = { ...current };
+    }
+    const previous = stack[stack.length - 1] || current || { name: 'feed' };
     current = { ...previous };
     const hash = current.name === 'profile' ? `#profile/${current.id}` : current.name === 'material' ? `#material/${current.id}` : current.name === 'reader' ? `#material/${current.id}/read/${current.source}` : `#${current.name}`;
     try { historyLike?.replaceState?.({ route: current }, '', hash); } catch { /* embedded WebView fallback */ }

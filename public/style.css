@@ -815,6 +815,60 @@ a:hover {
   color: var(--muted);
 }
 
+/* نتائج البحث الحي في الصفحة الرئيسية */
+.home-live-search {
+  max-width: 640px;
+  margin: 12px auto 0;
+  padding: 10px;
+  background: var(--card);
+  background: color-mix(in srgb, var(--card) 96%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  text-align: start;
+}
+.home-live-search[hidden] { display: none; }
+.home-live-search-status {
+  color: var(--muted);
+  font-size: .85rem;
+  margin: 2px 6px 8px;
+}
+.home-live-search-list { display: grid; gap: 6px; }
+.home-live-search-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background .16s ease, border-color .16s ease;
+}
+.home-live-search-item:hover,
+.home-live-search-item:focus-visible {
+  background: var(--paper-2);
+  border-color: var(--line);
+  outline: none;
+}
+.home-live-search-item-body { min-width: 0; display: grid; gap: 3px; }
+.home-live-search-item-type { color: var(--teal); font-size: .72rem; font-weight: 700; }
+.home-live-search-item-title { font-size: .98rem; line-height: 1.45; }
+.home-live-search-item-snippet {
+  color: var(--ink-secondary);
+  font-size: .82rem;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.home-live-search-item-meta { color: var(--muted); font-size: .76rem; white-space: nowrap; padding-top: 3px; }
+.home-live-search-item mark { background: #fde8a0; color: #3b2c00; border-radius: 3px; padding: 1px 3px; }
+.home-live-search-more { display: block; color: var(--teal); font-weight: 700; font-size: .86rem; text-decoration: none; padding: 9px 6px 2px; }
+[data-theme="dark"] .home-live-search-item mark { background: #7a5d13; color: #fff9e6; }
+
 /* ---------- 6. الأزرار وعناصر التحكم (Buttons) ---------- */
 .btn {
   display: inline-flex;
@@ -2653,6 +2707,9 @@ body.sidjil-reading-open { overflow: hidden; }
   .hero-search .btn-lg {
     width: 100%;
   }
+
+  .home-live-search-item { align-items: stretch; flex-direction: column; gap: 5px; }
+  .home-live-search-item-meta { white-space: normal; }
 
   .hero {
     padding: 44px 0 52px;

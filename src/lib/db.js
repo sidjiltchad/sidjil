@@ -172,36 +172,37 @@ export async function rebuildSearchBlob(db, materialId) {
   const m = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(materialId).first();
   if (!m) return;
 
-  const [trRows, pRows, plRows, tRows, srcRow] = await Promise.all([
+  const [trRows, translationRows, pRows, plRows, tRows, srcRow] = await Promise.all([
     db.prepare('SELECT text FROM transcriptions WHERE material_id = ?').bind(materialId).all(),
+    db.prepare("SELECT text FROM translations WHERE material_id = ? AND status IN ('machine','in_review','reviewed','approved')").bind(materialId).all().catch(() => ({ results: [] })),
     db
       .prepare(
-        `SELECT p.name_ar, p.name_orig FROM people p
+        `SELECT p.name_ar, p.name_fr, p.name_orig FROM people p
          JOIN material_people mp ON mp.person_id = p.id WHERE mp.material_id = ?`
       )
       .bind(materialId)
       .all(),
     db
       .prepare(
-        `SELECT pl.name_ar, pl.name_orig FROM places pl
+        `SELECT pl.name_ar, pl.name_fr, pl.name_orig FROM places pl
          JOIN material_places mpl ON mpl.place_id = pl.id WHERE mpl.material_id = ?`
       )
       .bind(materialId)
       .all(),
     db
       .prepare(
-        `SELECT t.name_ar, t.name_orig FROM tags t
+        `SELECT t.name_ar, t.name_fr, t.name_orig FROM tags t
          JOIN material_tags mt ON mt.tag_id = t.id WHERE mt.material_id = ?`
       )
       .bind(materialId)
       .all(),
     m.source_id
-      ? db.prepare('SELECT name, name_ar FROM sources WHERE id = ?').bind(m.source_id).first()
+      ? db.prepare('SELECT name, name_ar, name_fr FROM sources WHERE id = ?').bind(m.source_id).first()
       : Promise.resolve(null),
   ]);
 
-  const names = (rows, a, b) =>
-    rows.results.map((r) => `${r[a] || ''} ${r[b] || ''}`).join(' ');
+  const names = (rows, a, b, c) =>
+    rows.results.map((r) => `${r[a] || ''} ${r[b] || ''} ${c ? (r[c] || '') : ''}`).join(' ');
 
   const parts = [
     m.title_ar,
@@ -209,17 +210,22 @@ export async function rebuildSearchBlob(db, materialId) {
     m.description,
     m.full_text,
     trRows.results.map((r) => r.text).join(' '),
-    names(pRows, 'name_ar', 'name_orig'),
-    names(plRows, 'name_ar', 'name_orig'),
-    names(tRows, 'name_ar', 'name_orig'),
-    srcRow ? `${srcRow.name || ''} ${srcRow.name_ar || ''}` : '',
+    translationRows.results.map((r) => r.text).join(' '),
+    m.title_fr,
+    m.description_fr,
+    m.summary_fr,
+    m.notable_quote_fr,
+    names(pRows, 'name_ar', 'name_orig', 'name_fr'),
+    names(plRows, 'name_ar', 'name_orig', 'name_fr'),
+    names(tRows, 'name_ar', 'name_orig', 'name_fr'),
+    srcRow ? `${srcRow.name || ''} ${srcRow.name_ar || ''} ${srcRow.name_fr || ''}` : '',
     m.archive_ref,
     m.author,
     m.photographer,
   ];
 
   const blob = normalizeText(parts.filter(Boolean).join(' '));
-  const title = normalizeText(`${m.title_ar || ''} ${m.title_orig || ''}`);
+  const title = normalizeText(`${m.title_ar || ''} ${m.title_fr || ''} ${m.title_orig || ''}`);
 
   await db.batch([
     db.prepare('UPDATE materials SET search_blob = ? WHERE id = ?').bind(blob, materialId),

@@ -6,7 +6,7 @@ import { routeDiscussionPublic } from './discussions.js';
 import { routeSocialApi } from './social.js';
 import { renderPublic } from './views.js';
 import { renderAdmin, renderResearcher } from './admin-views.js';
-import { getSessionUser, setSessionCookie } from './lib/auth.js';
+import { getSessionUser, setSessionCookie, setNativeSessionCookie, clearNativeSessionCookie } from './lib/auth.js';
 import { rateLimitCheck, rateLimitResponse } from './lib/ratelimit.js';
 import { googleStart, googleCallback } from './lib/google-auth.js';
 import { addSidjilWatermark } from './lib/pdf-watermark.js';
@@ -67,6 +67,8 @@ function withCapacitorCors(request, env, response) {
   const origin = capacitorOrigin(request, env);
   const pathname = new URL(request.url).pathname;
   const allowedPath = pathname.startsWith('/api/v1/admin/')
+    || pathname.startsWith('/api/v1/social/')
+    || pathname === '/api/v1/discussions' || /^\/api\/v1\/discussions\/\d+$/.test(pathname)
     || pathname === '/researcher/feed'
     || pathname === '/researcher/search'
     || /^\/api\/v1\/materials\/\d+\/details$/.test(pathname)
@@ -81,6 +83,19 @@ function withCapacitorCors(request, env, response) {
   headers.set('Access-Control-Allow-Headers', 'Accept, Content-Type, X-CSRF-Token');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   if (pathname.startsWith('/file/')) headers.set('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, Content-Type, ETag, Accept-Ranges, Content-Range');
+  // Credentialed fetches from the Android shell are cross-site by design
+  // (the shell origin is https://localhost/capacitor://localhost).  Preserve
+  // the normal SameSite=Lax web cookie, and mirror its token into a separate
+  // host-only SameSite=None cookie only for the exact, allowlisted native
+  // origin.  Both cookies remain HttpOnly/Secure; the native one is never
+  // exposed to arbitrary web origins.
+  if (pathname === '/api/v1/admin/login' && request.method === 'POST' && response.ok) {
+    const webCookie = headers.get('Set-Cookie') || '';
+    const match = webCookie.match(/(?:^|,\s*)archifouna_admin=([^;]+)/);
+    if (match && match[1]) headers.append('Set-Cookie', setNativeSessionCookie(match[1]));
+  } else if (pathname === '/api/v1/admin/logout' && request.method === 'POST') {
+    headers.append('Set-Cookie', clearNativeSessionCookie());
+  }
   const vary = headers.get('Vary') || '';
   if (!/(^|,\s*)Origin(,|$)/i.test(vary)) headers.append('Vary', 'Origin');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
@@ -115,7 +130,7 @@ async function handleRequest(request, env, ctx) {
 
     // Capacitor's bundled shell uses a controlled HTTPS localhost origin.
     // Reply to its preflight without touching authentication or the database.
-    if (request.method === 'OPTIONS' && (pathname.startsWith('/api/v1/admin/') || pathname === '/researcher/feed' || pathname === '/researcher/search' || /^\/api\/v1\/materials\/\d+\/(details|translations)$/.test(pathname) || pathname.startsWith('/file/') || pathname.startsWith('/researcher/profile/')) && capacitorOrigin(request, env)) {
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/api/v1/admin/') || pathname.startsWith('/api/v1/social/') || pathname === '/api/v1/discussions' || /^\/api\/v1\/discussions\/\d+$/.test(pathname) || pathname === '/researcher/feed' || pathname === '/researcher/search' || /^\/api\/v1\/materials\/\d+\/(details|translations)$/.test(pathname) || pathname.startsWith('/file/') || pathname.startsWith('/researcher/profile/')) && capacitorOrigin(request, env)) {
       return new Response(null, {
         status: 204,
         headers: {

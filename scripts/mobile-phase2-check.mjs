@@ -13,6 +13,7 @@ const baseSource = await read('api-base.js');
 const clientSource = await read('api-client.js');
 const authSource = await read('auth.js');
 const indexSource = await readFile(join(root, 'src', 'index.js'), 'utf8');
+const serverAuthSource = await readFile(join(root, 'src', 'lib', 'auth.js'), 'utf8');
 const adminApiSource = await readFile(join(root, 'src', 'admin-api.js'), 'utf8');
 
 const envSandbox = { console };
@@ -75,6 +76,9 @@ assert.match(authSource, /export async function logout/);
 assert.match(indexSource, /CAPACITOR_ORIGINS/);
 assert.match(indexSource, /Access-Control-Allow-Credentials/);
 assert.match(indexSource, /capacitor:\/\/localhost/);
+assert.match(indexSource, /setNativeSessionCookie/);
+assert.match(serverAuthSource, /SameSite=None/);
+assert.match(serverAuthSource, /archifouna_capacitor/);
 assert.match(adminApiSource, /rest === 'session'/);
 assert.doesNotMatch(authSource, /localStorage|sessionStorage|password.*setItem/i);
 

@@ -64,8 +64,14 @@ export function langPath(ctx, path) {
 }
 
 export function displayTitle(lang, m) {
-  // العربية أولًا دائمًا (لغة الفهرسة)، ثم العنوان الأصلي
-  return (m.title_ar || '').trim() || (m.title_orig || '').trim() || m.ark || '';
+  const localized = lang === 'fr' ? m.title_fr : m.title_ar;
+  return (localized || '').trim() || (m.title_orig || '').trim() || (lang === 'fr' ? (m.title_ar || '').trim() : '') || m.ark || '';
+}
+
+export function displayEntityName(lang, row, kind = 'generic') {
+  if (!row) return '';
+  if (kind === 'source') return String(lang === 'fr' ? (row.name_fr || row.name || row.name_ar) : (row.name_ar || row.name) || '').trim();
+  return String(lang === 'fr' ? (row.name_fr || row.name_orig || row.name_ar) : (row.name_ar || row.name_orig) || '').trim();
 }
 
 /* ---------- التخطيط العام ---------- */
@@ -77,6 +83,14 @@ function head(ctx, { title, description, ogImage, canonical }) {
   const fullTitle = title ? `${title} — ${site}` : `${site} — ${t(lang, 'site_sub')}`;
   const desc = description || t(lang, 'footer_about');
   const canon = canonical ? `<link rel="canonical" href="${esc(canonical)}">` : '';
+  let alternateLinks = '';
+  try {
+    const alternateBase = new URL(canonical || ctx.url);
+    alternateLinks = ['ar', 'fr'].map((alternateLang) => {
+      alternateBase.searchParams.set('lang', alternateLang);
+      return `<link rel="alternate" hreflang="${alternateLang}" href="${esc(alternateBase.href)}">`;
+    }).join('\n');
+  } catch (_) { /* رابط canonical غير صالح لا يمنع عرض الصفحة */ }
   // روابط OG مطلقة (مطلوبة لمنصات المشاركة)
   let og = '';
   if (ogImage) {
@@ -98,6 +112,7 @@ ${themeInit}
 <meta name="description" content="${esc(desc)}">
 ${csrfMeta}
 ${canon}
+${alternateLinks}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="${esc(site)}">
 <meta property="og:title" content="${esc(fullTitle)}">
@@ -114,7 +129,7 @@ ${ogUrl}
 <meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=20261011-reader-layout-fix">
+<link rel="stylesheet" href="/style.css?v=20261006-bilingual-search">
 <link rel="stylesheet" href="/rpdf-reader.css?v=20261011-shared-reader">
 </head>`;
 }
@@ -126,7 +141,7 @@ function themeToggleHTML(ctx) {
 </button>`;
 }
 
-function header(ctx, active = '') {
+function header(ctx, active = '', { hideSearch = false } = {}) {
   const { lang } = ctx;
   const L = (p, label) => `<a class="nav-link${active === p ? ' active' : ''}" href="${langPath(ctx, p)}">${esc(t(lang, label))}</a>`;
   const other = lang === 'ar' ? 'fr' : 'ar';
@@ -166,11 +181,11 @@ function header(ctx, active = '') {
           ${L('/sources', 'nav_sources')}
         </div>
       </div>
-      <form class="header-searchbox" action="${langPath(ctx, '/search')}" method="get" role="search">
+      ${hideSearch ? '' : `<form class="header-searchbox" action="${langPath(ctx, '/search')}" method="get" role="search">
         <input type="hidden" name="lang" value="${lang}">
         <input type="search" name="q" placeholder="${esc(t(lang, 'search_placeholder'))}" aria-label="${esc(t(lang, 'nav_search'))}" autocomplete="off">
         <button type="submit" aria-label="${esc(t(lang, 'search_button'))}">${searchIcon}</button>
-      </form>
+      </form>`}
     </nav>
     <div class="header-tools">
       ${themeToggleHTML(ctx)}
@@ -220,9 +235,9 @@ function footer(ctx) {
 </footer>`;
 }
 
-export function layout(ctx, { title, description, ogImage, canonical, active, content }) {
+export function layout(ctx, { title, description, ogImage, canonical, active, content, hideHeaderSearch = false }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active)}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active, { hideSearch: hideHeaderSearch })}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
 }
 
 // شريط سفلي يظهر فقط في وضع التطبيق (standalone)
@@ -251,13 +266,13 @@ export async function enrichMaterials(env, items) {
   const placeMap = {}, sourceMap = {}, thumbMap = {};
   if (placeIds.length) {
     const rows = await db.prepare(
-      `SELECT id, name_ar, name_orig FROM places WHERE id IN (${placeIds.map(() => '?').join(',')})`
+      `SELECT id, name_ar, name_fr, name_orig FROM places WHERE id IN (${placeIds.map(() => '?').join(',')})`
     ).bind(...placeIds).all();
     for (const r of rows.results || []) placeMap[r.id] = r;
   }
   if (sourceIds.length) {
     const rows = await db.prepare(
-      `SELECT id, name, name_ar FROM sources WHERE id IN (${sourceIds.map(() => '?').join(',')})`
+      `SELECT id, name, name_ar, name_fr FROM sources WHERE id IN (${sourceIds.map(() => '?').join(',')})`
     ).bind(...sourceIds).all();
     for (const r of rows.results || []) sourceMap[r.id] = r;
   }
@@ -278,14 +293,17 @@ export async function enrichMaterials(env, items) {
 export function cardHTML(ctx, m) {
   const { lang } = ctx;
   const title = displayTitle(lang, m);
-  const titleOrig = (m.title_ar && m.title_orig && m.title_orig !== m.title_ar)
+  const descriptionText = lang === 'fr' ? (m.description_fr || m.description) : m.description;
+  const titleOrig = (title && m.title_orig && m.title_orig !== title)
     ? `<div class="card-orig">${esc(m.title_orig)}</div>` : '';
   const thumb = m._thumb
     ? `<img class="card-thumb" src="/file/${m._thumb}" alt="" loading="lazy">`
     : `<div class="card-thumb card-thumb-empty" aria-hidden="true"><span>${esc(typeLabel(lang, m.type))}</span></div>`;
-  const place = m._place ? `<span class="card-meta-item">📍 ${esc(m._place.name_ar || m._place.name_orig || '')}</span>` : '';
-  const source = m._source ? `<span class="card-meta-item">🏛 ${esc(m._source.name_ar || m._source.name)}</span>` : '';
-  const date = m.date_text || m.year || '';
+  const placeName = lang === 'fr' ? (m._place?.name_fr || m._place?.name_orig || m._place?.name_ar) : (m._place?.name_ar || m._place?.name_orig);
+  const sourceName = lang === 'fr' ? (m._source?.name_fr || m._source?.name || m._source?.name_ar) : (m._source?.name_ar || m._source?.name);
+  const place = m._place ? `<span class="card-meta-item">📍 ${esc(placeName || '')}</span>` : '';
+  const source = m._source ? `<span class="card-meta-item">🏛 ${esc(sourceName || '')}</span>` : '';
+  const date = (lang === 'fr' ? (m.date_text_fr || m.date_text) : m.date_text) || m.year || '';
   const snippet = m.snippet
     ? `<p class="card-snippet">${m.snippet}</p>` : '';
   return `<article class="card">
@@ -470,11 +488,17 @@ async function homePage(ctx) {
       <div class="hero-sub">${esc(t(lang, 'site_sub'))}</div>
       <p class="hero-tagline">${esc(t(lang, 'tagline'))}</p>
       <p class="hero-desc">${esc(t(lang, 'hero_desc'))}</p>
-      <form class="hero-search" action="${langPath(ctx, '/search')}" method="get" role="search">
+      <form class="hero-search" action="${langPath(ctx, '/search')}" method="get" role="search" data-live-search-form>
         <input type="hidden" name="lang" value="${lang}">
-        <input type="search" name="q" class="hero-input" placeholder="${esc(t(lang, 'search_placeholder'))}" aria-label="${esc(t(lang, 'nav_search'))}" autocomplete="off">
+        <input type="search" name="q" class="hero-input" data-live-search-input minlength="3" placeholder="${esc(t(lang, 'search_placeholder'))}" aria-label="${esc(t(lang, 'nav_search'))}" autocomplete="off">
         <button type="submit" class="btn btn-primary btn-lg">${esc(t(lang, 'search_button'))}</button>
       </form>
+      <div class="home-live-search" data-live-search-results hidden role="region" aria-live="polite" aria-label="${esc(lang === 'fr' ? 'Résultats de recherche' : 'نتائج البحث')}" aria-busy="false">
+        <p class="home-live-search-status" data-live-search-status></p>
+        <div class="home-live-search-list" data-live-search-list></div>
+        <a class="home-live-search-more" data-live-search-more href="${langPath(ctx, '/search')}">${esc(lang === 'fr' ? 'Voir tous les résultats' : 'عرض كل النتائج')} →</a>
+      </div>
+      <script src="/js/home-search.js?v=20261006-live-bilingual" defer></script>
     </div>
   </section>
 
@@ -532,6 +556,7 @@ async function homePage(ctx) {
     description: t(lang, 'tagline2') + ' — ' + t(lang, 'hero_desc'),
     active: '/',
     content,
+    hideHeaderSearch: true,
   });
 }
 
@@ -557,7 +582,7 @@ async function filterOptions(env) {
     db.prepare(`SELECT DISTINCT type FROM materials WHERE publish_status='published'`).all(),
     db.prepare(`SELECT DISTINCT region FROM places WHERE region IS NOT NULL AND region <> '' ORDER BY region`).all(),
     db.prepare(`SELECT DISTINCT language FROM materials WHERE publish_status='published' AND language IS NOT NULL AND language <> '' ORDER BY language`).all(),
-    db.prepare(`SELECT id, name, name_ar FROM sources ORDER BY name`).all(),
+    db.prepare(`SELECT id, name, name_ar, name_fr FROM sources ORDER BY name`).all(),
   ]);
   return {
     types: (types.results || []).map(r => r.type),
@@ -587,7 +612,7 @@ function filterBarHTML(ctx, opts, current, basePath) {
     ${sel('level', opts.levels.map(level => ({ value: level, label: levelLabel(lang, level) })), lang === 'fr' ? 'Tous les formats' : 'كل التصنيفات')}
     ${sel('region', opts.regions, t(lang, 'all_regions'))}
     ${sel('language', opts.langs, t(lang, 'all_languages'))}
-    ${sel('source', opts.sources.map(s => ({ value: String(s.id), label: s.name_ar || s.name })), t(lang, 'all_sources'))}
+    ${sel('source', opts.sources.map(s => ({ value: String(s.id), label: displayEntityName(lang, s, 'source') })), t(lang, 'all_sources'))}
     <button type="submit" class="btn btn-primary">${esc(t(lang, 'filters'))}</button>
     <a class="btn btn-ghost" href="${langPath(ctx, basePath)}">${esc(t(lang, 'clear_filters'))}</a>
   </form>`;
@@ -679,8 +704,8 @@ async function advancedSearchPage(ctx) {
   const db = env.DB;
   const [opts, people, tags] = await Promise.all([
     filterOptions(env),
-    db.prepare(`SELECT id, name_ar, name_orig FROM people ORDER BY name_ar LIMIT 500`).all(),
-    db.prepare(`SELECT id, name_ar, name_orig FROM tags ORDER BY name_ar LIMIT 500`).all(),
+    db.prepare(`SELECT id, name_ar, name_fr, name_orig FROM people ORDER BY name_ar LIMIT 500`).all(),
+    db.prepare(`SELECT id, name_ar, name_fr, name_orig FROM tags ORDER BY name_ar LIMIT 500`).all(),
   ]);
   const peopleRows = people.results || [], tagRows = tags.results || [];
 
@@ -725,9 +750,9 @@ async function advancedSearchPage(ctx) {
       </div>
       ${field('region', t(lang, 'field_region'), sel('region', opts.regions.map(r => ({ value: r, label: r })), t(lang, 'all_regions')))}
       ${field('language', t(lang, 'field_language'), sel('language', opts.langs.map(l => ({ value: l, label: l })), t(lang, 'all_languages')))}
-      ${field('source', t(lang, 'field_source'), sel('source', opts.sources.map(s => ({ value: String(s.id), label: s.name_ar || s.name })), t(lang, 'all_sources')))}
-      ${field('person', t(lang, 'field_person'), sel('person', peopleRows.map(p => ({ value: String(p.id), label: p.name_ar + (p.name_orig ? ' — ' + p.name_orig : '') })), '—'))}
-      ${field('tag', t(lang, 'field_tag'), sel('tag', tagRows.map(x => ({ value: String(x.id), label: x.name_ar + (x.name_orig ? ' — ' + x.name_orig : '') })), '—'))}
+      ${field('source', t(lang, 'field_source'), sel('source', opts.sources.map(s => ({ value: String(s.id), label: displayEntityName(lang, s, 'source') })), t(lang, 'all_sources')))}
+      ${field('person', t(lang, 'field_person'), sel('person', peopleRows.map(p => ({ value: String(p.id), label: displayEntityName(lang, p) + (p.name_orig ? ' — ' + p.name_orig : '') })), '—'))}
+      ${field('tag', t(lang, 'field_tag'), sel('tag', tagRows.map(x => ({ value: String(x.id), label: displayEntityName(lang, x) + (x.name_orig ? ' — ' + x.name_orig : '') })), '—'))}
       <div class="adv-actions">
         <button type="submit" class="btn btn-primary btn-lg">${esc(t(lang, 'search_button'))}</button>
         <a class="btn btn-ghost" href="${langPath(ctx, '/advanced-search')}">${esc(t(lang, 'clear_filters'))}</a>
@@ -877,9 +902,9 @@ async function documentPage(ctx, ark) {
   const canonical = `${origin}/document/${encodeURIComponent(m.ark)}`;
 
   /* --- بيانات التعريف --- */
-  const dateStr = m.date_text || (m.year ? String(m.year) : '');
-  const placeName = m.place ? (m.place.name_ar || m.place.name_orig) : null;
-  const sourceName = m.source ? (m.source.name_ar || m.source.name) : null;
+  const dateStr = (lang === 'fr' ? (m.date_text_fr || m.date_text) : m.date_text) || (m.year ? String(m.year) : '');
+  const placeName = displayEntityName(lang, m.place);
+  const sourceName = displayEntityName(lang, m.source, 'source');
   const metaRows = [];
   if (dateStr) metaRows.push([t(lang, 'date_label'), esc(dateStr) + ' ' + confidenceBadge(lang, m.date_confidence)]);
   if (placeName) metaRows.push([t(lang, 'place_label'), esc(placeName) + ' ' + confidenceBadge(lang, m.place_confidence)]);
@@ -891,12 +916,12 @@ async function documentPage(ctx, ark) {
   if (m.archive_ref) metaRows.push([t(lang, 'archive_ref_label'), `<code class="ref" dir="ltr">${esc(m.archive_ref)}</code>`]);
   if (m.source_url) metaRows.push([t(lang, 'source_label') + ' ↗', `<a href="${esc(m.source_url)}" rel="noopener" target="_blank">${esc(truncate(m.source_url, 60))}</a>`]);
   if (m.rights) metaRows.push([t(lang, 'rights_label'), esc(m.rights)]);
-  const tags = (m.tags || []).map(x => `<a class="tag-chip" href="${langPath(ctx, '/archive?tag=' + x.id)}">${esc(x.name_ar)}${x.name_orig ? ` <span class="latin">${esc(x.name_orig)}</span>` : ''}</a>`).join('');
+  const tags = (m.tags || []).map(x => `<a class="tag-chip" href="${langPath(ctx, '/archive?tag=' + x.id)}">${esc(displayEntityName(lang, x))}${lang === 'ar' && x.name_orig ? ` <span class="latin">${esc(x.name_orig)}</span>` : ''}</a>`).join('');
   if (tags) metaRows.push([t(lang, 'tag_label'), tags]);
   const metaHTML = metaRows.map(([k, v]) => `<div class="meta-row"><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('');
 
-  const people = (m.people || []).map(p => `<a class="chip" href="${langPath(ctx, '/person/' + p.id)}">${esc(p.name_ar)}${p.name_orig ? ` <span class="latin">${esc(p.name_orig)}</span>` : ''}</a>`).join('');
-  const places = (m.places || []).map(p => `<a class="chip" href="${langPath(ctx, '/place/' + p.id)}">${esc(p.name_ar)}</a>`).join('');
+  const people = (m.people || []).map(p => `<a class="chip" href="${langPath(ctx, '/person/' + p.id)}">${esc(displayEntityName(lang, p))}${lang === 'ar' && p.name_orig ? ` <span class="latin">${esc(p.name_orig)}</span>` : ''}</a>`).join('');
+  const places = (m.places || []).map(p => `<a class="chip" href="${langPath(ctx, '/place/' + p.id)}">${esc(displayEntityName(lang, p))}</a>`).join('');
   const sections = (m.collections || []).filter(c => c.kind === 'section')
     .map(c => `<a class="chip" href="${langPath(ctx, '/section/' + c.id)}">${esc(lang === 'fr' && c.title_fr ? c.title_fr : c.title_ar)}</a>`).join('');
   const collections = (m.collections || []).filter(c => c.kind !== 'section')
@@ -1035,7 +1060,7 @@ async function documentPage(ctx, ark) {
           <span class="badge badge-ark" dir="ltr">${esc(m.ark)}</span>
         </div>
         <h1 class="doc-title">${esc(title)}</h1>
-        ${m.title_orig && m.title_ar && m.title_orig !== m.title_ar ? `<p class="doc-title-orig" dir="auto">${esc(m.title_orig)}</p>` : ''}
+        ${m.title_orig && m.title_orig !== title ? `<p class="doc-title-orig" dir="auto">${esc(m.title_orig)}</p>` : ''}
       </header>
 
       ${shareHTML(ctx, m)}
@@ -1043,7 +1068,7 @@ async function documentPage(ctx, ark) {
       <section class="doc-section">
         <h2 class="doc-section-title">${esc(t(lang, 'description_label'))}</h2>
         <dl class="meta-grid">${metaHTML}</dl>
-        ${m.description ? `<div class="doc-desc" dir="auto" data-translation-description>${esc(m.description)}</div>` : `<p class="empty">${esc(t(lang, 'no_description'))}</p>`}
+        ${descriptionText ? `<div class="doc-desc" dir="auto" data-translation-description>${esc(descriptionText)}</div>` : `<p class="empty">${esc(t(lang, 'no_description'))}</p>`}
         ${(people || places || sections || collections) ? `<div class="chip-groups">
           ${people ? `<div class="chip-group"><span class="chip-group-label">${esc(t(lang, 'nav_people'))}:</span> ${people}</div>` : ''}
           ${places ? `<div class="chip-group"><span class="chip-group-label">${esc(t(lang, 'nav_places'))}:</span> ${places}</div>` : ''}
@@ -1124,11 +1149,11 @@ async function placesPage(ctx) {
     `SELECT p.*, (SELECT COUNT(*) FROM materials m
        LEFT JOIN material_places mp ON mp.material_id = m.id
        WHERE m.publish_status='published' AND (m.place_id = p.id OR mp.place_id = p.id)) AS n
-     FROM places p ORDER BY p.name_ar LIMIT ? OFFSET ?`
+     FROM places p ORDER BY ${lang === 'fr' ? 'COALESCE(p.name_fr, p.name_orig, p.name_ar)' : 'p.name_ar'} LIMIT ? OFFSET ?`
   ).bind(PER_PAGE, (page - 1) * PER_PAGE).all();
   const items = (rows.results || []).map(p => `
     <a class="list-card" href="${langPath(ctx, '/place/' + p.id)}">
-      <span class="list-card-title">${esc(p.name_ar)}${p.name_orig ? ` <span class="latin">${esc(p.name_orig)}</span>` : ''}</span>
+      <span class="list-card-title">${esc(displayEntityName(lang, p))}${lang === 'ar' && p.name_orig ? ` <span class="latin">${esc(p.name_orig)}</span>` : ''}</span>
       <span class="list-card-meta">${p.region ? esc(p.region) + ' · ' : ''}${p.n} ${esc(t(lang, 'materials_count'))}</span>
     </a>`).join('');
   const content = `
@@ -1150,8 +1175,8 @@ async function placePage(ctx, id) {
   const items = await enrichMaterials(env, res.items || []);
   const content = `
   <div class="wrap page-head">
-    <nav class="breadcrumb"><a href="${langPath(ctx, '/places')}">${esc(t(lang, 'nav_places'))}</a> / ${esc(p.name_ar)}</nav>
-    <h1 class="page-title">${esc(p.name_ar)}${p.name_orig ? ` <span class="latin">(${esc(p.name_orig)})</span>` : ''}</h1>
+    <nav class="breadcrumb"><a href="${langPath(ctx, '/places')}">${esc(t(lang, 'nav_places'))}</a> / ${esc(displayEntityName(lang, p))}</nav>
+    <h1 class="page-title">${esc(displayEntityName(lang, p))}${lang === 'ar' && p.name_orig ? ` <span class="latin">(${esc(p.name_orig)})</span>` : ''}</h1>
     <dl class="meta-grid">
       ${p.region ? `<div class="meta-row"><dt>${esc(t(lang, 'region_label'))}</dt><dd>${esc(p.region)}</dd></div>` : ''}
       ${p.kind ? `<div class="meta-row"><dt>${esc(t(lang, 'kind_label'))}</dt><dd>${esc(p.kind)}</dd></div>` : ''}
@@ -1165,8 +1190,8 @@ async function placePage(ctx, id) {
     ${paginationHTML(ctx, page, PER_PAGE, res.total || 0, '/place/' + id + '?' + url.searchParams.toString())}
   </div>`;
   return layout(ctx, {
-    title: p.name_ar,
-    description: `${p.name_ar} — ${t(lang, 'nav_places')} — ${t(lang, 'site_name')}`,
+    title: displayEntityName(lang, p),
+    description: `${displayEntityName(lang, p)} — ${t(lang, 'nav_places')} — ${t(lang, 'site_name')}`,
     active: '/places',
     content,
   });
@@ -1183,11 +1208,11 @@ async function peoplePage(ctx) {
   const rows = await db.prepare(
     `SELECT p.*, (SELECT COUNT(*) FROM material_people mp JOIN materials m ON m.id = mp.material_id
        WHERE mp.person_id = p.id AND m.publish_status='published') AS n
-     FROM people p ORDER BY p.name_ar LIMIT ? OFFSET ?`
+     FROM people p ORDER BY ${lang === 'fr' ? 'COALESCE(p.name_fr, p.name_orig, p.name_ar)' : 'p.name_ar'} LIMIT ? OFFSET ?`
   ).bind(PER_PAGE, (page - 1) * PER_PAGE).all();
   const items = (rows.results || []).map(p => `
     <a class="list-card" href="${langPath(ctx, '/person/' + p.id)}">
-      <span class="list-card-title">${esc(p.name_ar)}${p.name_orig ? ` <span class="latin">${esc(p.name_orig)}</span>` : ''}</span>
+      <span class="list-card-title">${esc(displayEntityName(lang, p))}${lang === 'ar' && p.name_orig ? ` <span class="latin">${esc(p.name_orig)}</span>` : ''}</span>
       <span class="list-card-meta">${p.birth_year || p.death_year ? `${p.birth_year || '?'}–${p.death_year || '?'} · ` : ''}${p.n} ${esc(t(lang, 'materials_count'))}</span>
     </a>`).join('');
   const content = `
@@ -1210,8 +1235,8 @@ async function personPage(ctx, id) {
   const years = (p.birth_year || p.death_year) ? `${p.birth_year || '?'} – ${p.death_year || '?'}` : '';
   const content = `
   <div class="wrap page-head">
-    <nav class="breadcrumb"><a href="${langPath(ctx, '/people')}">${esc(t(lang, 'nav_people'))}</a> / ${esc(p.name_ar)}</nav>
-    <h1 class="page-title">${esc(p.name_ar)}${p.name_orig ? ` <span class="latin">(${esc(p.name_orig)})</span>` : ''}</h1>
+    <nav class="breadcrumb"><a href="${langPath(ctx, '/people')}">${esc(t(lang, 'nav_people'))}</a> / ${esc(displayEntityName(lang, p))}</nav>
+    <h1 class="page-title">${esc(displayEntityName(lang, p))}${lang === 'ar' && p.name_orig ? ` <span class="latin">(${esc(p.name_orig)})</span>` : ''}</h1>
     <dl class="meta-grid">
       ${years ? `<div class="meta-row"><dt>${esc(t(lang, 'years_label'))}</dt><dd dir="ltr">${esc(years)}</dd></div>` : ''}
       <div class="meta-row"><dt>${esc(t(lang, 'nav_people'))}</dt><dd>${confidenceBadge(lang, p.identity_confidence)}</dd></div>
@@ -1224,8 +1249,8 @@ async function personPage(ctx, id) {
     ${paginationHTML(ctx, page, PER_PAGE, res.total || 0, '/person/' + id + '?' + url.searchParams.toString())}
   </div>`;
   return layout(ctx, {
-    title: p.name_ar,
-    description: `${p.name_ar} — ${t(lang, 'nav_people')} — ${t(lang, 'site_name')}`,
+    title: displayEntityName(lang, p),
+    description: `${displayEntityName(lang, p)} — ${t(lang, 'nav_people')} — ${t(lang, 'site_name')}`,
     active: '/people',
     content,
   });
@@ -1238,11 +1263,11 @@ async function sourcesPage(ctx) {
   const db = env.DB;
   const rows = await db.prepare(
     `SELECT s.*, (SELECT COUNT(*) FROM materials m WHERE m.source_id = s.id AND m.publish_status='published') AS n
-     FROM sources s ORDER BY s.name`
+     FROM sources s ORDER BY ${lang === 'fr' ? 'COALESCE(s.name_fr, s.name, s.name_ar)' : 'COALESCE(s.name_ar, s.name)'}`
   ).all();
   const items = (rows.results || []).map(s => `
     <a class="list-card" href="${langPath(ctx, '/archive?source=' + s.id)}">
-      <span class="list-card-title">${esc(s.name_ar || s.name)}${s.name_ar && s.name ? ` <span class="latin">${esc(s.name)}</span>` : ''}</span>
+      <span class="list-card-title">${esc(displayEntityName(lang, s, 'source'))}${lang === 'ar' && s.name_ar && s.name ? ` <span class="latin">${esc(s.name)}</span>` : ''}</span>
       <span class="list-card-meta">${s.kind ? esc(s.kind) + ' · ' : ''}${s.n} ${esc(t(lang, 'materials_count'))}</span>
     </a>`).join('');
   const content = `

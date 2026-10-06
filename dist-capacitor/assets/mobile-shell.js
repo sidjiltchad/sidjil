@@ -11,6 +11,8 @@ import { mountPdfReader } from './pdf-reader.js';
 import { mountWordReader } from './docx-reader.js';
 import { createNativeFilesClient, NativeFileError } from './native-files.js';
 import { createNativeUploadClient, UploadError, validateUploadFile } from './native-upload.js';
+import { getNotifications, markNotificationsRead, toggleReaction, toggleBookmark, toggleFollow, getFollowStatus, createDiscussion } from './social.js';
+import { getDiscussions, createReply } from './discussions.js';
 import { configureNativeChrome, hideNativeSplash, getNativePlugin, setupNativeUx, installInternalNavigationGuard } from './native-ux.js';
 
 const shell = document.querySelector('[data-mobile-shell]');
@@ -26,6 +28,13 @@ const loginSubmit = shell?.querySelector('[data-login-submit]');
 const loginMessage = shell?.querySelector('[data-login-message]');
 const sessionUser = shell?.querySelector('[data-session-user]');
 const accountName = shell?.querySelector('[data-account-name]');
+const accountAvatar = shell?.querySelector('[data-account-avatar]');
+const accountAvatarInput = shell?.querySelector('[data-account-avatar-input]');
+const accountForm = shell?.querySelector('[data-account-form]');
+const accountSave = shell?.querySelector('[data-account-save]');
+const accountStatus = shell?.querySelector('[data-account-status]');
+const passwordForm = shell?.querySelector('[data-password-form]');
+const passwordStatus = shell?.querySelector('[data-password-status]');
 const sessionMessage = shell?.querySelector('[data-session-message]');
 const logoutButtons = shell?.querySelectorAll('[data-logout]') || [];
 const feedList = shell?.querySelector('[data-feed-list]');
@@ -46,6 +55,7 @@ const profileBio = shell?.querySelector('[data-profile-bio]');
 const profileMeta = shell?.querySelector('[data-profile-meta]');
 const profileStats = shell?.querySelector('[data-profile-stats]');
 const profileContent = shell?.querySelector('[data-profile-content]');
+const profileFollow = shell?.querySelector('[data-profile-follow]');
 const materialDetails = shell?.querySelector('[data-material-details]');
 const materialBack = shell?.querySelector('[data-material-back]');
 const newMaterialBack = shell?.querySelector('[data-new-material-back]');
@@ -59,6 +69,14 @@ const uploadSubmit = shell?.querySelector('[data-upload-submit]');
 const uploadCancel = shell?.querySelector('[data-upload-cancel]');
 const uploadRetry = shell?.querySelector('[data-upload-retry]');
 const readerHost = shell?.querySelector('[data-mobile-reader]');
+const main = shell?.querySelector('.mobile-app-main');
+const notificationBadge = shell?.querySelector('[data-notification-badge]');
+const notificationsList = shell?.querySelector('[data-notifications-list]');
+const notificationsStatus = shell?.querySelector('[data-notifications-status]');
+const notificationsReadAll = shell?.querySelector('[data-notifications-read-all]');
+const discussionsList = shell?.querySelector('[data-discussions-list]');
+const discussionsStatus = shell?.querySelector('[data-discussions-status]');
+const discussionsRefresh = shell?.querySelector('[data-discussions-refresh]');
 const feedClient = createResearcherFeedClient();
 const searchClient = createResearcherSearchClient();
 const materialClient = createMaterialClient();
@@ -71,8 +89,12 @@ const profileCache = new Map();
 let materialReader = null;
 let materialRequestId = 0;
 let readerRequestId = 0;
+let readerLeavePending = false;
 let currentUpload = null;
 let lastUpload = null;
+let accountProfile = null;
+let discussionsState = { items: [], nextCursor: '', hasMore: false };
+let feedLoadObserver = null;
 
 const typeLabels = {
   archival_image: 'صورة أرشيفية',
@@ -108,6 +130,158 @@ function showLogin(message = '') {
 function showApp() {
   hideState(loading); hideState(offline); hideState(error); hideState(loginState);
   showState(appState); showState(bottomNav);
+}
+
+function currentThemeChoice() {
+  try { return localStorage.getItem('sidjil-mobile-theme') || 'system'; } catch { return 'system'; }
+}
+
+function applyTheme(choice = currentThemeChoice()) {
+  const value = ['light', 'dark', 'system'].includes(choice) ? choice : 'system';
+  const resolved = value === 'system'
+    ? (globalThis.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : value;
+  document.documentElement.dataset.sidjilTheme = resolved;
+  document.documentElement.dataset.sidjilThemeChoice = value;
+  try { localStorage.setItem('sidjil-mobile-theme', value); } catch { /* storage can be unavailable */ }
+  shell?.querySelectorAll('[data-theme-choice]').forEach(button => {
+    button.setAttribute('aria-pressed', button.dataset.themeChoice === value ? 'true' : 'false');
+  });
+}
+
+function setNotificationsStatus(message = '', visible = Boolean(message)) {
+  if (!notificationsStatus) return;
+  notificationsStatus.textContent = message;
+  notificationsStatus.hidden = !visible;
+}
+
+function renderNotifications(items) {
+  if (!notificationsList) return;
+  notificationsList.replaceChildren();
+  if (!items.length) { setNotificationsStatus('لا توجد تنبيهات جديدة.', true); return; }
+  setNotificationsStatus('');
+  items.forEach(item => {
+    const row = document.createElement('article');
+    row.className = `mobile-notification${Number(item.is_read) ? '' : ' is-unread'}`;
+    row.dataset.notificationId = String(item.id || '');
+    addText(row, 'strong', item.title || 'تنبيه في مساحة الباحث');
+    if (item.body) addText(row, 'p', item.body);
+    addText(row, 'time', formatDate(item.created_at), 'mobile-feed-meta');
+    row.addEventListener('click', async () => {
+      if (!Number(item.is_read)) {
+        try { await markNotificationsRead(item.id); item.is_read = 1; row.classList.remove('is-unread'); updateNotificationBadge(); } catch { /* إبقاء التنبيه ظاهرًا */ }
+      }
+      if (item.link) {
+        const link = String(item.link);
+        if (link.includes('/researcher/profile/')) navigation.navigate({ name: 'profile', id: link.split('/').pop() });
+        else if (link.includes('material=')) navigation.navigate({ name: 'material', id: new URLSearchParams(link.split('?')[1] || '').get('material') });
+        else navigation.navigate('feed');
+      }
+    });
+    notificationsList.append(row);
+  });
+}
+
+let notificationsState = { items: [], unread: 0 };
+function updateNotificationBadge() {
+  const count = notificationsState.items.filter(item => !Number(item.is_read)).length || Number(notificationsState.unread || 0);
+  if (!notificationBadge) return;
+  notificationBadge.textContent = count > 99 ? '99+' : String(count);
+  notificationBadge.hidden = count < 1;
+}
+
+async function loadNotifications() {
+  if (!notificationsList) return;
+  setNotificationsStatus('جارٍ تحميل التنبيهات…', true);
+  try {
+    notificationsState = await getNotifications();
+    renderNotifications(notificationsState.items);
+    updateNotificationBadge();
+  } catch (cause) {
+    if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) return showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+    setNotificationsStatus(cause?.message || 'تعذر تحميل التنبيهات.', true);
+  }
+}
+
+function renderDiscussions(items) {
+  if (!discussionsList) return;
+  discussionsList.replaceChildren();
+  if (!items.length) { if (discussionsStatus) { discussionsStatus.hidden = false; discussionsStatus.textContent = 'لا توجد نقاشات منشورة بعد.'; } return; }
+  if (discussionsStatus) discussionsStatus.hidden = true;
+  items.forEach(item => {
+    const card = document.createElement('article'); card.className = 'mobile-feed-card'; card.dataset.discussionId = String(item.id || '');
+    const body = document.createElement('div'); body.className = 'mobile-feed-card-body';
+    const head = document.createElement('div'); head.className = 'mobile-feed-author'; head.append(avatarElement({ name: item.author_name || 'باحث', avatarUrl: item.author_avatar }));
+    const headText = document.createElement('span'); addText(headText, 'strong', item.author_name || 'باحث'); addText(headText, 'span', [discussionLabels[item.kind] || 'نقاش', formatDate(item.created_at)].filter(Boolean).join(' · '), 'mobile-feed-meta'); head.append(headText);
+    body.append(head); addText(body, 'h2', item.title || 'نقاش باحث', 'mobile-feed-title'); addText(body, 'p', item.body || '', 'mobile-feed-excerpt');
+    if (item.material_title) addText(body, 'div', 'حول: ' + item.material_title, 'mobile-feed-source');
+    const reply = document.createElement('button'); reply.type = 'button'; reply.className = 'mobile-secondary-action'; reply.dataset.replyDiscussion = String(item.id || ''); reply.textContent = `${item.replies_count || 0} رد · أضف ردًا`;
+    body.append(reply); card.append(body); discussionsList.append(card);
+  });
+}
+
+async function loadDiscussions({ reset = true } = {}) {
+  if (!discussionsList) return;
+  if (discussionsStatus) { discussionsStatus.hidden = false; discussionsStatus.textContent = 'جارٍ تحميل النقاشات…'; }
+  try {
+    const data = await getDiscussions({ cursor: reset ? '' : discussionsState.nextCursor });
+    discussionsState = reset ? data : { ...data, items: [...discussionsState.items, ...data.items] };
+    renderDiscussions(discussionsState.items);
+  } catch (cause) {
+    if (discussionsStatus) { discussionsStatus.hidden = false; discussionsStatus.textContent = cause?.message || 'تعذر تحميل النقاشات.'; }
+  }
+}
+
+function openReplyComposer(button) {
+  const card = button.closest('.mobile-feed-card');
+  if (!card || card.querySelector('.mobile-inline-composer')) return;
+  const form = document.createElement('form'); form.className = 'mobile-inline-composer';
+  const label = document.createElement('label'); label.append('الرد');
+  const textarea = document.createElement('textarea'); textarea.name = 'body'; textarea.rows = 3; textarea.required = true; textarea.maxLength = 20000; textarea.placeholder = 'اكتب ردك الموثق…'; label.append(textarea);
+  const actions = document.createElement('div'); actions.className = 'mobile-inline-composer-actions';
+  const submit = document.createElement('button'); submit.type = 'submit'; submit.className = 'mobile-primary-action'; submit.textContent = 'نشر الرد';
+  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'mobile-secondary-action'; cancel.textContent = 'إلغاء';
+  const status = document.createElement('span'); status.setAttribute('role', 'status'); actions.append(submit, cancel, status); form.append(label, actions); card.append(form); textarea.focus();
+  cancel.addEventListener('click', () => form.remove());
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); if (!textarea.value.trim()) return; submit.disabled = true; status.textContent = 'جارٍ نشر الرد…';
+    try { await createReply(button.dataset.replyDiscussion, textarea.value); status.textContent = 'أُرسل الرد للمراجعة.'; setTimeout(() => form.remove(), 1200); }
+    catch (cause) { status.textContent = cause?.message || 'تعذر نشر الرد.'; submit.disabled = false; }
+  });
+}
+
+function setAccountStatus(message = '', errorState = false) {
+  if (!accountStatus) return;
+  accountStatus.textContent = message;
+  accountStatus.classList.toggle('is-error', Boolean(errorState));
+}
+
+function fillAccountForm(profile) {
+  if (!accountForm) return;
+  Object.entries(profile || {}).forEach(([key, value]) => {
+    const field = accountForm.elements.namedItem(key);
+    if (field) field.value = value == null ? '' : String(value);
+  });
+  if (accountName) accountName.textContent = profile?.display_name || profile?.username || 'باحث';
+  if (accountAvatar) {
+    accountAvatar.replaceChildren();
+    const avatar = avatarElement({ name: profile?.display_name || profile?.username, avatarUrl: profile?.avatar_url || profile?.avatarUrl }, 'س');
+    if (avatar.firstChild) accountAvatar.append(avatar.firstChild); else accountAvatar.textContent = profile?.display_name?.trim().slice(0, 1) || 'س';
+  }
+}
+
+async function loadAccount() {
+  if (!accountForm) return;
+  setAccountStatus('جارٍ تحميل بيانات الحساب…');
+  try {
+    const data = await apiFetch('/api/v1/admin/profile', { method: 'GET' });
+    accountProfile = data?.profile || {};
+    fillAccountForm(accountProfile);
+    setAccountStatus('');
+  } catch (cause) {
+    if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) return showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+    setAccountStatus(cause?.message || 'تعذر تحميل بيانات الحساب.', true);
+  }
 }
 let fatalRuntimeErrorShown = false;
 function showFatalRuntimeError(message = 'حدث خطأ غير متوقع. أعد فتح التطبيق أو حاول مرة أخرى.') {
@@ -169,8 +343,17 @@ function addText(parent, tag, text, className = '') {
 }
 function materialCard(item) {
   const card = document.createElement('article');
-  card.className = 'mobile-feed-card';
+  const materialLevel = String(item.materialLevel || item.material_level || '').toLowerCase();
+  const variant = materialLevel.includes('image') || item.type === 'image'
+    ? 'image'
+    : materialLevel.includes('text') || item.type === 'document'
+      ? 'text'
+      : materialLevel.includes('unavailable')
+        ? 'book-unavailable'
+        : 'book';
+  card.className = `mobile-feed-card mobile-material-card mobile-material-card--${variant}`;
   card.dataset.materialId = String(item.id || '');
+  card.dataset.materialLevel = materialLevel;
   card.tabIndex = 0;
   const body = document.createElement('div');
   body.className = 'mobile-feed-card-body';
@@ -186,7 +369,7 @@ function materialCard(item) {
   body.append(authorButton);
   addText(body, 'span', typeLabels[item.materialLevel] || 'مادة أرشيفية', 'mobile-feed-type');
   addText(body, 'h2', item.title || item.ark || 'مادة بلا عنوان', 'mobile-feed-title');
-  if (item.thumbnailUrl) {
+  if (item.thumbnailUrl && variant !== 'text') {
     const image = document.createElement('img');
     image.className = 'mobile-feed-image';
     image.alt = item.title || 'صورة المادة';
@@ -206,12 +389,72 @@ function materialCard(item) {
     body.append(sourceWrap);
   }
   addText(body, 'span', String(item.discussionsCount || 0) + ' نقاش', 'mobile-feed-meta');
+  body.append(socialActions('material', item.id, { discussionCount: item.discussionsCount || 0 }));
   card.append(body);
   return card;
+}
+
+function socialActions(targetType, targetId, { discussionCount = 0 } = {}) {
+  const actions = document.createElement('div');
+  actions.className = 'mobile-social-actions';
+  actions.dataset.targetType = targetType;
+  actions.dataset.targetId = String(targetId || '');
+  [['useful', 'مفيد'], ['bookmark', 'حفظ'], ['comment', `علّق${discussionCount ? ` · ${discussionCount}` : ''}`], ['text', 'لخّص'], ['review', 'راجع']].forEach(([kind, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mobile-social-action';
+    button.dataset.socialAction = kind;
+    button.dataset.targetType = targetType;
+    button.dataset.targetId = String(targetId || '');
+    button.textContent = label;
+    actions.append(button);
+  });
+  return actions;
+}
+
+function openInlineComposer(actionButton) {
+  const card = actionButton.closest('.mobile-feed-card');
+  if (!card || card.querySelector('.mobile-inline-composer')) return;
+  const materialId = actionButton.dataset.targetId;
+  const kind = actionButton.dataset.socialAction === 'review' ? 'review' : actionButton.dataset.socialAction === 'text' ? 'text' : 'comment';
+  const composer = document.createElement('form');
+  composer.className = 'mobile-inline-composer';
+  const titleLabel = document.createElement('label'); titleLabel.append('عنوان المشاركة');
+  const titleInput = document.createElement('input'); titleInput.name = 'title'; titleInput.maxLength = 200; titleInput.required = true; titleInput.value = kind === 'review' ? 'مراجعة المادة' : kind === 'text' ? 'تلخيص المادة' : 'تعليق على المادة'; titleLabel.append(titleInput);
+  const bodyLabel = document.createElement('label'); bodyLabel.append('النص');
+  const bodyInput = document.createElement('textarea'); bodyInput.name = 'body'; bodyInput.rows = 4; bodyInput.maxLength = 20000; bodyInput.required = true; bodyInput.placeholder = 'اكتب مساهمتك الموثقة…'; bodyLabel.append(bodyInput);
+  const composerActions = document.createElement('div'); composerActions.className = 'mobile-inline-composer-actions';
+  const submitButton = document.createElement('button'); submitButton.type = 'submit'; submitButton.className = 'mobile-primary-action'; submitButton.textContent = 'نشر';
+  const cancelButton = document.createElement('button'); cancelButton.type = 'button'; cancelButton.className = 'mobile-secondary-action'; cancelButton.dataset.composerCancel = 'true'; cancelButton.textContent = 'إلغاء';
+  const composerStatus = document.createElement('span'); composerStatus.dataset.composerStatus = 'true'; composerStatus.setAttribute('role', 'status');
+  composerActions.append(submitButton, cancelButton, composerStatus);
+  composer.append(titleLabel, bodyLabel, composerActions);
+  composer.addEventListener('click', event => { if (event.target.closest('[data-composer-cancel]')) composer.remove(); });
+  composer.addEventListener('submit', async event => {
+    event.preventDefault();
+    const submit = submitButton;
+    const status = composerStatus;
+    const title = String(composer.elements.title.value || '').trim();
+    const body = String(composer.elements.body.value || '').trim();
+    if (!title || !body) return;
+    submit.disabled = true; status.textContent = 'جارٍ إرسال المشاركة…';
+    try {
+      await createDiscussion({ materialId, kind, title, body });
+      status.textContent = 'أُرسلت المشاركة للمراجعة.';
+      setTimeout(() => composer.remove(), 1300);
+    } catch (cause) {
+      if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) return showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+      status.textContent = cause?.message || 'تعذر إرسال المشاركة.';
+      submit.disabled = false;
+    }
+  });
+  card.append(composer);
+  composer.querySelector('textarea')?.focus();
 }
 function discussionCard(item) {
   const card = document.createElement('article');
   card.className = 'mobile-feed-card';
+  card.dataset.discussionId = String(item.id || item.itemId || '');
   const body = document.createElement('div');
   body.className = 'mobile-feed-card-body';
   const authorButton = document.createElement('button');
@@ -360,10 +603,24 @@ async function loadReader(id, source) {
       material,
       source,
       fileActions: nativeFiles,
-      onBack: () => navigation.back(),
+      onBack: leaveReader,
       onSourceChange: next => loadReader(id, next),
     });
   } catch (cause) { if (requestId === readerRequestId) { readerHost.replaceChildren(); addText(readerHost, 'p', cause?.message || 'تعذر تشغيل القارئ.', 'mobile-feed-status'); } }
+}
+
+// Reader close events can originate from the Android back button, the
+// reader's close gesture, or its close icon. Treat them as one transition so
+// a single back press can never bubble through to App.exitApp().
+function leaveReader() {
+  if (readerLeavePending) return;
+  readerLeavePending = true;
+  try {
+    if (navigation.getRoute().name === 'reader') navigation.back();
+    else materialReader?.destroy?.();
+  } finally {
+    setTimeout(() => { readerLeavePending = false; }, 320);
+  }
 }
 
 function setUploadStatus(message = '', errorState = false) {
@@ -508,6 +765,7 @@ async function runSearch(query) {
 function renderProfile(profileData) {
   const profile = profileData.profile || {};
   const stats = profileData.stats || {};
+  const profileId = String(profile.id || profileData.profile?.id || '');
   if (profileTitle) profileTitle.textContent = profile.name || 'باحث';
   if (profileUsername) profileUsername.textContent = profile.username ? '@' + profile.username : '';
   if (profileBio) profileBio.textContent = profile.bio || 'لا توجد نبذة تعريفية.';
@@ -523,6 +781,15 @@ function renderProfile(profileData) {
       const stat = document.createElement('span'); stat.className = 'mobile-profile-stat';
       addText(stat, 'strong', String(stats[key] || 0)); addText(stat, 'small', label); profileStats.append(stat);
     });
+  }
+  if (profileFollow) {
+    profileFollow.hidden = !profileId;
+    profileFollow.dataset.userId = profileId;
+    profileFollow.textContent = 'متابعة';
+    getFollowStatus(profileId).then(state => {
+      profileFollow.dataset.following = state?.following ? 'true' : 'false';
+      profileFollow.textContent = state?.following ? 'تتابعه' : 'متابعة';
+    }).catch(() => {});
   }
   if (!profileContent) return;
   profileContent.replaceChildren();
@@ -598,6 +865,8 @@ function renderRoute(route) {
   shell?.querySelectorAll('[data-view]').forEach(view => { view.hidden = view.dataset.view !== route.name; });
   shell?.querySelectorAll('[data-nav-route]').forEach(button => button.classList.toggle('is-active', button.dataset.navRoute === route.name));
   if (bottomNav) bottomNav.hidden = route.name === 'reader';
+  shell?.dataset.activeRoute = route.name;
+  if (route.name !== 'reader') main?.scrollTo?.({ top: 0 });
   document.body.classList.toggle('mobile-reader-open', route.name === 'reader');
   if (route.name !== 'reader') { materialReader?.destroy?.(); materialReader = null; }
   if (route.name === 'feed') loadFeed({ reset: activeFilter !== feedClient.getState().feed });
@@ -607,6 +876,9 @@ function renderRoute(route) {
     if (searchClear) searchClear.hidden = !state.query;
     renderSearchResults(state.items);
   }
+  if (route.name === 'notifications') loadNotifications();
+  if (route.name === 'discussions') loadDiscussions({ reset: true });
+  if (route.name === 'account') loadAccount();
   if (route.name === 'profile') {
     if (profileTitle) profileTitle.textContent = route.id ? 'باحث رقم ' + route.id : 'مجتمع الباحثين';
     loadProfile(route.id);
@@ -625,6 +897,13 @@ function nativeBack({ canGoBack: nativeCanGoBack = false } = {}) {
     return;
   }
   const route = navigation.getRoute();
+  // The reader owns a full-screen layer and must always close in-app first.
+  // Never use the native WebView history flag to decide whether to exit while
+  // this route is active.
+  if (route.name === 'reader') {
+    leaveReader();
+    return;
+  }
   if (route.name !== 'feed' || navigation.canGoBack()) {
     navigation.back();
     return;
@@ -639,6 +918,33 @@ configureNativeChrome().catch(() => {});
 hideNativeSplash().catch(() => {});
 shell?.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigation.navigate(button.dataset.route)));
 shell?.addEventListener('click', event => {
+  const replyButton = event.target.closest('[data-reply-discussion]');
+  if (replyButton) { event.preventDefault(); event.stopPropagation(); openReplyComposer(replyButton); return; }
+  const socialButton = event.target.closest('[data-social-action]');
+  if (socialButton) {
+    event.preventDefault();
+    event.stopPropagation();
+    const action = socialButton.dataset.socialAction;
+    if (['comment', 'text', 'review'].includes(action)) return openInlineComposer(socialButton);
+    const targetType = socialButton.dataset.targetType;
+    const targetId = socialButton.dataset.targetId;
+    if (!targetType || !targetId || socialButton.disabled) return;
+    socialButton.disabled = true;
+    const previous = socialButton.textContent;
+    (action === 'bookmark' ? toggleBookmark(targetType, targetId) : toggleReaction(targetType, targetId, 'useful'))
+      .then(result => {
+        socialButton.dataset.active = result?.saved || result?.active ? 'true' : 'false';
+        if (action === 'bookmark') socialButton.textContent = result?.saved ? 'محفوظ' : 'حفظ';
+        else socialButton.textContent = result?.active ? `مفيد · ${result.count || 1}` : 'مفيد';
+      })
+      .catch(cause => {
+        socialButton.textContent = previous;
+        if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+        else setFeedStatus(cause?.message || 'تعذر تنفيذ التفاعل الآن.');
+      })
+      .finally(() => { socialButton.disabled = false; });
+    return;
+  }
   const author = event.target.closest('[data-profile-id]');
   if (author?.dataset.profileId) navigateToResearcherProfile(navigation, author.dataset.profileId);
   const material = event.target.closest('[data-material-id]');
@@ -652,7 +958,14 @@ shell?.querySelectorAll('[data-feed-filter]').forEach(button => button.addEventL
   loadFeed({ reset: true });
 }));
 loadMoreButton?.addEventListener('click', () => loadFeed({ reset: false }));
+if (loadMoreButton && 'IntersectionObserver' in globalThis) {
+  feedLoadObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting) && !loadMoreButton.disabled && !loadMoreButton.hidden) loadFeed({ reset: false });
+  }, { root: main || null, rootMargin: '0px 0px 520px 0px' });
+  feedLoadObserver.observe(loadMoreButton);
+}
 refreshButton?.addEventListener('click', () => loadFeed({ reset: true }));
+discussionsRefresh?.addEventListener('click', () => loadDiscussions({ reset: true }));
 let searchTimer = null;
 searchInput?.addEventListener('input', () => {
   clearTimeout(searchTimer);
@@ -667,6 +980,78 @@ searchMore?.addEventListener('click', async () => {
   try { const state = await searchClient.loadMore(); renderSearchResults(state.items); searchMore.hidden = !state.hasMore; }
   catch (cause) { if (cause instanceof ApiError && cause.code === 'NETWORK_ERROR') showOfflineState(); else showSearchStatus(cause?.message || 'تعذر تحميل المزيد.'); searchMore.disabled = false; }
 });
+profileFollow?.addEventListener('click', async () => {
+  const id = profileFollow.dataset.userId;
+  if (!id || profileFollow.disabled) return;
+  profileFollow.disabled = true;
+  try {
+    const result = await toggleFollow(id);
+    profileFollow.dataset.following = result?.following ? 'true' : 'false';
+    profileFollow.textContent = result?.following ? 'تتابعه' : 'متابعة';
+  } catch (cause) {
+    if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+    else profileFollow.title = cause?.message || 'تعذر تحديث المتابعة.';
+  } finally { profileFollow.disabled = false; }
+});
+accountForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!accountSave) return;
+  accountSave.disabled = true; setAccountStatus('جارٍ حفظ بيانات الحساب…');
+  const body = Object.fromEntries(['display_name', 'email', 'phone', 'job_title', 'affiliation', 'specialty', 'website', 'bio'].map(name => [name, String(accountForm.elements[name]?.value || '').trim()]));
+  try {
+    const data = await apiFetch('/api/v1/admin/profile', { method: 'PATCH', body });
+    accountProfile = data?.profile || { ...accountProfile, ...body };
+    fillAccountForm(accountProfile);
+    setAccountStatus('تم حفظ بيانات الحساب.');
+  } catch (cause) {
+    if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) return showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+    setAccountStatus(cause?.message || 'تعذر حفظ بيانات الحساب.', true);
+  } finally { accountSave.disabled = false; }
+});
+passwordForm?.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!passwordStatus) return;
+  const currentPassword = String(passwordForm.elements.current_password?.value || '');
+  const newPassword = String(passwordForm.elements.new_password?.value || '');
+  const confirmPassword = String(passwordForm.elements.confirm_password?.value || '');
+  if (newPassword.length < 12) { passwordStatus.textContent = 'كلمة المرور الجديدة يجب ألا تقل عن 12 حرفًا.'; return; }
+  if (newPassword !== confirmPassword) { passwordStatus.textContent = 'تأكيد كلمة المرور غير مطابق.'; return; }
+  const submit = passwordForm.querySelector('button[type="submit"]'); submit.disabled = true; passwordStatus.textContent = 'جارٍ تغيير كلمة المرور…';
+  try {
+    await apiFetch('/api/v1/admin/profile/password', { method: 'POST', body: { current_password: currentPassword, new_password: newPassword, confirm_password: confirmPassword } });
+    passwordForm.reset(); passwordStatus.textContent = 'تم تغيير كلمة المرور بنجاح.';
+  } catch (cause) {
+    if (cause instanceof ApiError && (cause.code === 'AUTH_REQUIRED' || cause.code === 'SESSION_REDIRECT')) return showLogin('انتهت جلسة الباحث. سجّل الدخول من جديد.');
+    passwordStatus.textContent = cause?.message || 'تعذر تغيير كلمة المرور.';
+  } finally { submit.disabled = false; }
+});
+accountAvatarInput?.addEventListener('change', async () => {
+  const file = accountAvatarInput.files?.[0];
+  if (!file) return;
+  if (!/^image\/(?:jpeg|png|webp|gif)$/i.test(file.type) || file.size > 5 * 1024 * 1024) { setAccountStatus('اختر صورة JPG أو PNG أو WEBP أو GIF بحجم أقصى 5 ميغابايت.', true); return; }
+  const body = new FormData(); body.append('avatar', file, file.name);
+  setAccountStatus('جارٍ رفع الصورة…');
+  try {
+    const data = await apiFetch('/api/v1/admin/profile/avatar', { method: 'POST', body });
+    accountProfile = { ...accountProfile, ...(data?.profile || {}), avatar_url: data?.avatar_url || data?.url || data?.profile?.avatar_url };
+    fillAccountForm(accountProfile); setAccountStatus('تم تحديث الصورة.');
+  } catch (cause) { setAccountStatus(cause?.message || 'تعذر رفع الصورة.', true); }
+  finally { accountAvatarInput.value = ''; }
+});
+notificationsReadAll?.addEventListener('click', async () => {
+  notificationsReadAll.disabled = true;
+  try {
+    await markNotificationsRead();
+    notificationsState.items.forEach(item => { item.is_read = 1; });
+    notificationsState.unread = 0;
+    renderNotifications(notificationsState.items);
+    updateNotificationBadge();
+  } catch (cause) {
+    setNotificationsStatus(cause?.message || 'تعذر تحديث التنبيهات.', true);
+  } finally { notificationsReadAll.disabled = false; }
+});
+shell?.querySelectorAll('[data-theme-choice]').forEach(button => button.addEventListener('click', () => applyTheme(button.dataset.themeChoice)));
+applyTheme();
 function retry() {
   if (!navigator.onLine) return showOfflineState();
   bootstrapSession();
@@ -685,6 +1070,7 @@ async function bootstrapSession() {
     hideNativeSplash().catch(() => {});
     nativeFiles.cleanupTemporaryFiles().catch(() => {});
     updateFilterButtons();
+    loadNotifications().catch(() => {});
     navigation.start();
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === 'NETWORK_ERROR') return showOfflineState();
@@ -708,6 +1094,7 @@ loginForm?.addEventListener('submit', async event => {
     showApp();
     hideNativeSplash().catch(() => {});
     navigation.start();
+    loadNotifications().catch(() => {});
     await loadFeed({ reset: true });
   } catch (cause) {
     if (loginMessage) loginMessage.textContent = cause?.message || 'تعذر تسجيل الدخول.';

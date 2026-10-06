@@ -896,6 +896,7 @@ async function materialFormPage(env, user, id) {
       <section class="card">
         <h2>بيانات التعريف</h2>
         <div class="field"><label>العنوان بالعربية *</label><input name="title_ar" required value="${val('title_ar')}"></div>
+        <div class="field"><label>العنوان بالفرنسية</label><input name="title_fr" dir="ltr" lang="fr" value="${val('title_fr')}" placeholder="Titre français"></div>
         <div class="field"><label>العنوان الأصلي</label><input name="title_orig" dir="auto" value="${val('title_orig')}"></div>
         <div class="field-row">
           <div class="field"><label>نوع المادة الأرشيفي *</label><select name="type">${sel('type', TYPE_LABELS)}</select><small class="muted">يحدد الرمز الأرشيفي مثل وثيقة أو كتاب أو صورة.</small></div>
@@ -905,13 +906,19 @@ async function materialFormPage(env, user, id) {
         <div class="field-row">
           <div class="field"><label>السنة</label><input name="year" type="number" dir="ltr" value="${val('year')}"></div>
           <div class="field"><label>التاريخ (عرض حر)</label><input name="date_text" value="${val('date_text')}" placeholder="6 ديسمبر 1951"></div>
+          <div class="field"><label>التاريخ بالفرنسية</label><input name="date_text_fr" dir="ltr" lang="fr" value="${val('date_text_fr')}" placeholder="6 décembre 1951"></div>
         </div>
         <div class="field-row">
           <div class="field"><label>درجة ثقة التاريخ</label><select name="date_confidence">${confOpts}</select></div>
           <div class="field"><label>المؤلف / الجهة</label><input name="author" dir="auto" value="${val('author')}"></div>
           <div class="field"><label>المصور</label><input name="photographer" dir="auto" value="${val('photographer')}"></div>
         </div>
-        <div class="field"><label>الوصف العلمي</label><textarea name="description" rows="4" dir="auto">${val('description')}</textarea></div>
+        <div class="field"><label>الوصف العلمي بالعربية</label><textarea name="description" rows="4" dir="auto">${val('description')}</textarea></div>
+        <div class="field"><label>الوصف العلمي بالفرنسية</label><textarea name="description_fr" rows="4" dir="ltr" lang="fr">${val('description_fr')}</textarea></div>
+        <div class="field-row">
+          <div class="field"><label>الملخص بالعربية</label><textarea name="summary" rows="3" dir="auto">${val('summary')}</textarea></div>
+          <div class="field"><label>الملخص بالفرنسية</label><textarea name="summary_fr" rows="3" dir="ltr" lang="fr">${val('summary_fr')}</textarea></div>
+        </div>
       </section>
       <section class="card">
         <h2>المكان والمصدر</h2>
@@ -960,9 +967,10 @@ async function materialFormPage(env, user, id) {
 const ENTITIES = {
   people: {
     title: 'الشخصيات', singular: 'شخصية',
-    cols: [['name_ar', 'الاسم بالعربية'], ['name_orig', 'الاسم الأصلي'], ['identity_confidence', 'هوية'], ['bio', 'نبذة']],
+    cols: [['name_ar', 'الاسم بالعربية'], ['name_fr', 'الاسم الفرنسي'], ['name_orig', 'الاسم الأصلي'], ['identity_confidence', 'هوية'], ['bio', 'نبذة']],
     fields: [
       { name: 'name_ar', label: 'الاسم بالعربية *', req: true },
+      { name: 'name_fr', label: 'الاسم بالفرنسية', dir: 'ltr' },
       { name: 'name_orig', label: 'الاسم الأصلي', dir: 'auto' },
       { name: 'identity_confidence', label: 'درجة ثقة الهوية', type: 'select', options: { confirmed: 'مؤكدة', probable: 'محتملة', unknown: 'غير معروفة' } },
       { name: 'birth_year', label: 'سنة الميلاد', type: 'number', dir: 'ltr' },
@@ -972,9 +980,10 @@ const ENTITIES = {
   },
   places: {
     title: 'الأماكن', singular: 'مكان',
-    cols: [['name_ar', 'الاسم بالعربية'], ['name_orig', 'الاسم الأصلي'], ['region', 'المنطقة'], ['place_confidence', 'المكان']],
+    cols: [['name_ar', 'الاسم بالعربية'], ['name_fr', 'الاسم الفرنسي'], ['name_orig', 'الاسم الأصلي'], ['region', 'المنطقة'], ['place_confidence', 'المكان']],
     fields: [
       { name: 'name_ar', label: 'الاسم بالعربية *', req: true },
+      { name: 'name_fr', label: 'الاسم بالفرنسية', dir: 'ltr' },
       { name: 'name_orig', label: 'الاسم الأصلي', dir: 'auto' },
       { name: 'region', label: 'المنطقة', hint: 'وداي، كانم، باقرمي…' },
       { name: 'kind', label: 'النوع', type: 'select', options: { city: 'مدينة', region: 'منطقة', country: 'بلد', site: 'موقع' } },
@@ -986,10 +995,11 @@ const ENTITIES = {
   },
   sources: {
     title: 'المصادر', singular: 'مصدر',
-    cols: [['name', 'الاسم الأصلي'], ['name_ar', 'الاسم بالعربية'], ['kind', 'النوع']],
+    cols: [['name', 'الاسم الأصلي'], ['name_ar', 'الاسم بالعربية'], ['name_fr', 'الاسم الفرنسي'], ['kind', 'النوع']],
     fields: [
       { name: 'name', label: 'الاسم الأصلي *', req: true, dir: 'auto' },
       { name: 'name_ar', label: 'الاسم بالعربية' },
+      { name: 'name_fr', label: 'الاسم بالفرنسية', dir: 'ltr' },
       { name: 'kind', label: 'النوع', type: 'select', options: { archive: 'أرشيف', library: 'مكتبة', museum: 'متحف', private: 'مجموعة خاصة', web: 'مصدر ويب', press: 'صحافة' } },
       { name: 'website', label: 'الموقع', dir: 'ltr', type: 'url' },
       { name: 'notes', label: 'ملاحظات', type: 'textarea' },
@@ -997,9 +1007,10 @@ const ENTITIES = {
   },
   tags: {
     title: 'الكلمات المفتاحية', singular: 'كلمة مفتاحية',
-    cols: [['name_ar', 'بالعربية'], ['name_orig', 'بالأصلية']],
+    cols: [['name_ar', 'بالعربية'], ['name_fr', 'بالفرنسية'], ['name_orig', 'بالأصلية']],
     fields: [
       { name: 'name_ar', label: 'الكلمة بالعربية *', req: true },
+      { name: 'name_fr', label: 'الكلمة بالفرنسية', dir: 'ltr' },
       { name: 'name_orig', label: 'المقابل الأصلي', dir: 'auto' },
     ],
   },

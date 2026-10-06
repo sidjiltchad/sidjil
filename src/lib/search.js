@@ -31,6 +31,7 @@ export async function searchMaterials(db, params = {}) {
     cursor: cursorToken,
     metricsRoute = '/api/v1/search',
     metricsSampleRate = 0.1,
+    includeCount = true,
   } = params;
 
   const page = Math.max(1, parseInt(params.page, 10) || 1);
@@ -121,8 +122,16 @@ export async function searchMaterials(db, params = {}) {
       const tokens = normalizedQuery.split(/\s+/).filter(Boolean).slice(0, 12);
       if (tokens.length) {
         likeSearch = true;
-        where.push(`(${tokens.map(() => 'm.search_blob LIKE ?').join(' AND ')})`);
-        binds.push(...tokens.map((token) => `%${token}%`));
+        const tokenClauses = tokens.map(() => `(
+          m.search_blob LIKE ? OR m.title_fr LIKE ? OR m.description_fr LIKE ? OR m.summary_fr LIKE ? OR m.notable_quote_fr LIKE ?
+          OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
+          OR EXISTS (SELECT 1 FROM translations tlq WHERE tlq.material_id = m.id AND tlq.status IN ('machine','in_review','reviewed','approved') AND tlq.text LIKE ?)
+        )`);
+        where.push(`(${tokenClauses.join(' AND ')})`);
+        for (const token of tokens) {
+          const pattern = `%${token}%`;
+          binds.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+        }
       }
     } else {
       ftsQuery = buildFtsQuery(q);
@@ -181,17 +190,19 @@ export async function searchMaterials(db, params = {}) {
     throw error;
   }
 
-  const countWhereSql = countWhere.length ? ' WHERE ' + countWhere.join(' AND ') : '';
-  const countSql = `SELECT COUNT(DISTINCT m.id) AS c FROM materials m${joinSql}${countWhereSql}`;
-  const countStarted = Date.now();
-  let countRow;
-  try {
-    const countRes = await db.prepare(countSql).bind(...countBinds).all();
-    countRow = countRes.results?.[0] || { c: 0 };
-    await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, Number(countRes.meta?.rows_read ?? 1), false, metricsSampleRate);
-  } catch (error) {
-    await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, 0, true, metricsSampleRate);
-    throw error;
+  let countRow = { c: null };
+  if (includeCount) {
+    const countWhereSql = countWhere.length ? ' WHERE ' + countWhere.join(' AND ') : '';
+    const countSql = `SELECT COUNT(DISTINCT m.id) AS c FROM materials m${joinSql}${countWhereSql}`;
+    const countStarted = Date.now();
+    try {
+      const countRes = await db.prepare(countSql).bind(...countBinds).all();
+      countRow = countRes.results?.[0] || { c: 0 };
+      await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, Number(countRes.meta?.rows_read ?? 1), false, metricsSampleRate);
+    } catch (error) {
+      await recordQueryMetric(db, metricsRoute, 'search.materials.count', Date.now() - countStarted, 0, true, metricsSampleRate);
+      throw error;
+    }
   }
 
   const rawItems = itemsRes.results || [];

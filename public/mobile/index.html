@@ -10,6 +10,7 @@
     <title>سِجِل — مساحة الباحث</title>
     <link rel="icon" href="./assets/sidjil-logo.png">
     <link rel="stylesheet" href="./assets/mobile-shell.css">
+    <link rel="stylesheet" href="./assets/rpdf-reader.css">
   </head>
   <body>
     <div class="mobile-app-shell" data-mobile-shell>
@@ -19,7 +20,11 @@
             <img src="./assets/sidjil-logo.png" alt="سِجِل" width="42" height="42">
             <span>مساحة الباحث</span>
           </button>
-          <span class="mobile-runtime" data-runtime aria-live="polite">جارٍ التهيئة…</span>
+          <div class="mobile-header-actions">
+            <button type="button" class="mobile-header-icon" data-route="notifications" aria-label="التنبيهات"><span aria-hidden="true">♢</span><b data-notification-badge hidden>0</b></button>
+            <button type="button" class="mobile-header-icon" data-route="settings" aria-label="الإعدادات"><span aria-hidden="true">⚙</span></button>
+            <span class="mobile-runtime" data-runtime aria-live="polite">جارٍ التهيئة…</span>
+          </div>
         </div>
       </header>
       <main class="mobile-app-main" id="mobile-main" tabindex="-1">
@@ -57,7 +62,7 @@
           </div>
           <div class="mobile-view" data-view="profile" hidden>
             <p class="mobile-eyebrow">مجتمع الباحثين</p><h1>صفحة الباحث</h1>
-            <section class="mobile-profile-card mobile-placeholder-card"><div class="mobile-profile-header"><span class="mobile-avatar" data-profile-avatar>ب</span><div><h2 data-profile-title>باحث</h2><p class="mobile-feed-meta" data-profile-username></p></div></div><p class="mobile-profile-bio" data-profile-bio></p><div class="mobile-profile-meta" data-profile-meta></div><div class="mobile-profile-stats" data-profile-stats></div></section>
+            <section class="mobile-profile-card mobile-placeholder-card"><div class="mobile-profile-header"><span class="mobile-avatar" data-profile-avatar>ب</span><div><h2 data-profile-title>باحث</h2><p class="mobile-feed-meta" data-profile-username></p></div><button type="button" class="mobile-secondary-action mobile-profile-follow" data-profile-follow hidden>متابعة</button></div><p class="mobile-profile-bio" data-profile-bio></p><div class="mobile-profile-meta" data-profile-meta></div><div class="mobile-profile-stats" data-profile-stats></div></section>
             <div class="mobile-profile-content" data-profile-content></div>
           </div>
           <div class="mobile-view" data-view="search" hidden>
@@ -67,9 +72,44 @@
             <div class="mobile-search-results" data-search-results aria-live="polite"></div>
             <button class="mobile-load-more" type="button" data-search-more hidden>تحميل المزيد</button>
           </div>
+          <div class="mobile-view" data-view="discussions" hidden>
+            <div class="mobile-feed-heading"><div><p class="mobile-eyebrow">مجتمع الباحثين</p><h1>النقاشات</h1></div><button type="button" class="mobile-refresh" data-discussions-refresh aria-label="تحديث النقاشات">↻</button></div>
+            <div class="mobile-feed-list" data-discussions-list aria-live="polite"></div>
+            <p class="mobile-feed-status" data-discussions-status hidden></p>
+          </div>
           <div class="mobile-view" data-view="account" hidden>
-            <p class="mobile-eyebrow">الحساب</p><h1>حسابي</h1>
-            <section class="mobile-placeholder-card"><span class="mobile-avatar">س</span><h2 data-account-name>باحث</h2><p class="mobile-session-status">الجلسة محفوظة عبر Cookie آمنة.</p><button type="button" data-logout>تسجيل الخروج</button><span class="mobile-form-message" data-session-message role="status"></span></section>
+            <p class="mobile-eyebrow">الحساب والأمان</p><h1>حسابي</h1>
+            <section class="mobile-account-card">
+              <div class="mobile-account-avatar-row"><span class="mobile-avatar mobile-account-avatar" data-account-avatar>س</span><label class="mobile-secondary-action mobile-file-button">تغيير الصورة<input type="file" data-account-avatar-input accept="image/jpeg,image/png,image/webp,image/gif"></label></div>
+              <form class="mobile-account-form" data-account-form novalidate>
+                <label>الاسم الظاهر<input name="display_name" maxlength="80" required></label>
+                <label>اسم المستخدم<input name="username" readonly dir="ltr"></label>
+                <label>البريد الإلكتروني<input name="email" type="email" maxlength="160" required dir="ltr"></label>
+                <label>رقم الهاتف<input name="phone" type="tel" maxlength="40" required dir="ltr"></label>
+                <label>الصفة أو المسمى الوظيفي<input name="job_title" maxlength="160" required></label>
+                <label>الجهة أو المؤسسة<input name="affiliation" maxlength="160"></label>
+                <label>التخصص<input name="specialty" maxlength="160"></label>
+                <label>رابط فيسبوك<input name="website" type="url" maxlength="300" dir="ltr" placeholder="https://facebook.com/..."></label>
+                <label>النبذة التعريفية<textarea name="bio" rows="5" maxlength="1000" required></textarea></label>
+                <button type="submit" class="mobile-primary-action" data-account-save>حفظ بيانات الحساب</button>
+                <span class="mobile-form-message" data-account-status role="status"></span>
+              </form>
+              <details class="mobile-password-details"><summary>تغيير كلمة المرور</summary><form class="mobile-account-form" data-password-form novalidate><label>كلمة المرور الحالية<input name="current_password" type="password" autocomplete="current-password" required></label><label>كلمة المرور الجديدة<input name="new_password" type="password" autocomplete="new-password" minlength="12" required></label><label>تأكيد كلمة المرور الجديدة<input name="confirm_password" type="password" autocomplete="new-password" minlength="12" required></label><button type="submit" class="mobile-secondary-action">تغيير كلمة المرور</button><span class="mobile-form-message" data-password-status role="status"></span></form></details>
+              <button type="button" class="mobile-danger-action" data-logout>تسجيل الخروج</button><span class="mobile-form-message" data-session-message role="status"></span>
+            </section>
+          </div>
+          <div class="mobile-view" data-view="notifications" hidden>
+            <div class="mobile-feed-heading"><div><p class="mobile-eyebrow">مجتمع الباحثين</p><h1>التنبيهات</h1></div><button type="button" class="mobile-secondary-action" data-notifications-read-all>تحديد الكل كمقروء</button></div>
+            <div class="mobile-notifications-list" data-notifications-list aria-live="polite"></div>
+            <p class="mobile-feed-status" data-notifications-status hidden></p>
+          </div>
+          <div class="mobile-view" data-view="settings" hidden>
+            <p class="mobile-eyebrow">مساحة الباحث</p><h1>الإعدادات</h1>
+            <section class="mobile-settings-card">
+              <div class="mobile-settings-row"><div><strong>المظهر</strong><span>اختر طريقة عرض التطبيق</span></div><div class="mobile-theme-buttons"><button type="button" data-theme-choice="light">نهاري</button><button type="button" data-theme-choice="dark">ليلي</button><button type="button" data-theme-choice="system">النظام</button></div></div>
+              <div class="mobile-settings-row"><div><strong>التنبيهات</strong><span>تصل التنبيهات داخل التطبيق فقط</span></div><button type="button" class="mobile-secondary-action" data-route="notifications">عرض التنبيهات</button></div>
+              <div class="mobile-settings-row"><div><strong>الحساب والأمان</strong><span>إدارة بيانات الحساب وكلمة المرور</span></div><button type="button" class="mobile-secondary-action" data-route="account">فتح حسابي</button></div>
+            </section>
           </div>
           <div class="mobile-view mobile-new-material-view" data-view="new" hidden>
             <button type="button" class="mobile-view-back" data-new-material-back>‹ العودة إلى الموجز</button>
@@ -105,10 +145,11 @@
         <section class="mobile-state is-error" data-error-state hidden role="alert"><strong>تعذر تهيئة التطبيق</strong><span data-error-message>حاول مرة أخرى.</span><button type="button" data-retry>إعادة المحاولة</button></section>
       </main>
       <nav class="mobile-bottom-nav" aria-label="تنقل مساحة الباحث">
-        <button type="button" data-route="feed" data-nav-route="feed" class="is-active">الموجز</button>
-        <button type="button" data-route="search" data-nav-route="search">بحث</button>
-        <button type="button" data-route="profile" data-nav-route="profile">المجتمع</button>
-        <button type="button" data-route="account" data-nav-route="account">حسابي</button>
+        <button type="button" data-route="feed" data-nav-route="feed" class="is-active"><span class="mobile-nav-icon" aria-hidden="true">⌂</span><span>الموجز</span></button>
+        <button type="button" data-route="search" data-nav-route="search"><span class="mobile-nav-icon" aria-hidden="true">⌕</span><span>بحث</span></button>
+        <button type="button" data-route="discussions" data-nav-route="discussions"><span class="mobile-nav-icon" aria-hidden="true">◌</span><span>المجتمع</span></button>
+        <button type="button" data-route="notifications" data-nav-route="notifications"><span class="mobile-nav-icon" aria-hidden="true">♢</span><span>التنبيهات</span></button>
+        <button type="button" data-route="account" data-nav-route="account"><span class="mobile-nav-icon" aria-hidden="true">◯</span><span>حسابي</span></button>
       </nav>
     </div>
     <script type="module" src="./assets/mobile-shell.js"></script>

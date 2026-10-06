@@ -8,6 +8,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const materialSource = await readFile(join(root, 'src', 'mobile', 'material.js'), 'utf8');
 const navigationSource = await readFile(join(root, 'src', 'mobile', 'navigation.js'), 'utf8');
 const readerSource = await readFile(join(root, 'src', 'mobile', 'pdf-reader.js'), 'utf8');
+const sharedReaderSource = await readFile(join(root, 'public', 'js', 'researcher-pdf-core.js'), 'utf8');
 const shellSource = await readFile(join(root, 'public', 'mobile', 'mobile-shell.js'), 'utf8');
 const indexSource = await readFile(join(root, 'public', 'mobile', 'index.html'), 'utf8');
 const buildSource = await readFile(join(root, 'scripts', 'build-mobile.mjs'), 'utf8');
@@ -40,15 +41,16 @@ assert.equal(nav.navigateToMaterialReader(navigation, '17', 'translation').sourc
 assert.equal(navSandbox.location.hash, '#material/17/read/translation');
 assert.equal(navigation.back().name, 'feed');
 
-assert.match(readerSource, /pdfjsLib\.GlobalWorkerOptions\.workerSrc/);
-assert.match(readerSource, /standard_fonts/);
-assert.match(readerSource, /cmaps/);
-assert.match(readerSource, /withCredentials: true/);
-assert.match(readerSource, /canvas\.setAttribute\('dir', 'ltr'\)/);
-assert.match(readerSource, /generation/);
-assert.match(readerSource, /الصفحة السابقة/);
-assert.match(readerSource, /الصفحة التالية/);
-assert.match(readerSource, /ملء الشاشة/);
+const fullReaderSource = `${readerSource}\n${sharedReaderSource}`;
+assert.match(fullReaderSource, /pdfjsLib\.GlobalWorkerOptions\.workerSrc/);
+assert.match(fullReaderSource, /standard_fonts/);
+assert.match(fullReaderSource, /cmaps/);
+assert.match(fullReaderSource, /withCredentials: true/);
+assert.match(fullReaderSource, /canvas(?:\.setAttribute\('dir', 'ltr'\)|\.dir\s*=\s*['"]ltr['"])/);
+assert.match(fullReaderSource, /pagesObserver/);
+assert.match(fullReaderSource, /data-rpdf-tab/);
+assert.match(fullReaderSource, /data-rpdf-close/);
+assert.match(fullReaderSource, /data-rpdf-grab/);
 assert.ok(!/\bfetch\s*\(/.test(readerSource));
 assert.ok(!readerSource.includes('innerHTML'));
 assert.match(shellSource, /createMaterialClient/);
@@ -60,6 +62,10 @@ assert.match(indexWorkerSource, /api\\\/v1\\\/materials.*details/);
 assert.match(buildSource, /pdf\.worker\.min\.mjs/);
 assert.match(buildSource, /standard_fonts/);
 for (const path of ['dist-capacitor/assets/pdfjs/pdf.min.mjs', 'dist-capacitor/assets/pdfjs/pdf.worker.min.mjs', 'dist-capacitor/assets/material.js', 'dist-capacitor/assets/pdf-reader.js']) {
+  const info = await stat(join(root, path));
+  assert.ok(info.size > 100, `${path} was not copied`);
+}
+for (const path of ['dist-capacitor/assets/researcher-pdf-core.js', 'dist-capacitor/assets/rpdf-reader.css', 'dist-capacitor/vendor/pdfjs/pdf.min.mjs']) {
   const info = await stat(join(root, path));
   assert.ok(info.size > 100, `${path} was not copied`);
 }

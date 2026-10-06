@@ -6,6 +6,12 @@
 import { audit } from './db.js';
 
 const SESSION_COOKIE = 'archifouna_admin';
+// The Android Capacitor shell runs from https://localhost (or the legacy
+// capacitor://localhost origin).  That is a different site from
+// app.sidjil.org, so a SameSite=Lax cookie cannot be sent with its
+// credentialed XHR requests.  Keep the web cookie above unchanged and use a
+// host-only, HttpOnly native cookie for the explicitly allowlisted shell.
+const NATIVE_SESSION_COOKIE = 'archifouna_capacitor';
 const SESSION_TTL_SEC = 12 * 3600; // 12 ساعة
 
 // ---------- base64 ----------
@@ -164,11 +170,11 @@ export async function login(env, username, password, ip) {
   return { ok: true, token, csrfToken, role: user.role || 'admin', username: user.username };
 }
 
-/** قراءة المستخدم من كوكي archifouna_admin */
+/** قراءة المستخدم من كوكي الويب أو كوكي جلسة Capacitor الآمنة */
 export async function getSessionUser(req, env) {
   try {
     const cookie = req.headers.get('Cookie') || '';
-    const tokens = [...cookie.matchAll(/(?:^|;\s*)archifouna_admin=([^;]+)/g)]
+    const tokens = [...cookie.matchAll(/(?:^|;\s*)(?:archifouna_admin|archifouna_capacitor)=([^;]+)/g)]
       .map((match) => match[1].trim())
       .filter(Boolean);
     if (!tokens.length) return null;
@@ -263,9 +269,17 @@ export function clearSessionCookie(reqUrl = '') {
   return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${sessionCookieDomain(reqUrl)}`;
 }
 
+export function setNativeSessionCookie(token) {
+  return `${NATIVE_SESSION_COOKIE}=${token}; HttpOnly; Secure; Path=/; SameSite=None; Max-Age=${SESSION_TTL_SEC}`;
+}
+
+export function clearNativeSessionCookie() {
+  return `${NATIVE_SESSION_COOKIE}=; HttpOnly; Secure; Path=/; SameSite=None; Max-Age=0`;
+}
+
 /** استخراج التوكن الخام من الكوكي (للاستخدام الداخلي) */
 export function getSessionToken(req) {
   const cookie = req.headers.get('Cookie') || '';
-  const m = cookie.match(/(?:^|;\s*)archifouna_admin=([^;]+)/);
+  const m = cookie.match(/(?:^|;\s*)(?:archifouna_admin|archifouna_capacitor)=([^;]+)/);
   return m ? m[1].trim() : null;
 }

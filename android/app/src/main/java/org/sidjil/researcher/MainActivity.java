@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.content.pm.ApplicationInfo;
 import android.util.Log;
 import android.view.View;
+import android.webkit.CookieManager;
 import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
@@ -24,8 +25,26 @@ public class MainActivity extends BridgeActivity {
         SplashScreen.installSplashScreen(this)
                 .setKeepOnScreenCondition(() -> false);
         super.onCreate(savedInstanceState);
+        configureSessionCookies();
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         installStatusBarInsetsBridge();
+    }
+
+    /**
+     * The production API is on app.sidjil.org while the Capacitor shell is
+     * served from https://localhost.  Keep the server's HttpOnly/Secure
+     * SameSite policy, but allow WebView to retain that explicit native
+     * session cookie instead of dropping it as a third-party cookie.
+     */
+    private void configureSessionCookies() {
+        WebView webView = getBridge() == null ? null : getBridge().getWebView();
+        if (webView == null) return;
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setAcceptCookie(true);
+        cookies.setAcceptThirdPartyCookies(webView, true);
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            Log.d("SidjilAuth", "WebView session cookies enabled; third-party policy allowed for API session cookie");
+        }
     }
 
     private void installStatusBarInsetsBridge() {

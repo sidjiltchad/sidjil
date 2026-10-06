@@ -178,12 +178,12 @@ async function apiMaterialDetails(env, materialId) {
   }));
   return json({
     id: material.id, ark: material.ark, type: material.type, material_level: material.material_level,
-    title_ar: material.title_ar, title_orig: material.title_orig, language: material.language,
-    year: material.year, date_text: material.date_text, author: material.author, photographer: material.photographer,
-    archive_ref: material.archive_ref, description: material.description, summary: material.summary,
+    title_ar: material.title_ar, title_fr: material.title_fr || null, title_orig: material.title_orig, language: material.language,
+    year: material.year, date_text: material.date_text, date_text_fr: material.date_text_fr || null, author: material.author, photographer: material.photographer,
+    archive_ref: material.archive_ref, description: material.description, description_fr: material.description_fr || '', summary: material.summary, summary_fr: material.summary_fr || '',
     full_text: material.full_text, source_name_ar: material.source?.name_ar || '', place_name: material.place?.name_ar || '',
-    source: material.source ? { name_ar: material.source.name_ar, name: material.source.name } : null,
-    place: material.place ? { name_ar: material.place.name_ar, name_orig: material.place.name_orig } : null,
+    source: material.source ? { name_ar: material.source.name_ar, name_fr: material.source.name_fr, name: material.source.name } : null,
+    place: material.place ? { name_ar: material.place.name_ar, name_fr: material.place.name_fr, name_orig: material.place.name_orig } : null,
     files, file_translations: fileTranslations,
   }, 200, { 'Cache-Control': 'private, no-store' });
 }
@@ -192,6 +192,7 @@ async function apiMaterialDetails(env, materialId) {
 
 async function apiSearch(req, env, url) {
   const sp = url.searchParams;
+  const lang = sp.get('lang') === 'fr' ? 'fr' : 'ar';
   let result;
   try {
     result = await searchMaterials(env.DB, {
@@ -200,7 +201,7 @@ async function apiSearch(req, env, url) {
     fromYear: sp.get('fromYear') || undefined,
     toYear: sp.get('toYear') || undefined,
     region: sp.get('region') || undefined,
-    lang: sp.get('lang') || undefined,
+    lang: sp.get('language') || undefined,
     personId: sp.get('personId') || undefined,
     tagId: sp.get('tagId') || undefined,
     sourceId: sp.get('sourceId') || undefined,
@@ -213,6 +214,7 @@ async function apiSearch(req, env, url) {
     cursor: sp.get('cursor') || undefined,
     metricsRoute: '/api/v1/search',
     metricsSampleRate: env.QUERY_METRICS_SAMPLE_RATE || 0.1,
+      includeCount: sp.get('count') !== '0',
       publishedOnly: true,
     });
   } catch (error) {
@@ -222,8 +224,8 @@ async function apiSearch(req, env, url) {
 
   const items = result.items;
   const ids = items.map((i) => i.id);
-  const placeMap = new Map((await inQuery(env.DB, 'places', [...new Set(items.map((i) => i.place_id).filter(Boolean))], 'id, name_ar')).map((p) => [p.id, p]));
-  const sourceMap = new Map((await inQuery(env.DB, 'sources', [...new Set(items.map((i) => i.source_id).filter(Boolean))], 'id, name_ar, name')).map((s) => [s.id, s]));
+  const placeMap = new Map((await inQuery(env.DB, 'places', [...new Set(items.map((i) => i.place_id).filter(Boolean))], 'id, name_ar, name_fr, name_orig')).map((p) => [p.id, p]));
+  const sourceMap = new Map((await inQuery(env.DB, 'sources', [...new Set(items.map((i) => i.source_id).filter(Boolean))], 'id, name_ar, name_fr, name')).map((s) => [s.id, s]));
 
   // المصغرات/أول صورة لكل مادة
   let thumbMap = new Map();
@@ -244,17 +246,37 @@ async function apiSearch(req, env, url) {
 
   return json({
     items: items.map((i) => ({
+      id: i.id,
       ark: i.ark,
       type: i.type,
       material_level: i.material_level || null,
       title_ar: i.title_ar,
+      title_fr: i.title_fr || null,
       title_orig: i.title_orig,
+      description: i.description || '',
+      description_fr: i.description_fr || '',
+      summary: i.summary || '',
+      summary_fr: i.summary_fr || '',
+      snippet: i.snippet || null,
+      title: lang === 'fr' ? (i.title_fr || i.title_orig || i.title_ar || i.ark) : (i.title_ar || i.title_orig || i.ark),
       year: i.year,
       date_text: i.date_text,
+      date_text_fr: i.date_text_fr || null,
       place_name: i.place_id && placeMap.get(i.place_id) ? placeMap.get(i.place_id).name_ar : null,
+      place_name_localized: i.place_id && placeMap.get(i.place_id)
+        ? (lang === 'fr'
+          ? (placeMap.get(i.place_id).name_fr || placeMap.get(i.place_id).name_orig || placeMap.get(i.place_id).name_ar)
+          : (placeMap.get(i.place_id).name_ar || placeMap.get(i.place_id).name_orig))
+        : null,
       source_name:
         i.source_id && sourceMap.get(i.source_id)
           ? sourceMap.get(i.source_id).name_ar || sourceMap.get(i.source_id).name
+          : null,
+      source_name_localized:
+        i.source_id && sourceMap.get(i.source_id)
+          ? (lang === 'fr'
+            ? (sourceMap.get(i.source_id).name_fr || sourceMap.get(i.source_id).name || sourceMap.get(i.source_id).name_ar)
+            : (sourceMap.get(i.source_id).name_ar || sourceMap.get(i.source_id).name))
           : null,
       thumb: thumbMap.get(i.id) || null,
     })),
@@ -485,12 +507,12 @@ async function sitemap(req, env) {
     )
     .all();
 
+  const localizedUrl = (path, lang) => `${base}${path}${path.includes('?') ? '&' : '?'}lang=${lang}`;
   const urls = [
-    ...statics.map((p) => `  <url><loc>${base}${p}</loc></url>`),
-    ...mats.results.map(
-      (r) =>
-        `  <url><loc>${base}/document/${r.ark}</loc><lastmod>${String(r.updated_at).slice(0, 10)}</lastmod></url>`
-    ),
+    ...statics.flatMap((p) => ['ar', 'fr'].map((lang) => `  <url><loc>${localizedUrl(p, lang)}</loc></url>`)),
+    ...mats.results.flatMap((r) => ['ar', 'fr'].map((lang) =>
+      `  <url><loc>${localizedUrl(`/document/${encodeURIComponent(r.ark)}`, lang)}</loc><lastmod>${String(r.updated_at).slice(0, 10)}</lastmod></url>`
+    )),
   ];
   const xml =
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +

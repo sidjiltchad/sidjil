@@ -16,6 +16,7 @@ await mkdir(join(output, 'assets', 'pdfjs', 'standard_fonts'), { recursive: true
 
 await cp(join(mobilePublic, 'index.html'), join(output, 'index.html'));
 await cp(join(mobilePublic, 'mobile-shell.css'), join(output, 'assets', 'mobile-shell.css'));
+await cp(join(root, 'public', 'rpdf-reader.css'), join(output, 'assets', 'rpdf-reader.css'));
 await cp(join(mobilePublic, 'mobile-shell.js'), join(output, 'assets', 'mobile-shell.js'));
 await cp(join(mobileSource, 'environment.js'), join(output, 'assets', 'environment.js'));
 await cp(join(mobileSource, 'api-base.js'), join(output, 'assets', 'api-base.js'));
@@ -23,10 +24,13 @@ await cp(join(mobileSource, 'api-client.js'), join(output, 'assets', 'api-client
 await cp(join(mobileSource, 'auth.js'), join(output, 'assets', 'auth.js'));
 await cp(join(mobileSource, 'researcher-feed.js'), join(output, 'assets', 'researcher-feed.js'));
 await cp(join(mobileSource, 'navigation.js'), join(output, 'assets', 'navigation.js'));
+await cp(join(mobileSource, 'social.js'), join(output, 'assets', 'social.js'));
+await cp(join(mobileSource, 'discussions.js'), join(output, 'assets', 'discussions.js'));
 await cp(join(mobileSource, 'researcher-search.js'), join(output, 'assets', 'researcher-search.js'));
 await cp(join(mobileSource, 'researcher-profile.js'), join(output, 'assets', 'researcher-profile.js'));
 await cp(join(mobileSource, 'material.js'), join(output, 'assets', 'material.js'));
 await cp(join(mobileSource, 'pdf-reader.js'), join(output, 'assets', 'pdf-reader.js'));
+await cp(join(root, 'public', 'js', 'researcher-pdf-core.js'), join(output, 'assets', 'researcher-pdf-core.js'));
 await cp(join(mobileSource, 'docx-reader.js'), join(output, 'assets', 'docx-reader.js'));
 await cp(join(mobileSource, 'native-files.js'), join(output, 'assets', 'native-files.js'));
 await cp(join(mobileSource, 'native-upload.js'), join(output, 'assets', 'native-upload.js'));
@@ -35,6 +39,11 @@ await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.min.mjs'), join(output, 'a
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.worker.min.mjs'), join(output, 'assets', 'pdfjs', 'pdf.worker.min.mjs'));
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'cmaps'), join(output, 'assets', 'pdfjs', 'cmaps'), { recursive: true });
 await cp(join(root, 'public', 'vendor', 'pdfjs', 'standard_fonts'), join(output, 'assets', 'pdfjs', 'standard_fonts'), { recursive: true });
+await mkdir(join(output, 'vendor', 'pdfjs'), { recursive: true });
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.min.mjs'), join(output, 'vendor', 'pdfjs', 'pdf.min.mjs'));
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'pdf.worker.min.mjs'), join(output, 'vendor', 'pdfjs', 'pdf.worker.min.mjs'));
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'cmaps'), join(output, 'vendor', 'pdfjs', 'cmaps'), { recursive: true });
+await cp(join(root, 'public', 'vendor', 'pdfjs', 'standard_fonts'), join(output, 'vendor', 'pdfjs', 'standard_fonts'), { recursive: true });
 await mkdir(join(output, 'assets', 'vendor', 'docx-preview'), { recursive: true });
 await mkdir(join(output, 'assets', 'vendor', 'jszip'), { recursive: true });
 const docxVendor = await readFile(join(root, 'public', 'vendor', 'docx-preview', 'docx-preview.min.js'), 'utf8');
