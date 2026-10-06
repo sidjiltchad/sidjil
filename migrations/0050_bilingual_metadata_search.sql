@@ -19,8 +19,6 @@ CREATE INDEX IF NOT EXISTS idx_materials_publish_language_updated
   ON materials(publish_status, language, updated_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_transcriptions_material_lang
   ON transcriptions(material_id, lang, layer);
-CREATE INDEX IF NOT EXISTS idx_translations_material_target_status
-  ON translations(material_id, target_lang, status);
 CREATE INDEX IF NOT EXISTS idx_file_translations_material_target_status
   ON file_translations(material_id, target_lang, status);
 
