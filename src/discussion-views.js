@@ -164,8 +164,55 @@ function materialPostCard(ctx, material) {
 
 // ---------- صفحة /discussions ----------
 
+async function materialDiscussionsReadOnlyPage(ctx, materialId) {
+  const { lang, env } = ctx;
+  const material = await env.DB.prepare(
+    'SELECT id, ark, title_ar, title_fr, title_orig FROM materials WHERE id = ? AND publish_status = \'published\''
+  ).bind(materialId).first();
+  if (!material) {
+    return layout(ctx, {
+      title: t(lang, 'discussion_not_found'),
+      active: '/discussions',
+      content: `<div class="wrap"><p class="empty">${esc(t(lang, 'discussion_not_found'))}</p></div>`,
+    });
+  }
+  const materialTitle = lang === 'fr'
+    ? (material.title_fr || material.title_orig || material.title_ar || material.ark)
+    : (material.title_ar || material.title_orig || material.ark);
+  const rows = await env.DB.prepare(
+    `SELECT d.id, d.kind, d.title, d.body, d.created_at,
+            COALESCE(u.display_name, u.username, 'باحث') AS author_name,
+            u.is_verified, u.verification_type,
+            (SELECT COUNT(*) FROM discussion_replies r WHERE r.discussion_id = d.id AND r.status = 'published') AS replies_count
+     FROM discussions d
+     LEFT JOIN admin_users u ON u.id = d.author_id
+     WHERE d.material_id = ? AND d.status = 'published'
+     ORDER BY d.created_at DESC, d.id DESC LIMIT 100`
+  ).bind(materialId).all();
+  const items = rows.results || [];
+  const cards = items.map((d) => `<article class="d-card d-card-readonly">
+    <div class="d-card-top">${kindBadge(lang, d.kind)}<span class="d-meta">${authorLine(lang, d.author_name, Number(d.is_verified) === 1, d.verification_type)} · ${fmtDT(d.created_at)}</span></div>
+    <h2 class="d-title">${esc(d.title || '')}</h2>
+    <div class="d-body" dir="auto">${esc(d.body || '')}</div>
+    <p class="d-meta">💬 ${Number(d.replies_count || 0)} ${esc(lang === 'fr' ? 'réponses' : 'ردود')}</p>
+  </article>`).join('');
+  const content = `<div class="wrap page-discussions">
+    <nav class="breadcrumb"><a href="${langPath(ctx, '/')}" >${esc(t(lang, 'nav_home'))}</a> / <a href="${langPath(ctx, `/document/${encodeURIComponent(material.ark)}`)}">${esc(materialTitle)}</a> / ${esc(t(lang, 'discussions_title'))}</nav>
+    <header class="page-head social-page-head">
+      <h1>${esc(t(lang, 'discussions_title'))}</h1>
+      <p class="page-desc">${esc(lang === 'fr' ? 'Discussions des chercheurs liées à cette matière — lecture seule.' : 'نقاشات الباحثين المرتبطة بهذه المادة — للعرض فقط.')}</p>
+    </header>
+    <section class="social-card social-feed-intro"><strong>${esc(materialTitle)}</strong><span>${esc(lang === 'fr' ? 'Discussions publiées par les chercheurs.' : 'النقاشات المنشورة من الباحثين.')}</span></section>
+    <div class="discussion-readonly-list">${cards || `<p class="empty">${esc(t(lang, 'discussions_empty'))}</p>`}</div>
+  </div>`;
+  return layout(ctx, { title: `${t(lang, 'discussions_title')} — ${materialTitle}`, description: materialTitle, active: '/discussions', content });
+}
+
 export async function discussionsPage(ctx) {
   const { lang, env } = ctx;
+  const query = new URL(ctx.req.url).searchParams;
+  const rawMaterialId = query.get('material_id') || '';
+  if (/^\d+$/.test(rawMaterialId)) return materialDiscussionsReadOnlyPage(ctx, Number(rawMaterialId));
   const user = await getSessionUser(ctx.req, env);
   if (!user) {
     const content = `<header class="page-head"><h1>${esc(t(lang, 'discussions_title'))}</h1></header>${discussionAuthGate(ctx)}`;
@@ -402,8 +449,7 @@ export async function discussionSectionHTML(ctx, material) {
     <h2 class="doc-section-title">${esc(t(lang, 'discussions_on_material'))}</h2>
     ${list}
     <p class="d-cta">
-      <a class="btn btn-small" href="${langPath(ctx, '/discussions')}?material_id=${material.id}">${esc(t(lang, 'view_all_discussions'))}</a>
-      <a class="btn btn-small btn-ghost" href="${langPath(ctx, '/researcher/discussions')}?material_id=${material.id}">${esc(t(lang, 'start_discussion'))}</a>
+      <a class="btn btn-small" href="${langPath(ctx, `/discussions?material_id=${encodeURIComponent(material.id)}`)}">${esc(t(lang, 'view_all_discussions'))}</a>
     </p>
   </section>`;
 }

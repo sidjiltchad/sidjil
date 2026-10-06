@@ -3683,6 +3683,9 @@ body.sidjil-reading-open { overflow: hidden; }
 .d-mini-title { font-weight: 600; font-size: .92rem; flex: 1; }
 .d-mini-meta { font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .d-cta { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+.discussion-readonly-list { display: grid; gap: 1rem; max-width: 920px; margin-inline: auto; }
+.d-card-readonly { box-shadow: 0 4px 16px rgba(25, 40, 62, .05); }
+.d-card-readonly .d-body { margin: .35rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .notice { background: #fff8e6; border: 1px solid var(--gold-soft); border-radius: var(--radius); padding: .9rem 1.1rem; }
 [data-theme="dark"] .notice { background: #2a2415; }
 .notice-card { border-color: var(--gold-soft); }
