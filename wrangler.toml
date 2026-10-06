@@ -31,7 +31,7 @@ SITE_NAME = "سِجِل"
 SITE_URL = "https://sidjil.org"
 APP_URL = "https://app.sidjil.org"
 ADMIN_USERNAME = "admin"
-CAPACITOR_ORIGINS = "https://localhost"
+CAPACITOR_ORIGINS = "https://localhost,capacitor://localhost"
 # ADMIN_PASSWORD_HASH يُضبط كسرّ (wrangler secret) ولا يوضع هنا أبدًا
 
 [observability]

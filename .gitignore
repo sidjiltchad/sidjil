@@ -5,6 +5,14 @@ translation-service/.env
 **/.env
 android/local.properties
 .gradle-user/
+*.jks
+*.keystore
+*.aab
+*.apk
+android/app/build/
+android/.cxx/
+android/**/generated/
+release-signing.properties
 backup/
 *.log
 .DS_Store

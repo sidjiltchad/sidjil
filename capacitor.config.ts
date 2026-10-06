@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist-capacitor',
   server: {
     androidScheme: 'https',
+    allowNavigation: ['app.sidjil.org', 'sidjil.org', 'www.sidjil.org'],
   },
   plugins: {
     App: {

@@ -109,6 +109,12 @@ function showApp() {
   hideState(loading); hideState(offline); hideState(error); hideState(loginState);
   showState(appState); showState(bottomNav);
 }
+let fatalRuntimeErrorShown = false;
+function showFatalRuntimeError(message = 'حدث خطأ غير متوقع. أعد فتح التطبيق أو حاول مرة أخرى.') {
+  if (fatalRuntimeErrorShown || getRuntime() !== 'capacitor') return;
+  fatalRuntimeErrorShown = true;
+  showError(message);
+}
 function setFeedStatus(message, { hidden = false } = {}) {
   if (!feedStatus) return;
   feedStatus.textContent = message || '';
@@ -716,6 +722,15 @@ logoutButtons.forEach(button => button.addEventListener('click', async () => {
 }));
 window.addEventListener('online', retry);
 window.addEventListener('offline', showOfflineState);
+window.addEventListener('error', event => {
+  const message = String(event?.error?.message || event?.message || '').trim();
+  showFatalRuntimeError(message ? 'تعذر تشغيل مساحة الباحث. أعد المحاولة.' : undefined);
+});
+window.addEventListener('unhandledrejection', event => {
+  const reason = event?.reason;
+  if (reason instanceof ApiError && reason.code === 'NETWORK_ERROR') return;
+  showFatalRuntimeError();
+});
 window.addEventListener('beforeunload', () => { nativeUxCleanup?.(); navigationGuardCleanup?.(); });
 shell?.querySelectorAll('[data-retry]').forEach(button => button.addEventListener('click', retry));
 if (new URLSearchParams(globalThis.location?.search || '').get('diagnostics') === '1') {

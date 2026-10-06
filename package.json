@@ -18,6 +18,9 @@
     "mobile:sync": "npm run mobile:build && npx cap sync android",
     "mobile:android": "npm run mobile:sync && npx cap open android",
     "mobile:open": "npx cap open android",
+    "android:debug": "npm run mobile:sync && powershell -NoProfile -Command \"Push-Location android; .\\gradlew.bat assembleDebug; Pop-Location\"",
+    "android:release": "npm run mobile:sync && powershell -NoProfile -Command \"Push-Location android; .\\gradlew.bat assembleRelease; Pop-Location\"",
+    "android:bundle": "npm run mobile:sync && powershell -NoProfile -Command \"Push-Location android; .\\gradlew.bat bundleRelease; Pop-Location\"",
     "test": "node scripts/ci-contract.mjs",
     "test:mobile": "node scripts/mobile-phase1-check.mjs",
     "test:mobile:auth": "node scripts/mobile-phase2-check.mjs",
@@ -27,6 +30,7 @@
     "test:mobile:files": "node scripts/mobile-phase6-files-check.mjs",
     "test:mobile:word-upload": "node scripts/mobile-phase7-word-upload-check.mjs",
     "test:mobile:android": "node scripts/mobile-phase8-android-check.mjs",
+    "test:mobile:release": "node scripts/mobile-phase9-release-check.mjs",
     "test:smoke": "node scripts/smoke-test.mjs",
     "telegram:setup": "node scripts/telegram-setup.mjs"
   },
