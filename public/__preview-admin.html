@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<script>try{var __st=localStorage.getItem('sidjil-theme');if(__st!=='dark'&&__st!=='light'){__st=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.setAttribute('data-theme',__st);}catch(e){document.documentElement.setAttribute('data-theme','light');}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>معاينة لوحة الإدارة — سِجِل</title>
+<link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+<div class="admin-shell">
+  <div class="topbar">
+    <button class="nav-toggle-admin" id="sideToggle" type="button" aria-expanded="false" aria-controls="adminNav" aria-label="القائمة">
+      <span></span><span></span><span></span>
+    </button>
+    <span class="topbar-brand">سِجِل — لوحة الإدارة</span>
+  </div>
+  <aside class="sidebar" id="adminNav">
+    <div class="brand">
+      <div class="brand-name">سِجِل</div>
+      <div class="brand-sub">لوحة الإدارة</div>
+    </div>
+    <nav class="nav">
+      <a href="#" class="nav-item active">لوحة التحكم</a>
+      <a href="#" class="nav-item">المواد</a>
+      <a href="#" class="nav-item">طابور المراجعة</a>
+      <a href="#" class="nav-item">المجموعات</a>
+      <a href="#" class="nav-item">الأشخاص والأماكن</a>
+      <a href="#" class="nav-item">المستخدمون</a>
+      <a href="#" class="nav-item">الإعلانات</a>
+      <a href="#" class="nav-item">النسخ الاحتياطي</a>
+    </nav>
+    <div class="side-foot">
+      <div class="who">المستخدم: <strong>مدير المعاينة</strong></div>
+      <div class="foot-row">
+        <button class="btn btn-ghost btn-sm" type="button">تسجيل الخروج</button>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="تبديل المظهر">
+          <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-head">
+      <h1>لوحة التحكم</h1>
+      <div class="page-actions">
+        <button class="btn btn-ghost">تقرير</button>
+        <button class="btn btn-primary">+ مادة جديدة</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card k-total"><div class="stat-num">42</div><div class="stat-label">إجمالي المواد</div></div>
+      <div class="stat-card k-pub"><div class="stat-num">39</div><div class="stat-label">منشورة</div></div>
+      <div class="stat-card k-review"><div class="stat-num">2</div><div class="stat-label">قيد المراجعة</div></div>
+      <div class="stat-card k-draft"><div class="stat-num">1</div><div class="stat-label">مسودة</div></div>
+    </div>
+
+    <div class="card">
+      <h2>أحدث المواد</h2>
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead><tr><th>المعرف</th><th>العنوان</th><th>النوع</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">ARC-TD-BOK-000004</td>
+              <td>تاريخ التعليم في تشاد: الجذور والتطور</td>
+              <td>كتاب</td>
+              <td><span class="badge b-pub">منشورة</span></td>
+              <td class="row-actions"><button class="btn btn-sm">تعديل</button><button class="btn btn-sm btn-ghost">عرض</button></td>
+            </tr>
+            <tr>
+              <td class="mono">ARC-TD-ART-000012</td>
+              <td>المخطوطات العربية في وداي</td>
+              <td>مقال</td>
+              <td><span class="badge b-review">قيد المراجعة</span></td>
+              <td class="row-actions"><button class="btn btn-sm">مراجعة</button><button class="btn btn-sm btn-ghost">عرض</button></td>
+            </tr>
+            <tr>
+              <td class="mono">ARC-TD-DOC-000007</td>
+              <td>مراسلات الكلية الفرنسية العربية</td>
+              <td>وثيقة</td>
+              <td><span class="badge b-draft">مسودة</span></td>
+              <td class="row-actions"><button class="btn btn-sm">تعديل</button><button class="btn btn-sm btn-danger">حذف</button></td>
+            </tr>
+            <tr>
+              <td class="mono">ARC-TD-IMG-000031</td>
+              <td>صورة أبشة 1913</td>
+              <td>صورة</td>
+              <td><span class="badge b-hidden">مخفية</span></td>
+              <td class="row-actions"><button class="btn btn-sm">تعديل</button><button class="btn btn-sm btn-ghost">عرض</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="card-foot">الجدول داخل حاوية تمرير أفقي — جرّب على شاشة ضيقة.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>نموذج مادة</h2>
+        <form action="#" onsubmit="return false">
+          <div class="field">
+            <label for="pa-title">العنوان (عربي)</label>
+            <input id="pa-title" type="text" value="تاريخ التعليم في تشاد" placeholder="عنوان المادة">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="pa-type">النوع</label>
+              <select id="pa-type"><option>كتاب</option><option>وثيقة</option><option>صورة</option></select>
+            </div>
+            <div class="field">
+              <label for="pa-year">السنة</label>
+              <input id="pa-year" type="number" value="2026">
+            </div>
+          </div>
+          <div class="field">
+            <label for="pa-desc">الوصف</label>
+            <textarea id="pa-desc" rows="3">دراسة توثيقية لمسار التعليم في تشاد…</textarea>
+            <span class="hint">يظهر هذا الوصف في صفحة المادة ونتائج البحث.</span>
+          </div>
+          <div class="field">
+            <span class="field-label">الأقسام</span>
+            <div class="checks">
+              <label><input type="checkbox" checked> تاريخي</label>
+              <label><input type="checkbox" checked> المؤلفات التشادية</label>
+              <label><input type="checkbox"> ديني</label>
+              <label><input type="checkbox"> لغوي</label>
+            </div>
+          </div>
+          <fieldset class="choice-q">
+            <legend>طبيعة النسخة</legend>
+            <label><input type="radio" name="k" checked> أصلية</label>
+            <label><input type="radio" name="k"> مشتقة (مرممة/ملونة)</label>
+          </fieldset>
+          <div class="form-bar">
+            <button class="btn btn-primary" type="submit">حفظ</button>
+            <button class="btn" type="button">حفظ كمسودة</button>
+            <button class="btn btn-ghost" type="button">إلغاء</button>
+          </div>
+        </form>
+      </div>
+
+      <div>
+        <div class="card">
+          <h2>طابور المراجعة</h2>
+          <p><strong>المخطوطات العربية في وداي</strong> — <span class="badge b-review">قيد المراجعة</span></p>
+          <div class="verdict-note">بانتظار مراجعة المحرر قبل النشر.</div>
+          <div class="review-actions" style="margin-top:.8rem">
+            <button class="btn btn-primary btn-sm">اعتماد ونشر</button>
+            <button class="btn btn-sm">إعادة للباحث</button>
+            <button class="btn btn-danger btn-sm">رفض</button>
+          </div>
+        </div>
+        <div class="card filters">
+          <h2>فلاتر</h2>
+          <div class="filter-row">
+            <input type="search" placeholder="بحث سريع…">
+            <select><option>كل الحالات</option><option>منشورة</option><option>مسودة</option></select>
+            <button class="btn btn-sm">تصفية</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>المستخدمون</h2>
+          <p><span class="role-badge role-admin">مدير</span> أحمد — <span class="role-badge role-researcher">باحث</span> مريم <span class="muted">(موقوفة: <span class="user-inactive">نموذج</span>)</span></p>
+          <div class="pager">
+            <button class="btn btn-sm">→ السابق</button>
+            <span class="muted small">صفحة 1 من 3</span>
+            <button class="btn btn-sm">التالي ←</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/admin.js" defer></script>
+</body>
+</html>

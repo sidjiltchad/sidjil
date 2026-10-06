@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>معاينة نظام التصميم — سِجِل</title>
+<link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .pv-label{background:#1a365d;color:#fff;font:700 .8rem 'IBM Plex Sans Arabic',sans-serif;padding:6px 16px;border-radius:999px;display:inline-block;margin:34px 0 6px}
+  .pv-note{color:#64748b;font-size:.85rem;margin:0 0 14px}
+  [data-theme="dark"] .pv-label{background:#e2b855;color:#14100a}
+  .pv-frame{border:2px dashed #bfa150;border-radius:14px;padding:6px;margin-top:8px}
+  iframe.pv-admin{width:100%;height:1500px;border:0;border-radius:12px;background:#fff}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">تخطَّ إلى المحتوى</a>
+
+<!-- ============ الترويسة ============ -->
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#" aria-label="سِجِل">
+      <span class="brand-logo-wrap" aria-hidden="true"><img class="brand-logo" src="/logo.png" alt="" height="36"></span>
+      <span class="brand-text"><span class="brand-name">سِجِل</span></span>
+    </a>
+    <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="mainNav" aria-label="القائمة">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="main-nav" id="mainNav" aria-label="main">
+      <a class="nav-link active" href="#">الأقسام</a>
+      <a class="nav-link" href="#">المجلة</a>
+      <a class="nav-link" href="#">الأرشيف</a>
+      <a class="nav-link" href="#">المجموعات</a>
+      <form class="header-searchbox" action="#" method="get" role="search">
+        <input type="search" name="q" placeholder="ابحث في الأرشيف…" aria-label="بحث" autocomplete="off">
+        <button type="submit" aria-label="بحث"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button>
+      </form>
+    </nav>
+    <div class="header-tools">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="تبديل المظهر">
+        <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+      </button>
+      <a class="lang-switch" href="#">Français</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+<div class="wrap">
+
+  <span class="pv-label">العربية — RTL</span>
+  <p class="pv-note">صغّر نافذة المتصفح تحت 900px لرؤية قائمة الهمبرغر. زر القمر يبدّل الوضع الليلي.</p>
+
+  <!-- البطل -->
+  <section class="hero" style="border-radius:18px;margin-top:10px">
+    <h1 class="hero-title">ذاكرة تشاد بين يدي الباحث</h1>
+    <p class="hero-sub">أرشيف رقمي مفتوح يوثّق تاريخ تشاد وثقافتها — وثائق، مخطوطات، صور، ودراسات.</p>
+    <form class="hero-search" action="#" role="search">
+      <input class="hero-input" type="search" placeholder="ابحث عن وثيقة، شخص، مكان…" aria-label="بحث">
+      <button class="btn btn-primary btn-lg" type="submit">بحث</button>
+    </form>
+  </section>
+
+  <!-- مسار التنقل -->
+  <nav class="breadcrumb" aria-label="مسار التنقل" style="margin-top:26px">
+    <a href="#">الرئيسية</a><span>الأرشيف</span><span>وثائق وداي</span>
+  </nav>
+
+  <!-- الأقسام -->
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">أقسام سِجِل</h2>
+      <a class="more-link" href="#">عرض الكل ←</a>
+    </div>
+    <div class="sections-strip">
+      <a class="section-tile" href="#"><span class="section-tile-title">تاريخي</span><span class="section-tile-count">25 مادة</span></a>
+      <a class="section-tile" href="#"><span class="section-tile-title">ديني</span><span class="section-tile-count">23 مادة</span></a>
+      <a class="section-tile" href="#"><span class="section-tile-title">لغوي</span><span class="section-tile-count">11 مادة</span></a>
+      <a class="section-tile" href="#"><span class="section-tile-title">معاصر</span><span class="section-tile-count">11 مادة</span></a>
+    </div>
+  </section>
+
+  <!-- البطاقات -->
+  <section class="section">
+    <div class="section-head">
+      <h2 class="section-title">أحدث المواد</h2>
+    </div>
+    <div class="cards-grid">
+      <article class="card">
+        <div class="card-thumb card-thumb-empty" aria-hidden="true">سِجِل</div>
+        <div class="card-body">
+          <div class="card-tags"><span class="badge badge-type">كتاب</span><span class="badge badge-ark">ARC-TD-BOK-000004</span></div>
+          <h3 class="card-title">تاريخ التعليم في تشاد: الجذور والتطور</h3>
+          <p class="card-snippet">دراسة توثيقية لمسار التعليم في تشاد من الكتاتيب القرآنية إلى المدرسة الحديثة…</p>
+          <div class="card-meta"><span class="card-meta-item">د. محمد صالح أيوب</span><span class="card-meta-item">2026</span></div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="card-thumb card-thumb-empty" aria-hidden="true">سِجِل</div>
+        <div class="card-body">
+          <div class="card-tags"><span class="badge badge-type">أطروحة</span><span class="badge badge-ark">ARC-TD-THS-000001</span></div>
+          <h3 class="card-title">الاستعمار الفرنسي والمسألة الإسلامية في تشاد</h3>
+          <p class="card-snippet">أطروحة دكتوراه تناقش السياسة الاستعمارية تجاه الإسلام في سلطنة وداي…</p>
+          <div class="card-meta"><span class="card-meta-item">محمد آدم دوتم</span><span class="card-meta-item">1983</span></div>
+        </div>
+      </article>
+      <article class="card">
+        <div class="card-thumb card-thumb-empty" aria-hidden="true">سِجِل</div>
+        <div class="card-body">
+          <div class="card-tags"><span class="badge badge-type">وثيقة</span><span class="badge badge-ark">ARC-TD-DOC-000002</span></div>
+          <h3 class="card-title">مراسلات الكلية الفرنسية العربية بأبشة</h3>
+          <p class="card-snippet">ثلاث وثائق إدارية من عام 1951 حول تنظيم الكلية الفرنسية العربية…</p>
+          <div class="card-meta"><span class="card-meta-item">أرشيف ما وراء البحار</span><span class="card-meta-item">1951</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- الأزرار -->
+  <section class="section">
+    <div class="section-head"><h2 class="section-title">الأزرار</h2></div>
+    <p style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary">زر رئيسي</button>
+      <button class="btn btn-ghost">زر شبحي</button>
+      <button class="btn btn-primary btn-lg">زر كبير</button>
+      <button class="btn btn-ghost btn-small">زر صغير</button>
+      <button class="btn btn-primary" disabled>معطّل</button>
+      <a class="btn btn-ghost" href="#">رابط بزر</a>
+    </p>
+  </section>
+
+  <!-- الرقائق والشارات -->
+  <section class="section">
+    <div class="section-head"><h2 class="section-title">الشارات والرقائق</h2></div>
+    <p style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="badge badge-type">كتاب</span>
+      <span class="badge badge-ark">ARC-TD-…</span>
+      <span class="chip">وداي</span>
+      <span class="chip">أبشة</span>
+      <span class="tag-chip">مخطوطات</span>
+    </p>
+  </section>
+
+  <!-- نموذج بحث -->
+  <section class="section">
+    <div class="section-head"><h2 class="section-title">نموذج البحث المتقدم</h2></div>
+    <form class="filter-bar" action="#">
+      <div class="filter-field">
+        <label for="pv-q">كلمة البحث</label>
+        <input id="pv-q" type="search" placeholder="مثال: أبشة">
+      </div>
+      <div class="filter-field">
+        <label for="pv-t">النوع</label>
+        <select id="pv-t"><option>الكل</option><option>كتاب</option><option>وثيقة</option><option>صورة</option></select>
+      </div>
+      <div class="filter-field">
+        <label for="pv-s">القسم</label>
+        <select id="pv-s"><option>الكل</option><option>تاريخي</option><option>ديني</option></select>
+      </div>
+      <button class="btn btn-primary" type="submit">بحث</button>
+    </form>
+  </section>
+
+  <!-- جدول -->
+  <section class="section">
+    <div class="section-head"><h2 class="section-title">جدول (حاوية تمرير أفقي)</h2></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>المعرف</th><th>العنوان</th><th>النوع</th><th>السنة</th><th>الحالة</th></tr></thead>
+        <tbody>
+          <tr><td>ARC-TD-BOK-000004</td><td>تاريخ التعليم في تشاد</td><td>كتاب</td><td>2026</td><td>منشور</td></tr>
+          <tr><td>ARC-TD-THS-000001</td><td>الاستعمار الفرنسي والمسألة الإسلامية</td><td>أطروحة</td><td>1983</td><td>منشور</td></tr>
+          <tr><td>ARC-TD-DOC-000002</td><td>مراسلات الكلية الفرنسية العربية</td><td>وثيقة</td><td>1951</td><td>منشور</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- الترقيم -->
+  <nav class="pagination" aria-label="ترقيم الصفحات">
+    <a class="pg-btn" href="#">→ السابق</a>
+    <a class="pg-num" href="#">1</a>
+    <span class="pg-num current" aria-current="page">2</span>
+    <a class="pg-num" href="#">3</a>
+    <a class="pg-btn" href="#">التالي ←</a>
+  </nav>
+
+  <!-- ============ الفرنسية ============ -->
+  <div dir="ltr" lang="fr">
+    <span class="pv-label">Français — LTR</span>
+    <p class="pv-note">Version française : typographie, alignement et sens de lecture inversé.</p>
+    <section class="hero" style="border-radius:18px;margin-top:10px">
+      <h1 class="hero-title">La mémoire du Tchad entre les mains du chercheur</h1>
+      <p class="hero-sub">Archives numériques ouvertes documentant l'histoire et la culture du Tchad.</p>
+      <form class="hero-search" action="#" role="search">
+        <input class="hero-input" type="search" placeholder="Rechercher un document, une personne, un lieu…" aria-label="Recherche">
+        <button class="btn btn-primary btn-lg" type="submit">Rechercher</button>
+      </form>
+    </section>
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">Documents récents</h2>
+        <a class="more-link" href="#">Tout voir →</a>
+      </div>
+      <div class="cards-grid">
+        <article class="card">
+          <div class="card-thumb card-thumb-empty" aria-hidden="true">SIDJIL</div>
+          <div class="card-body">
+            <div class="card-tags"><span class="badge badge-type">Livre</span><span class="badge badge-ark">ARC-TD-BOK-000004</span></div>
+            <h3 class="card-title">Histoire de l'éducation au Tchad : racines et évolution</h3>
+            <p class="card-snippet">Étude documentaire du parcours éducatif tchadien, des écoles coraniques à l'école moderne…</p>
+            <div class="card-meta"><span class="card-meta-item">Dr Mahamat Saleh Ayoub</span><span class="card-meta-item">2026</span></div>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-thumb card-thumb-empty" aria-hidden="true">SIDJIL</div>
+          <div class="card-body">
+            <div class="card-tags"><span class="badge badge-type">Thèse</span><span class="badge badge-ark">ARC-TD-THS-000001</span></div>
+            <h3 class="card-title">Le colonialisme français et la question islamique au Tchad</h3>
+            <p class="card-snippet">Thèse de doctorat sur la politique coloniale envers l'islam dans le sultanat du Ouaddaï…</p>
+            <div class="card-meta"><span class="card-meta-item">Mohamed Adam Dotem</span><span class="card-meta-item">1983</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+    <section class="section">
+      <div class="section-head"><h2 class="section-title">Boutons</h2></div>
+      <p style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-primary">Bouton principal</button>
+        <button class="btn btn-ghost">Bouton fantôme</button>
+        <button class="btn btn-primary btn-lg">Grand bouton</button>
+      </p>
+    </section>
+    <nav class="breadcrumb" aria-label="Fil d'Ariane">
+      <a href="#">Accueil</a><span>Archives</span><span>Documents du Ouaddaï</span>
+    </nav>
+    <nav class="pagination" aria-label="Pagination" style="margin-top:18px">
+      <a class="pg-btn" href="#">← Précédent</a>
+      <a class="pg-num" href="#">1</a>
+      <span class="pg-num current" aria-current="page">2</span>
+      <a class="pg-num" href="#">3</a>
+      <a class="pg-btn" href="#">Suivant →</a>
+    </nav>
+  </div>
+
+  <!-- ============ الإدارة ============ -->
+  <span class="pv-label">واجهة الإدارة (داخل إطار)</span>
+  <p class="pv-note">صغّر عرض الإطار أو النافذة تحت 900px لرؤية الشريط العلوي وقائمة الهمبرغر الإدارية.</p>
+  <div class="pv-frame">
+    <iframe class="pv-admin" src="/__preview-admin.html" title="معاينة لوحة الإدارة"></iframe>
+  </div>
+
+</div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-col">
+      <div class="footer-name">سِجِل — أرشيف تاريخ تشاد الرقمي</div>
+      <p class="footer-about">صفحة معاينة لنظام التصميم — تُحذف عند التغليف.</p>
+    </div>
+  </div>
+  <div class="footer-bottom"><div class="wrap">© 2026 سِجِل.</div></div>
+</footer>
+
+<script>
+(function(){
+  var t=document.getElementById('themeToggle');
+  if(t){t.addEventListener('click',function(){
+    var r=document.documentElement;
+    r.classList.add('theme-transitioning');
+    var n=r.getAttribute('data-theme')==='dark'?'light':'dark';
+    r.setAttribute('data-theme',n);
+    setTimeout(function(){r.classList.remove('theme-transitioning')},350);
+  });}
+  var nt=document.getElementById('navToggle'),mn=document.getElementById('mainNav');
+  if(nt&&mn){nt.addEventListener('click',function(){
+    var o=mn.classList.toggle('open');
+    nt.setAttribute('aria-expanded',o?'true':'false');
+  });}
+})();
+</script>
+</body>
+</html>
