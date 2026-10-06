@@ -2470,7 +2470,8 @@ textarea { border-radius: var(--shape-control); }
   .activity-chart-30 .activity-count, .activity-chart-90 .activity-count { display: none; }
 }
 .translation-stats{display:flex;gap:.6rem;flex-wrap:wrap;margin:1rem 0}.translation-stats span{padding:.45rem .75rem;border:1px solid var(--line,#ddd);border-radius:999px;background:var(--surface,#fff)}.translation-admin-tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin:1rem 0}.translation-admin-tab{border:1px solid var(--line,#ddd);background:var(--surface,#fff);padding:.65rem 1rem;border-radius:.7rem;cursor:pointer}.translation-admin-tab.is-active{background:var(--primary,#123d78);color:#fff}
-.translation-search{max-width:42rem;margin:1rem 0}.translation-search .field{margin:0}
+.translation-search{display:grid;grid-template-columns:minmax(0,1fr) minmax(12rem,.45fr);gap:.7rem;max-width:58rem;margin:1rem 0}.translation-search .field{margin:0}.translation-search select{width:100%;min-height:2.5rem;padding:.5rem .7rem;border:1px solid var(--line,#ddd);border-radius:var(--radius-sm,.5rem);background:var(--surface,#fff);color:var(--ink);font:inherit}
+@media (max-width:640px){.translation-search{grid-template-columns:1fr}}
 
 /* قارئ الباحث: هذه القواعد تأتي بعد أنماط القارئ القديم حتى لا تتداخل معه. */
 .rpdf-reader-root .rpdf-reader-stage { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; gap: 1px; background: #27303b; }
