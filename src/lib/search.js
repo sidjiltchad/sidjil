@@ -157,7 +157,7 @@ export async function searchMaterials(db, params = {}) {
       for (const [index, token] of tokens.entries()) {
         const normalizedPattern = `%${token}%`;
         const rawPattern = `%${rawTokens[index] || token}%`;
-        binds.push(rawPattern, rawPattern, rawPattern, normalizedPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern);
+        binds.push(rawPattern, rawPattern, rawPattern, normalizedPattern, rawPattern, rawPattern, rawPattern, rawPattern);
       }
     }
   }
