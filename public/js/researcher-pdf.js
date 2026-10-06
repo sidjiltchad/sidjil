@@ -1,4 +1,4 @@
-import { mount, openResearcherReader } from './researcher-pdf-core.js?v=20261006-shared-reader';
+import { mount, openResearcherReader } from './researcher-pdf-core.js?v=20261012-unified-reader-controls';
 window.SidjilPdfReader = { mount };
 window.SidjilOpenDocumentReader = openResearcherReader;
 export { mount, openResearcherReader };
