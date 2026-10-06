@@ -25,9 +25,9 @@ body { min-height: var(--sidjil-viewport-height, 100dvh); }
 button, input { font: inherit; }
 button { cursor: pointer; }
 .mobile-app-shell { min-height: var(--sidjil-viewport-height, 100dvh); display: grid; grid-template-rows: auto 1fr auto; background: radial-gradient(circle at 50% -20%, #173267 0, #0b1220 58%); }
-.mobile-app-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem clamp(1rem, 4vw, 2rem); border-bottom: 1px solid rgba(255,255,255,.1); }
+.mobile-app-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: calc(1rem + var(--sidjil-header-safe-top, 0px)) clamp(1rem, 4vw, 2rem) 1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
 .mobile-brand { display: inline-flex; align-items: center; gap: .7rem; border: 0; background: transparent; color: inherit; font-weight: 700; padding: 0; text-align: start; }
-.mobile-brand img { object-fit: contain; border-radius: 12px; background: #fff; }
+.mobile-brand img { display: block; object-fit: contain; border: 0; border-radius: 0; background: transparent; }
 .mobile-runtime { color: #9db2d8; font-size: .78rem; }
 .mobile-app-main { width: min(100%, 820px); min-height: 0; margin: 0 auto; padding: clamp(1.2rem, 5vw, 2.5rem) clamp(1rem, 4vw, 2rem) calc(2rem + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior-y: contain; }
 .mobile-eyebrow { margin: 0 0 .35rem; color: #f4b63f; font-size: .78rem; letter-spacing: .12em; font-weight: 700; }

@@ -31,14 +31,23 @@ export function measureViewport(documentLike = globalThis.document, windowLike =
   return height;
 }
 
-export async function configureNativeChrome() {
+export async function configureNativeChrome({ documentLike = globalThis.document } = {}) {
   const statusBar = plugin('StatusBar');
   if (!statusBar) return false;
+  const root = documentLike?.documentElement;
   await Promise.allSettled([
     statusBar.setOverlaysWebView?.({ overlay: false }),
     statusBar.setBackgroundColor?.({ color: '#0b1220' }),
     statusBar.setStyle?.({ style: 'DARK' }),
   ]);
+  // With the current native configuration the WebView starts below the
+  // status bar, so no extra top padding is needed. If a future native mode
+  // enables overlaying, CSS safe-area insets move only the content down while
+  // leaving the header background behind the system bar.
+  let overlays = false;
+  try { overlays = Boolean((await statusBar.getInfo?.())?.overlays); } catch { /* optional plugin API */ }
+  root?.style.setProperty('--sidjil-header-safe-top', overlays ? 'env(safe-area-inset-top, 0px)' : '0px');
+  if (root) root.dataset.sidjilStatusOverlay = overlays ? 'true' : 'false';
   return true;
 }
 
