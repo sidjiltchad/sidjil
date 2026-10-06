@@ -403,18 +403,28 @@ async function apiMapPoints(env, url) {
     rowsRead += Number(placesRes.meta?.rows_read || 0);
 
     const places = placesRes.results || [];
-    const out = [];
-    for (const p of places) {
+    const placeIds = places.map((p) => p.id);
+    const materialByPlace = new Map(placeIds.map((id) => [id, []]));
+    if (placeIds.length) {
+      const placeParams = placeIds.map(() => '?').join(', ');
       const mats = await env.DB.prepare(
-        `SELECT DISTINCT m.id, m.ark, m.type, m.title_ar, m.title_orig,
+        `SELECT DISTINCT p.id AS place_id, m.id, m.ark, m.type, m.title_ar, m.title_orig,
                 m.description, m.year, m.date_text
-         FROM materials m
-         LEFT JOIN material_places mp ON mp.material_id = m.id
-         WHERE m.publish_status = 'published' AND (mp.place_id = ? OR m.place_id = ?)
-         ORDER BY m.year, m.id`
-      ).bind(p.id, p.id).all();
+         FROM places p
+         JOIN materials m ON m.publish_status = 'published'
+         LEFT JOIN material_places mp ON mp.material_id = m.id AND mp.place_id = p.id
+         WHERE p.id IN (${placeParams}) AND (m.place_id = p.id OR mp.place_id IS NOT NULL)
+         ORDER BY p.id, m.year, m.id`
+      ).bind(...placeIds).all();
       rowsRead += Number(mats.meta?.rows_read || 0);
-      out.push({
+      for (const m of mats.results || []) {
+        const list = materialByPlace.get(m.place_id);
+        if (list) list.push(m);
+      }
+    }
+    const out = places.map((p) => {
+      const materials = materialByPlace.get(p.id) || [];
+      return {
         id: p.id,
         name_ar: p.name_ar,
         name_orig: p.name_orig,
@@ -423,7 +433,7 @@ async function apiMapPoints(env, url) {
         lat: p.lat,
         lng: p.lng,
         confidence: p.place_confidence,
-        materials: (mats.results || []).map((m) => ({
+        materials: materials.map((m) => ({
           id: m.id,
           ark: m.ark,
           type: m.type,
@@ -433,8 +443,8 @@ async function apiMapPoints(env, url) {
           year: m.year,
           date_text: m.date_text,
         })),
-      });
-    }
+      };
+    });
     await recordApiQueryMetric(env.DB, '/api/v1/map-points', 'map.points', Date.now() - startedAt, rowsRead, false, env.QUERY_METRICS_SAMPLE_RATE || 0.1);
     return json({ places: out });
   } catch (error) {
