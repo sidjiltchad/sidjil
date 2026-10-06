@@ -4,6 +4,20 @@ const api = async (url, opts = {}) => { const headers = new Headers(opts.headers
 const filesBody = document.querySelector('[data-translation-files]');
 const stats = document.querySelector('[data-translation-stats]');
 const statusFilter = document.querySelector('[data-translation-status]');
+async function extractDocxSearchText(file) {
+  if (!file || !window.JSZip) return '';
+  try {
+    const zip = await window.JSZip.loadAsync(file);
+    const entry = zip.file('word/document.xml');
+    if (!entry) return '';
+    const xml = new DOMParser().parseFromString(await entry.async('text'), 'application/xml');
+    if (xml.querySelector('parsererror')) return '';
+    const paragraphs = Array.from(xml.getElementsByTagNameNS('*', 'p')).map((p) =>
+      Array.from(p.getElementsByTagNameNS('*', 't')).map((node) => node.textContent || '').join(' ').replace(/\s+/g, ' ').trim()
+    ).filter(Boolean);
+    return paragraphs.join('\n').slice(0, 2000000);
+  } catch (_) { return ''; }
+}
 async function loadFiles(query = '', status = statusFilter?.value || 'all') {
   if (!filesBody) return;
   try { const params = new URLSearchParams({ perPage: '100' }); if (query.trim()) params.set('q', query.trim()); if (status && status !== 'all') params.set('status', status); const d = await api(`/api/v1/admin/translations/overview?${params}`); stats.innerHTML = `<span>الملفات: <b>${d.stats.total}</b></span><span>مترجمة: <b>${d.stats.ready}</b></span><span>بانتظار: <b>${d.stats.awaiting}</b></span><span>طلبات جديدة: <b>${d.stats.newRequests}</b></span>`; filesBody.innerHTML = (d.items || []).map((x) => `<tr><td>${esc(x.title_ar || x.title_orig || x.ark)}<br><small>${esc(x.ark)}</small></td><td><code>${esc(x.filename)}</code><br><small>#${x.id}</small></td><td><select data-file-lang="${x.id}"><option value="undetermined"${x.lang === 'undetermined' ? ' selected' : ''}>غير محددة</option><option value="ar"${x.lang === 'ar' ? ' selected' : ''}>العربية</option><option value="fr"${x.lang === 'fr' ? ' selected' : ''}>الفرنسية</option><option value="en"${x.lang === 'en' ? ' selected' : ''}>الإنجليزية</option></select></td><td>${(x.counterparts || []).map((c) => `<span>${esc(c.target_lang)} <button type="button" class="btn btn-sm btn-danger" data-translation-delete="${c.id}">حذف</button></span>`).join('<br>') || '—'}</td><td><button type="button" class="btn btn-sm" data-use-file="${x.id}">رفع نظير</button></td></tr>`).join('') || '<tr><td colspan="5">لا توجد ملفات مطابقة.</td></tr>'; } catch (e) { filesBody.innerHTML = `<tr><td colspan="5">${esc(e.message)}</td></tr>`; }
@@ -16,7 +30,7 @@ let searchTimer;
 document.querySelector('[data-translation-search]')?.addEventListener('input', (e) => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadFiles(e.target.value, statusFilter?.value), 220); });
 statusFilter?.addEventListener('change', () => loadFiles(document.querySelector('[data-translation-search]')?.value || '', statusFilter.value));
 document.querySelector('[data-translation-requests-refresh]')?.addEventListener('click', loadRequests);
-document.querySelector('[data-translation-upload]')?.addEventListener('submit', async (e) => { e.preventDefault(); const status = document.querySelector('[data-translation-upload-status]'); status.textContent = 'جارٍ الرفع…'; try { await api('/api/v1/admin/translations/upload', { method: 'POST', body: new FormData(e.currentTarget) }); status.textContent = 'تم رفع النظير.'; e.currentTarget.reset(); loadFiles(); } catch (err) { status.textContent = err.message; } });
+document.querySelector('[data-translation-upload]')?.addEventListener('submit', async (e) => { e.preventDefault(); const status = document.querySelector('[data-translation-upload-status]'); status.textContent = 'جارٍ تجهيز النص والرفع…'; try { const form = e.currentTarget; const payload = new FormData(form); const text = await extractDocxSearchText(payload.get('file')); if (text) payload.set('search_text', text); await api('/api/v1/admin/translations/upload', { method: 'POST', body: payload }); status.textContent = 'تم رفع النظير وفهرسة نصه.'; form.reset(); loadFiles(); } catch (err) { status.textContent = err.message; } });
 document.addEventListener('change', async (e) => { const lang = e.target.closest('[data-file-lang]'); if (lang) { try { await api(`/api/v1/admin/translations/file-lang/${lang.dataset.fileLang}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ lang: lang.value }) }); } catch (err) { alert(err.message); } } const rs = e.target.closest('[data-request-status]'); if (rs) { try { await api(`/api/v1/admin/translation-requests/${rs.dataset.requestStatus}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: rs.value }) }); } catch (err) { alert(err.message); } } });
 document.addEventListener('click', async (e) => { const use = e.target.closest('[data-use-file]'); if (use) { document.querySelector('[data-translation-tab="upload"]')?.click(); document.querySelector('[data-translation-upload] [name="source_file_id"]').value = use.dataset.useFile; } const del = e.target.closest('[data-translation-delete]'); if (del && confirm('حذف نظير الترجمة؟')) { try { await api(`/api/v1/admin/translations/file/${del.dataset.translationDelete}`, { method: 'DELETE' }); loadFiles(); } catch (err) { alert(err.message); } } });
 loadFiles();

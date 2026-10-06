@@ -172,10 +172,11 @@ export async function rebuildSearchBlob(db, materialId) {
   const m = await db.prepare('SELECT * FROM materials WHERE id = ?').bind(materialId).first();
   if (!m) return;
 
-  const [trRows, translationRows, pageTranslationRows, pRows, plRows, tRows, srcRow] = await Promise.all([
+  const [trRows, translationRows, pageTranslationRows, fileTranslationRows, pRows, plRows, tRows, srcRow] = await Promise.all([
     db.prepare('SELECT text FROM transcriptions WHERE material_id = ?').bind(materialId).all(),
     db.prepare("SELECT text FROM translations WHERE material_id = ? AND status IN ('machine','in_review','reviewed','approved')").bind(materialId).all().catch(() => ({ results: [] })),
     db.prepare("SELECT tp.translated_text AS text FROM translation_pages tp JOIN translation_documents td ON td.id = tp.document_id WHERE td.material_id = ? AND tp.status IN ('queued','processing','completed','reviewed','approved') AND tp.translated_text IS NOT NULL").bind(materialId).all().catch(() => ({ results: [] })),
+    db.prepare("SELECT search_text AS text FROM file_translations WHERE material_id = ? AND status = 'ready' AND search_text IS NOT NULL AND search_text <> ''").bind(materialId).all().catch(() => ({ results: [] })),
     db
       .prepare(
         `SELECT p.name_ar, p.name_fr, p.name_orig FROM people p
@@ -213,6 +214,7 @@ export async function rebuildSearchBlob(db, materialId) {
     trRows.results.map((r) => r.text).join(' '),
     translationRows.results.map((r) => r.text).join(' '),
     pageTranslationRows.results.map((r) => r.text).join(' '),
+    fileTranslationRows.results.map((r) => r.text).join(' '),
     m.title_fr,
     m.description_fr,
     m.summary_fr,

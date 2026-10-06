@@ -129,14 +129,14 @@ export async function searchMaterials(db, params = {}) {
             m.search_blob LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.title_fr LIKE ? OR m.description_fr LIKE ? OR m.summary_fr LIKE ? OR m.notable_quote_fr LIKE ?
             OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
             OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
-            OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND tfq.filename LIKE ?)
+          OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND (tfq.filename LIKE ? OR ftq.search_text LIKE ?))
           )`;
         });
         where.push(`(${tokenClauses.join(' AND ')})`);
         for (const [index, token] of tokens.entries()) {
           const normalizedPattern = `%${token}%`;
           const rawPattern = `%${rawTokens[index] || token}%`;
-          binds.push(normalizedPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern);
+          binds.push(normalizedPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern);
         }
       }
     } else {
@@ -150,14 +150,14 @@ export async function searchMaterials(db, params = {}) {
         m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.title_fr LIKE ? OR m.search_blob LIKE ?
         OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
         OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
-        OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND tfq.filename LIKE ?)
+        OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND (tfq.filename LIKE ? OR ftq.search_text LIKE ?))
       )`).join(' AND ');
       where.push(`(m.ark IN (SELECT fts.ark FROM materials_fts fts WHERE materials_fts MATCH ?)${directClauses ? ` OR (${directClauses})` : ''})`);
       binds.push(ftsQuery);
       for (const [index, token] of tokens.entries()) {
         const normalizedPattern = `%${token}%`;
         const rawPattern = `%${rawTokens[index] || token}%`;
-        binds.push(rawPattern, rawPattern, rawPattern, normalizedPattern, rawPattern, rawPattern, rawPattern);
+        binds.push(rawPattern, rawPattern, rawPattern, normalizedPattern, rawPattern, rawPattern, rawPattern, rawPattern, rawPattern);
       }
     }
   }

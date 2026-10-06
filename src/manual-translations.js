@@ -40,6 +40,7 @@ export async function translationOverview(env, url) {
 export async function translationUpload(env, user, req) {
   let form; try { form = await req.formData(); } catch { return err('نموذج الرفع غير صالح'); }
   const sourceFileId = parseInt(form.get('source_file_id'), 10), sourceLang = String(form.get('source_lang') || ''), targetLang = String(form.get('target_lang') || ''), file = form.get('file');
+  const searchText = String(form.get('search_text') || '').trim().slice(0, 2_000_000);
   if (!Number.isFinite(sourceFileId) || !['ar','fr','en'].includes(sourceLang) || !allowedTargets(sourceLang).includes(targetLang)) return err('تحقق من الملف واتجاه الترجمة');
   if (!file || typeof file.arrayBuffer !== 'function' || !/\.docx$/i.test(file.name || '')) return err('ارفع ملف Word بصيغة DOCX');
   if (file.size > 25 * 1024 * 1024) return err('الحد الأقصى 25 ميغابايت', 413);
@@ -50,7 +51,7 @@ export async function translationUpload(env, user, req) {
   if (existing?.translation_file_id) await env.DB.prepare('DELETE FROM files WHERE id=?').bind(existing.translation_file_id).run().catch(() => {});
   let row; try { row = await putUpload(env, { materialId: src.material_id, ark: src.ark, type: src.type }, file, 'translation'); } catch (e) { return err(e.message || 'فشل الرفع'); }
   await setLang(env.DB, src.id, sourceLang); await setLang(env.DB, row.id, targetLang);
-  await env.DB.prepare(`INSERT INTO file_translations (material_id, source_file_id, source_lang, target_lang, translation_file_id, status, updated_at) VALUES (?, ?, ?, ?, ?, 'ready', datetime('now')) ON CONFLICT(source_file_id,target_lang) DO UPDATE SET translation_file_id=excluded.translation_file_id, source_lang=excluded.source_lang, status='ready', updated_at=datetime('now')`).bind(src.material_id, src.id, sourceLang, targetLang, row.id).run();
+  await env.DB.prepare(`INSERT INTO file_translations (material_id, source_file_id, source_lang, target_lang, translation_file_id, status, search_text, updated_at) VALUES (?, ?, ?, ?, ?, 'ready', ?, datetime('now')) ON CONFLICT(source_file_id,target_lang) DO UPDATE SET translation_file_id=excluded.translation_file_id, source_lang=excluded.source_lang, status='ready', search_text=excluded.search_text, updated_at=datetime('now')`).bind(src.material_id, src.id, sourceLang, targetLang, row.id, searchText).run();
   await env.DB.prepare("UPDATE translation_requests SET status='done' WHERE source_file_id=? AND status='new'").bind(src.id).run().catch(() => {});
   await audit(env.DB, { userId: user.id, action: 'translation.upload', target: src.ark, detail: `${safeName(src.filename)} → ${targetLang}`, ip: clientIp(req) });
   return json({ ok: true, file: row, sourceLang, targetLang }, 201);
