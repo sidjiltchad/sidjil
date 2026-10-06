@@ -1,5 +1,5 @@
 import { putUpload, safeName } from './lib/r2files.js';
-import { audit } from './lib/db.js';
+import { audit, rebuildSearchBlob } from './lib/db.js';
 
 const FILE_LANGS = ['ar', 'fr', 'en', 'undetermined'];
 const TRANSLATABLE_WHERE = `f.kind IN ('original','attachment') AND (f.mime = 'application/pdf' OR f.mime LIKE '%word%' OR lower(f.filename) LIKE '%.pdf' OR lower(f.filename) LIKE '%.doc' OR lower(f.filename) LIKE '%.docx')`;
@@ -52,6 +52,7 @@ export async function translationUpload(env, user, req) {
   let row; try { row = await putUpload(env, { materialId: src.material_id, ark: src.ark, type: src.type }, file, 'translation'); } catch (e) { return err(e.message || 'فشل الرفع'); }
   await setLang(env.DB, src.id, sourceLang); await setLang(env.DB, row.id, targetLang);
   await env.DB.prepare(`INSERT INTO file_translations (material_id, source_file_id, source_lang, target_lang, translation_file_id, status, search_text, updated_at) VALUES (?, ?, ?, ?, ?, 'ready', ?, datetime('now')) ON CONFLICT(source_file_id,target_lang) DO UPDATE SET translation_file_id=excluded.translation_file_id, source_lang=excluded.source_lang, status='ready', search_text=excluded.search_text, updated_at=datetime('now')`).bind(src.material_id, src.id, sourceLang, targetLang, row.id, searchText).run();
+  await rebuildSearchBlob(env.DB, src.material_id).catch(() => {});
   await env.DB.prepare("UPDATE translation_requests SET status='done' WHERE source_file_id=? AND status='new'").bind(src.id).run().catch(() => {});
   await audit(env.DB, { userId: user.id, action: 'translation.upload', target: src.ark, detail: `${safeName(src.filename)} → ${targetLang}`, ip: clientIp(req) });
   return json({ ok: true, file: row, sourceLang, targetLang }, 201);
@@ -65,7 +66,7 @@ export async function translationFileLang(env, user, req, fileId, body) {
 
 export async function translationDelete(env, user, req, id) {
   const ft = await env.DB.prepare('SELECT ft.*, f.r2_key, f.filename, m.ark FROM file_translations ft LEFT JOIN files f ON f.id=ft.translation_file_id LEFT JOIN materials m ON m.id=ft.material_id WHERE ft.id=?').bind(id).first(); if (!ft) return err('النظير غير موجود', 404);
-  if (ft.r2_key) await env.FILES.delete(ft.r2_key).catch(() => {}); if (ft.translation_file_id) await env.DB.prepare('DELETE FROM files WHERE id=?').bind(ft.translation_file_id).run().catch(() => {}); await env.DB.prepare('DELETE FROM file_translations WHERE id=?').bind(id).run(); await audit(env.DB, { userId: user.id, action: 'translation.delete', target: ft.ark || String(id), detail: `${ft.filename || ''} (${ft.target_lang})`, ip: clientIp(req) }); return json({ ok: true });
+  if (ft.r2_key) await env.FILES.delete(ft.r2_key).catch(() => {}); if (ft.translation_file_id) await env.DB.prepare('DELETE FROM files WHERE id=?').bind(ft.translation_file_id).run().catch(() => {}); await env.DB.prepare('DELETE FROM file_translations WHERE id=?').bind(id).run(); await rebuildSearchBlob(env.DB, ft.material_id).catch(() => {}); await audit(env.DB, { userId: user.id, action: 'translation.delete', target: ft.ark || String(id), detail: `${ft.filename || ''} (${ft.target_lang})`, ip: clientIp(req) }); return json({ ok: true });
 }
 
 export async function translationRequests(env, url) {
