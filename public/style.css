@@ -1664,6 +1664,7 @@ a:hover {
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 0 32px;
   margin: 0 0 16px;
+  align-items: start;
 }
 
 .meta-row {
@@ -1674,6 +1675,7 @@ a:hover {
   border-bottom: 1px dashed var(--line);
   font-size: 0.95rem;
   align-items: baseline;
+  min-width: 0;
 }
 
 .meta-row dt {
@@ -1684,6 +1686,14 @@ a:hover {
 .meta-row dd {
   margin: 0;
   color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+.meta-row dd a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ref {

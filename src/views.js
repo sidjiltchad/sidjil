@@ -1041,7 +1041,7 @@ async function documentPage(ctx, ark) {
         </div>` : ''}
       </section>
 
-      ${filesHTML ? `<section class="doc-section"><h2 class="doc-section-title">${esc(t(lang, 'files_label'))}</h2>${filesHTML}</section>` : ''}
+      <!-- ملفات الأصل ونظائر الترجمة تُفتح من القارئ الموحد فقط، ولا تُعرض كقائمة مستقلة هنا. -->
       ${pdfViewerHTML}
       ${galleryHTML}
       ${transcriptionHTML}
