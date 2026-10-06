@@ -33,5 +33,5 @@ SELECT ark,
        trim(coalesce(search_blob, '') || char(10) || coalesce(title_fr, '') || char(10) ||
             coalesce(description_fr, '') || char(10) || coalesce(summary_fr, '') || char(10) || coalesce(notable_quote_fr, '') || char(10) ||
             coalesce((SELECT group_concat(text, ' ') FROM transcriptions WHERE material_id = materials.id), '') || char(10) ||
-            coalesce((SELECT group_concat(text, ' ') FROM translations WHERE material_id = materials.id AND status IN ('machine','in_review','reviewed','approved')), ''))
+            coalesce((SELECT group_concat(tp.translated_text, ' ') FROM translation_pages tp JOIN translation_documents td ON td.id = tp.document_id WHERE td.material_id = materials.id AND tp.status IN ('queued','processing','completed','reviewed','approved')), ''))
 FROM materials;

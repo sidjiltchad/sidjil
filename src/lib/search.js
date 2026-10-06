@@ -125,7 +125,7 @@ export async function searchMaterials(db, params = {}) {
         const tokenClauses = tokens.map(() => `(
           m.search_blob LIKE ? OR m.title_fr LIKE ? OR m.description_fr LIKE ? OR m.summary_fr LIKE ? OR m.notable_quote_fr LIKE ?
           OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
-          OR EXISTS (SELECT 1 FROM translations tlq WHERE tlq.material_id = m.id AND tlq.status IN ('machine','in_review','reviewed','approved') AND tlq.text LIKE ?)
+          OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
         )`);
         where.push(`(${tokenClauses.join(' AND ')})`);
         for (const token of tokens) {
