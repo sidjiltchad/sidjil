@@ -148,7 +148,7 @@ export async function searchMaterials(db, params = {}) {
         OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
         OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND tfq.filename LIKE ?)
       )`).join(' AND ');
-      where.push(`(materials_fts MATCH ?${directClauses ? ` OR (${directClauses})` : ''})`);
+      where.push(`(m.ark IN (SELECT fts.ark FROM materials_fts fts WHERE fts MATCH ?)${directClauses ? ` OR (${directClauses})` : ''})`);
       binds.push(ftsQuery);
       for (const token of tokens) {
         const pattern = `%${token}%`;
