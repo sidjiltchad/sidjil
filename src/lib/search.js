@@ -123,23 +123,37 @@ export async function searchMaterials(db, params = {}) {
       if (tokens.length) {
         likeSearch = true;
         const tokenClauses = tokens.map(() => `(
-          m.search_blob LIKE ? OR m.title_fr LIKE ? OR m.description_fr LIKE ? OR m.summary_fr LIKE ? OR m.notable_quote_fr LIKE ?
+          m.search_blob LIKE ? OR m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.title_fr LIKE ? OR m.description_fr LIKE ? OR m.summary_fr LIKE ? OR m.notable_quote_fr LIKE ?
           OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
+          OR EXISTS (SELECT 1 FROM translations trq2 WHERE trq2.material_id = m.id AND trq2.status IN ('machine','in_review','reviewed','approved') AND trq2.text LIKE ?)
           OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
+          OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND tfq.filename LIKE ?)
         )`);
         where.push(`(${tokenClauses.join(' AND ')})`);
         for (const token of tokens) {
           const pattern = `%${token}%`;
-          binds.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+          binds.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
         }
       }
     } else {
       ftsQuery = buildFtsQuery(q);
     }
     if (ftsQuery) {
-      joins.push('JOIN materials_fts ON materials_fts.ark = m.ark');
-      where.push('materials_fts MATCH ?');
+      joins.push('LEFT JOIN materials_fts ON materials_fts.ark = m.ark');
+      const tokens = normalizeText(q).split(/\s+/).map((token) => token.replace(/["*:()]/g, '')).filter(Boolean).slice(0, 12);
+      const directClauses = tokens.map(() => `(
+        m.title_ar LIKE ? OR m.title_orig LIKE ? OR m.title_fr LIKE ? OR m.search_blob LIKE ?
+        OR EXISTS (SELECT 1 FROM transcriptions trq WHERE trq.material_id = m.id AND trq.text LIKE ?)
+        OR EXISTS (SELECT 1 FROM translations trq2 WHERE trq2.material_id = m.id AND trq2.status IN ('machine','in_review','reviewed','approved') AND trq2.text LIKE ?)
+        OR EXISTS (SELECT 1 FROM translation_pages tpq JOIN translation_documents tdq ON tdq.id = tpq.document_id WHERE tdq.material_id = m.id AND tpq.status IN ('queued','processing','completed','reviewed','approved') AND tpq.translated_text LIKE ?)
+        OR EXISTS (SELECT 1 FROM file_translations ftq JOIN files tfq ON tfq.id = ftq.translation_file_id WHERE ftq.material_id = m.id AND ftq.status = 'ready' AND tfq.filename LIKE ?)
+      )`).join(' AND ');
+      where.push(`(materials_fts MATCH ?${directClauses ? ` OR (${directClauses})` : ''})`);
       binds.push(ftsQuery);
+      for (const token of tokens) {
+        const pattern = `%${token}%`;
+        binds.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+      }
     }
   }
 
@@ -170,7 +184,7 @@ export async function searchMaterials(db, params = {}) {
     : 'ORDER BY m.updated_at DESC, m.id DESC';
 
   const snippetSql = ftsQuery
-    ? `, snippet(materials_fts, 2, '<mark>', '</mark>', '…', 30) AS snippet, bm25(materials_fts, 0.0, 8.0, 1.0) AS relevance`
+    ? `, CASE WHEN materials_fts.ark IS NOT NULL THEN snippet(materials_fts, 2, '<mark>', '</mark>', '…', 30) ELSE NULL END AS snippet, CASE WHEN materials_fts.ark IS NOT NULL THEN bm25(materials_fts, 0.0, 8.0, 1.0) ELSE 999999 END AS relevance`
     : `, NULL AS snippet`;
 
   const limit = perPage + 1;
