@@ -40,14 +40,37 @@ export async function configureNativeChrome({ documentLike = globalThis.document
     statusBar.setBackgroundColor?.({ color: '#0b1220' }),
     statusBar.setStyle?.({ style: 'DARK' }),
   ]);
-  // With the current native configuration the WebView starts below the
-  // status bar, so no extra top padding is needed. If a future native mode
-  // enables overlaying, CSS safe-area insets move only the content down while
-  // leaving the header background behind the system bar.
-  let overlays = false;
-  try { overlays = Boolean((await statusBar.getInfo?.())?.overlays); } catch { /* optional plugin API */ }
-  root?.style.setProperty('--sidjil-header-safe-top', overlays ? 'env(safe-area-inset-top, 0px)' : '0px');
+  // StatusBar.getInfo().height is calculated by the Android plugin from
+  // WindowMetrics/WindowInsets (in CSS-compatible density-independent pixels).
+  // CSS env(safe-area-inset-top) is not populated reliably by every Android
+  // WebView, especially on cutout and gesture-navigation devices.
+  let info = {};
+  try { info = (await statusBar.getInfo?.()) || {}; } catch { /* optional plugin API */ }
+  const nativeHeight = Number(info.height);
+  const overlays = Boolean(info.overlays);
+  const inset = overlays && Number.isFinite(nativeHeight) && nativeHeight > 0 ? nativeHeight : 0;
+  root?.style.setProperty('--sidjil-status-bar-inset-top', `${inset}px`);
+  // Keep the legacy variable in sync for any older shell asset loaded from
+  // cache while the new asset is being installed.
+  root?.style.setProperty('--sidjil-header-safe-top', `${inset}px`);
+  root?.style.setProperty('--sidjil-safe-area-top-probe', 'env(safe-area-inset-top, 0px)');
   if (root) root.dataset.sidjilStatusOverlay = overlays ? 'true' : 'false';
+
+  // Diagnostics are opt-in so production builds do not emit device geometry.
+  const diagnostics = new URLSearchParams(globalThis.location?.search || '').get('diagnostics') === '1';
+  if (diagnostics && root) {
+    const computed = documentLike.defaultView?.getComputedStyle?.(root);
+    console.debug('[SIDJIL native chrome]', {
+      innerHeight: globalThis.innerHeight,
+      visualViewportHeight: globalThis.visualViewport?.height,
+      nativeStatusBarHeight: info.height,
+      nativeStatusBarInsetTop: inset,
+      overlays,
+      cssSafeAreaInsetTop: computed?.getPropertyValue('--sidjil-safe-area-top-probe')?.trim() || '',
+      cssHeaderSafeTop: computed?.getPropertyValue('--sidjil-header-safe-top')?.trim() || '',
+      cssStatusBarInsetTop: computed?.getPropertyValue('--sidjil-status-bar-inset-top')?.trim() || '',
+    });
+  }
   return true;
 }
 
