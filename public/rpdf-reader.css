@@ -3,6 +3,7 @@ body.rpdf-reader-open .researcher-bottom-nav { display: none !important; }
 .rpdf-reader-host { position: fixed; inset: 0; z-index: 2400; }
 .rpdf-reader-overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 8, 13, .76); color: #e8edf5; }
 .rpdf-reader-surface { position: relative; display: flex; flex-direction: column; width: min(1100px, 100%); height: min(94dvh, 900px); overflow: hidden; background: #0b0e13; border: 1px solid rgba(255,255,255,.12); border-radius: 20px; box-shadow: 0 28px 90px rgba(0,0,0,.48); transition: transform .28s cubic-bezier(.2,.8,.2,1); }
+.rpdf-reader-surface.is-minimized { width: min(860px, calc(100vw - 48px)); height: calc(100dvh - 32px); max-height: none; border-radius: 18px; }
 .rpdf-reader-surface:fullscreen { width: 100vw; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
 .rpdf-reader-grab { position: absolute; z-index: 20; inset: 0 0 auto; height: 26px; display: grid; place-items: center; cursor: grab; touch-action: none; opacity: 0; transition: opacity .18s ease; }
 .rpdf-reader-grab span { display: block; width: 48px; height: 4px; border-radius: 999px; background: rgba(255,255,255,.5); }
@@ -36,6 +37,7 @@ body.rpdf-reader-open .researcher-bottom-nav { display: none !important; }
 .rpdf-reader-controls button, .rpdf-reader-controls a { display: grid; place-items: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #f4f7fb; text-decoration: none; font-size: 1.05rem; cursor: pointer; }
 .rpdf-reader-controls button:hover, .rpdf-reader-controls a:hover, .rpdf-reader-controls .is-active { background: rgba(255,255,255,.18); }
 .rpdf-reader-controls [hidden] { display: none; }
+.rpdf-reader-minimize { font-size: 1.15rem; }
 .rpdf-reader-lang-menu { position: absolute; z-index: 21; bottom: max(112px, calc(108px + env(safe-area-inset-bottom, 0px))); left: 50%; display: flex; gap: 4px; padding: 6px; border-radius: 12px; background: #131a23; box-shadow: 0 10px 30px rgba(0,0,0,.35); transform: translateX(-50%); }
 .rpdf-reader-lang-menu[hidden] { display: none !important; }
 .rpdf-reader-lang-menu button { border: 0; border-radius: 8px; padding: .45rem .7rem; background: transparent; color: #fff; font: inherit; cursor: pointer; white-space: nowrap; }
@@ -47,6 +49,8 @@ body.rpdf-reader-open .researcher-bottom-nav { display: none !important; }
 @media (max-width: 700px) {
   .rpdf-reader-overlay { place-items: stretch; background: #0b0e13; }
   .rpdf-reader-surface { width: 100vw; height: 100dvh; min-height: 100svh; max-height: none; border: 0; border-radius: 0; padding: 0; }
+  .rpdf-reader-surface.is-minimized { width: 100vw; height: 100dvh; border-radius: 0; }
+  .rpdf-reader-controls [data-rpdf-minimize] { display: none; }
   .rpdf-pane-label { top: 8px; }
   .rpdf-pane-scroll { padding-inline: 8px; }
   .rpdf-reader-controls { bottom: max(9px, env(safe-area-inset-bottom)); }

@@ -48,6 +48,7 @@ export async function mount(container, options = {}) {
         </div>
         <div class="rpdf-reader-controls" data-rpdf-controls aria-hidden="true">
           <button type="button" data-rpdf-request aria-label="طلب ترجمة" title="طلب ترجمة" hidden>✉️</button>
+          <button type="button" class="rpdf-reader-minimize" data-rpdf-minimize aria-label="تصغير القارئ" title="تصغير القارئ">⊟</button>
           <button type="button" data-rpdf-close aria-label="إغلاق القارئ" title="إغلاق">✕</button>
         </div>
         <div class="rpdf-reader-lang-menu" data-rpdf-lang-menu hidden></div>
@@ -60,8 +61,8 @@ export async function mount(container, options = {}) {
   const overlay = container.querySelector('[data-rpdf-overlay]'), surface = container.querySelector('[data-rpdf-surface]'), stage = container.querySelector('[data-rpdf-stage]');
   const originalScroll = container.querySelector('[data-rpdf-original-scroll]'), translationScroll = container.querySelector('[data-rpdf-translation-scroll]'), pagesEl = container.querySelector('[data-rpdf-pages]');
   const originalPane = container.querySelector('[data-rpdf-original-pane]'), translationPane = container.querySelector('[data-rpdf-translation-pane]'), docxView = container.querySelector('[data-rpdf-docxview]'), errorEl = container.querySelector('[data-rpdf-error]'), controls = container.querySelector('[data-rpdf-controls]');
-  const originalTab = container.querySelector('[data-rpdf-tab="original"]'), translationTab = container.querySelector('[data-rpdf-tab="translation"]'), originalDownloadLink = container.querySelector('[data-rpdf-tab-download="original"]'), translationDownloadLink = container.querySelector('[data-rpdf-tab-download="translation"]'), requestButton = container.querySelector('[data-rpdf-request]');
-  const state = { doc: null, translationDoc: null, pagesObserver: null, currentObserver: null, cancelled: false, zoom: 1, renderedZoom: 1, activeTranslation: null, viewMode: 0, currentPage: 1, controlsTimer: null, docxHandles: {}, quote: null, pointers: new Map(), pinchDistance: 0, pinchZoom: 1, lastTap: 0 };
+  const originalTab = container.querySelector('[data-rpdf-tab="original"]'), translationTab = container.querySelector('[data-rpdf-tab="translation"]'), originalDownloadLink = container.querySelector('[data-rpdf-tab-download="original"]'), translationDownloadLink = container.querySelector('[data-rpdf-tab-download="translation"]'), requestButton = container.querySelector('[data-rpdf-request]'), minimizeButton = container.querySelector('[data-rpdf-minimize]');
+  const state = { doc: null, translationDoc: null, pagesObserver: null, currentObserver: null, cancelled: false, minimized: false, zoom: 1, renderedZoom: 1, activeTranslation: null, viewMode: 0, currentPage: 1, controlsTimer: null, docxHandles: {}, quote: null, pointers: new Map(), pinchDistance: 0, pinchZoom: 1, lastTap: 0 };
   const trs = Array.isArray(translations) ? translations.filter((x) => x?.translation_file_id) : [];
   let fullscreenTarget = null;
 
@@ -82,6 +83,18 @@ export async function mount(container, options = {}) {
 
   function setControlsVisible(visible = true) { controls.classList.toggle('is-visible', visible); controls.setAttribute('aria-hidden', visible ? 'false' : 'true'); surface.classList.toggle('is-ui-visible', visible); if (!visible) { const menu = container.querySelector('[data-rpdf-lang-menu]'); if (menu) menu.hidden = true; } clearTimeout(state.controlsTimer); if (visible) state.controlsTimer = setTimeout(() => setControlsVisible(false), 3000); }
   function interaction() { setControlsVisible(true); }
+  function setMinimized(minimized) {
+    state.minimized = !!minimized;
+    surface.classList.toggle('is-minimized', state.minimized);
+    if (minimizeButton) {
+      minimizeButton.textContent = state.minimized ? '⤢' : '⊟';
+      minimizeButton.setAttribute('aria-label', state.minimized ? 'تكبير القارئ' : 'تصغير القارئ');
+      minimizeButton.title = state.minimized ? 'تكبير القارئ' : 'تصغير القارئ';
+    }
+    if (state.minimized) exitFullscreen();
+    else enterFullscreen();
+    setControlsVisible(true);
+  }
   function updateLayout() {
     const hasTranslation = !!state.activeTranslation;
     originalPane.hidden = hasTranslation;
@@ -154,7 +167,7 @@ export async function mount(container, options = {}) {
   function showLanguageMenu() { const menu = container.querySelector('[data-rpdf-lang-menu]'); menu.replaceChildren(); if (trs.length <= 1) { selectTranslation(trs[0]); return; } trs.forEach((item) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = LANG_NAMES[item.target_lang] || item.target_lang; b.addEventListener('click', () => { menu.hidden = true; selectTranslation(item); }); menu.appendChild(b); }); menu.hidden = false; setControlsVisible(true); }
   async function requestTranslation() { if (!materialId || requestButton.disabled) return; requestButton.disabled = true; try { const base = globalThis.__SIDJIL_READER_API_ORIGIN__ || globalThis.location?.origin || ''; const response = await fetch(new URL('/api/v1/translation-requests', base || globalThis.location?.href || undefined), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', ...(csrfToken() ? { 'X-CSRF-Token': csrfToken() } : {}) }, body: JSON.stringify({ material_id: Number(materialId), source_file_id: Number(fileId) || null }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'تعذّر إرسال طلب الترجمة'); requestButton.textContent = '✓'; requestButton.title = data.duplicate ? 'طلب الترجمة مسجل مسبقًا' : 'تم إرسال الطلب'; } catch (error) { requestButton.disabled = false; toast(error.message || 'تعذّر إرسال الطلب', false); } }
   originalScroll.addEventListener('scroll', interaction, { passive: true }); translationScroll.addEventListener('scroll', interaction, { passive: true });
-  const wakeReader = (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; interaction(); enterFullscreen(); };
+  const wakeReader = (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; interaction(); if (!state.minimized) enterFullscreen(); };
   surface.addEventListener('pointerdown', wakeReader, { passive: true });
   surface.addEventListener('touchstart', wakeReader, { passive: true });
   stage.addEventListener('pointerup', (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; const now = Date.now(); if (now - state.lastTap < 320) { state.zoom = state.zoom === 1 ? 2 : 1; rerenderAfterZoom(true); } state.lastTap = now; interaction(); });
@@ -162,7 +175,7 @@ export async function mount(container, options = {}) {
   stage.addEventListener('pointermove', (event) => { if (!state.pointers.has(event.pointerId)) return; state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (state.pointers.size === 2) { const [a, b] = [...state.pointers.values()], distance = Math.hypot(a.x - b.x, a.y - b.y); if (state.pinchDistance > 0) { state.zoom = Math.max(.5, Math.min(4, state.pinchZoom * distance / state.pinchDistance)); rerenderAfterZoom(); } } });
   stage.addEventListener('pointerup', (event) => { state.pointers.delete(event.pointerId); if (state.pointers.size < 2) rerenderAfterZoom(true); }); stage.addEventListener('pointercancel', (event) => state.pointers.delete(event.pointerId));
   container.querySelector('[data-rpdf-grab]').addEventListener('pointerdown', (event) => { event.preventDefault(); const startY = event.clientY, startTime = Date.now(); const move = (e) => { surface.style.transform = `translateY(${Math.max(0, e.clientY - startY)}px)`; }; const end = (e) => { const dy = Math.max(0, e.clientY - startY), velocity = dy / Math.max(1, Date.now() - startTime); surface.style.transform = ''; document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', end); if (dy > window.innerHeight * .25 || velocity > 1.1) close(); }; document.addEventListener('pointermove', move); document.addEventListener('pointerup', end, { once: true }); });
-  container.querySelector('[data-rpdf-close]').addEventListener('click', close); overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); }); controls.addEventListener('pointerdown', (event) => event.stopPropagation()); originalTab.addEventListener('click', showOriginal); translationTab.addEventListener('click', () => { if (trs.length) showLanguageMenu(); }); requestButton.addEventListener('click', requestTranslation);
+  container.querySelector('[data-rpdf-close]').addEventListener('click', close); if (minimizeButton) minimizeButton.addEventListener('click', () => setMinimized(!state.minimized)); overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); }); controls.addEventListener('pointerdown', (event) => event.stopPropagation()); originalTab.addEventListener('click', showOriginal); translationTab.addEventListener('click', () => { if (trs.length) showLanguageMenu(); }); requestButton.addEventListener('click', requestTranslation);
   function hideQuote() { container.querySelector('[data-rpdf-quote]').hidden = true; state.quote = null; }
   stage.addEventListener('mouseup', () => setTimeout(() => { const selection = window.getSelection(), text = selection?.toString().trim(); if (!text || text.length < 4 || !selection || !container.contains(selection.anchorNode)) return hideQuote(); const rect = selection.getRangeAt(0).getBoundingClientRect(), stageRect = stage.getBoundingClientRect(), quote = container.querySelector('[data-rpdf-quote]'); state.quote = { text: text.slice(0, 2000), page: String(state.currentPage) }; quote.style.top = `${Math.max(8, rect.bottom - stageRect.top + 8)}px`; quote.style.insetInlineStart = `${Math.max(8, rect.left - stageRect.left)}px`; quote.hidden = false; }, 30));
   container.querySelector('[data-rpdf-quote]').addEventListener('click', () => { if (!state.quote) return; const composer = container.querySelector('[data-rpdf-composer]'); composer.hidden = false; composer.querySelector('[name=title]').value = `نقد مقطع من «${String(materialTitle).slice(0, 60)}» — ص ${state.quote.page}`; container.querySelector('[data-rpdf-quote-preview]').innerHTML = `<strong>المقطع المحدد (ص ${escapeHtml(state.quote.page)}):</strong><p>«${escapeHtml(state.quote.text.slice(0, 400))}»</p>`; composer.querySelector('[name=body]').focus(); });

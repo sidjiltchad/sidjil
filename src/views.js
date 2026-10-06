@@ -825,6 +825,9 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
       </div>
     </section>
     <script type="module" src="/js/researcher-pdf.js?v=20261011-shared-public-reader"></script>
+    <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
+    <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
+    <script src="/js/docx-reader.js?v=20261008-cache-safe" defer></script>
     <script type="module" src="/js/public-reader-launcher.js?v=20261011-unified-reader"></script>`;
 }
 
