@@ -195,10 +195,17 @@ export async function getSessionUser(req, env) {
     if (!user || Number(user.is_active) === 0) return null;
     const { sessionExpiresAt, sessionToken, ...sessionUser } = user;
     sessionUser.sessionToken = sessionToken;
-    // تحديث آخر نشاط للجلسة. لا نفشل الطلب إذا كانت قاعدة قديمة بلا العمود الجديد.
+    // لا نكتب آخر نشاط مع كل طلب API؛ هذا التطبيق يقرأ عدة موارد في الصفحة
+    // الواحدة. يكفي تحديثه مرة كل دقيقة مع إبقاء أول طلب بعد إنشاء الجلسة.
+    // لا نفشل الطلب إذا كانت قاعدة قديمة بلا العمود الجديد.
     try {
-      await env.DB.prepare("UPDATE sessions SET last_seen_at = datetime('now') WHERE token = ?")
-        .bind(sessionToken).run();
+      const lastSeenMs = sessionLastSeenAt
+        ? new Date(String(sessionLastSeenAt).replace(' ', 'T') + 'Z').getTime()
+        : NaN;
+      if (!Number.isFinite(lastSeenMs) || Date.now() - lastSeenMs >= 60_000) {
+        await env.DB.prepare("UPDATE sessions SET last_seen_at = datetime('now') WHERE token = ?")
+          .bind(sessionToken).run();
+      }
     } catch { /* migration قد لا تكون مطبقة محليًا بعد */ }
     // تجديد انزلاقي: إذا انقضى أكثر من نصف العمر، مدّد الجلسة (كتابة واحدة خفيفة)
     try {
