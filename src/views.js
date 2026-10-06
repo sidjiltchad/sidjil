@@ -897,6 +897,9 @@ async function documentPage(ctx, ark) {
   try { await db.prepare(`UPDATE materials SET views = views + 1 WHERE id = ?`).bind(m.id).run(); } catch (e) {}
 
   const title = displayTitle(lang, m);
+  // وصف المادة يجب أن يُحسم داخل مسار صفحة الوثيقة نفسه؛ لا نعتمد على
+  // متغير محلي من صفحة الأرشيف حتى لا يتحول العرض إلى 500 عند البناء.
+  const descriptionText = lang === 'fr' ? (m.description_fr || m.description) : m.description;
   const citation = buildCitation(m, lang);
   const origin = new URL(ctx.url).origin;
   const canonical = `${origin}/document/${encodeURIComponent(m.ark)}`;
