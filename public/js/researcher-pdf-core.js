@@ -206,7 +206,7 @@ export async function mount(container, options = {}) {
   setControlsVisible(false); return { destroy: close, close };
 }
 
-async function openResearcherReader(options = {}) {
+export async function openResearcherReader(options = {}) {
   if (window.__sidjilResearcherReaderClose) window.__sidjilResearcherReaderClose();
   const root = document.createElement('div'); root.className = 'rpdf-reader-host'; document.body.appendChild(root);
   const sourceUrl = options.url || options.pdf || options.originalUrl || '';
