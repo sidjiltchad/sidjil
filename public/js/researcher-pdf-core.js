@@ -143,7 +143,30 @@ export async function mount(container, options = {}) {
     for (let i = 1; i <= state.doc.numPages; i += 1) { const box = document.createElement('div'); box.className = 'rpdf-page'; box.dataset.page = String(i); box.innerHTML = '<canvas></canvas><div class="rpdf-textlayer"></div>'; pagesEl.appendChild(box); }
     const boxes = [...pagesEl.querySelectorAll('.rpdf-page')]; state.pagesObserver?.disconnect(); state.pagesObserver = new IntersectionObserver((entries) => entries.forEach((entry) => { if (entry.isIntersecting) renderPage(Number(entry.target.dataset.page), entry.target); }), { root: originalScroll, rootMargin: '900px 0px' }); state.currentObserver?.disconnect(); state.currentObserver = new IntersectionObserver((entries) => entries.forEach((entry) => { if (entry.isIntersecting && entry.intersectionRatio >= .35) setPage(Number(entry.target.dataset.page)); }), { root: originalScroll, threshold: [.35, .7] }); boxes.forEach((box) => { state.pagesObserver.observe(box); state.currentObserver.observe(box); }); if (boxes[0]) renderPage(1, boxes[0]); setPage(1);
   }
-  function rerenderAfterZoom(force = false) { if (!force && Math.abs(state.zoom - state.renderedZoom) < .02) return; state.renderedZoom = state.zoom; pagesEl.style.zoom = String(state.zoom); docxView.style.zoom = String(state.zoom); docxView.style.setProperty('--reader-word-scale', String(state.zoom)); }
+  function activeScroll() { return state.activeTranslation ? translationScroll : originalScroll; }
+  function rerenderAfterZoom(force = false) {
+    if (!force && Math.abs(state.zoom - state.renderedZoom) < .01) return;
+    state.renderedZoom = state.zoom;
+    pagesEl.style.zoom = String(state.zoom);
+    docxView.style.zoom = String(state.zoom);
+    docxView.style.setProperty('--reader-word-scale', String(state.zoom));
+    stage.classList.toggle('is-zoomed', state.zoom > 1.01);
+  }
+  function zoomAt(nextZoom, clientX, clientY) {
+    const scroller = activeScroll();
+    const rect = scroller.getBoundingClientRect();
+    const anchorX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const anchorY = Math.max(0, Math.min(rect.height, clientY - rect.top));
+    const previousZoom = state.zoom;
+    const contentX = scroller.scrollLeft + anchorX;
+    const contentY = scroller.scrollTop + anchorY;
+    state.zoom = Math.max(.5, Math.min(4, nextZoom));
+    if (Math.abs(state.zoom - previousZoom) < .001) return;
+    rerenderAfterZoom(true);
+    const ratio = state.zoom / previousZoom;
+    scroller.scrollLeft = Math.max(0, contentX * ratio - anchorX);
+    scroller.scrollTop = Math.max(0, contentY * ratio - anchorY);
+  }
   function showOriginal() { state.activeTranslation = null; state.viewMode = 0; updateLayout(); translationPane.hidden = true; originalScroll.focus({ preventScroll: true }); setControlsVisible(true); }
   async function loadPdfTranslation(item, pdfUrl) {
     docxView.replaceChildren(); docxView.className = 'rpdf-pdf-pages rpdf-translation-pages';
@@ -170,10 +193,77 @@ export async function mount(container, options = {}) {
   const wakeReader = (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; interaction(); if (!state.minimized) enterFullscreen(); };
   surface.addEventListener('pointerdown', wakeReader, { passive: true });
   surface.addEventListener('touchstart', wakeReader, { passive: true });
-  stage.addEventListener('pointerup', (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; const now = Date.now(); if (now - state.lastTap < 320) { state.zoom = state.zoom === 1 ? 2 : 1; rerenderAfterZoom(true); } state.lastTap = now; interaction(); });
-  stage.addEventListener('pointerdown', (event) => { state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (state.pointers.size === 2) { const [a, b] = [...state.pointers.values()]; state.pinchDistance = Math.hypot(a.x - b.x, a.y - b.y); state.pinchZoom = state.zoom; } });
-  stage.addEventListener('pointermove', (event) => { if (!state.pointers.has(event.pointerId)) return; state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); if (state.pointers.size === 2) { const [a, b] = [...state.pointers.values()], distance = Math.hypot(a.x - b.x, a.y - b.y); if (state.pinchDistance > 0) { state.zoom = Math.max(.5, Math.min(4, state.pinchZoom * distance / state.pinchDistance)); rerenderAfterZoom(); } } });
-  stage.addEventListener('pointerup', (event) => { state.pointers.delete(event.pointerId); if (state.pointers.size < 2) rerenderAfterZoom(true); }); stage.addEventListener('pointercancel', (event) => state.pointers.delete(event.pointerId));
+  const gesture = { lastX: 0, lastY: 0, startX: 0, startY: 0, startTime: 0, moved: false, scroller: null };
+  const gestureTarget = (event) => !event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu,.rpdf-reader-grab');
+  stage.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' || !gestureTarget(event)) return;
+    event.preventDefault();
+    try { stage.setPointerCapture(event.pointerId); } catch {}
+    state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    gesture.scroller = activeScroll();
+    if (state.pointers.size === 1) {
+      gesture.lastX = gesture.startX = event.clientX;
+      gesture.lastY = gesture.startY = event.clientY;
+      gesture.startTime = Date.now();
+      gesture.moved = false;
+    } else if (state.pointers.size === 2) {
+      const [a, b] = [...state.pointers.values()];
+      state.pinchDistance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+      state.pinchZoom = state.zoom;
+      gesture.moved = true;
+    }
+  }, { passive: false });
+  stage.addEventListener('pointermove', (event) => {
+    if (!state.pointers.has(event.pointerId) || event.pointerType === 'mouse') return;
+    event.preventDefault();
+    state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const scroller = gesture.scroller || activeScroll();
+    if (state.pointers.size >= 2) {
+      const [a, b] = [...state.pointers.values()];
+      const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+      const midpointX = (a.x + b.x) / 2;
+      const midpointY = (a.y + b.y) / 2;
+      zoomAt(state.pinchZoom * distance / state.pinchDistance, midpointX, midpointY);
+      return;
+    }
+    const point = state.pointers.get(event.pointerId);
+    const dx = point.x - gesture.lastX;
+    const dy = point.y - gesture.lastY;
+    if (Math.abs(point.x - gesture.startX) > 3 || Math.abs(point.y - gesture.startY) > 3) gesture.moved = true;
+    scroller.scrollLeft -= dx;
+    scroller.scrollTop -= dy;
+    gesture.lastX = point.x;
+    gesture.lastY = point.y;
+  }, { passive: false });
+  const finishGesture = (event) => {
+    if (!state.pointers.has(event.pointerId)) return;
+    if (event.pointerType !== 'mouse') event.preventDefault();
+    const wasTap = state.pointers.size === 1 && !gesture.moved && Date.now() - gesture.startTime < 280;
+    state.pointers.delete(event.pointerId);
+    try { stage.releasePointerCapture(event.pointerId); } catch {}
+    if (state.pointers.size === 1) {
+      const remaining = [...state.pointers.values()][0];
+      gesture.lastX = remaining.x;
+      gesture.lastY = remaining.y;
+      gesture.moved = true;
+    } else if (!state.pointers.size) {
+      if (wasTap) {
+        const now = Date.now();
+        if (now - state.lastTap < 320) {
+          const scroller = activeScroll();
+          const rect = scroller.getBoundingClientRect();
+          zoomAt(state.zoom > 1.01 ? 1 : 2, event.clientX, event.clientY);
+          if (rect.width && rect.height) interaction();
+        }
+        state.lastTap = now;
+      }
+      gesture.scroller = null;
+      state.pinchDistance = 0;
+    }
+    interaction();
+  };
+  stage.addEventListener('pointerup', finishGesture, { passive: false });
+  stage.addEventListener('pointercancel', finishGesture, { passive: false });
   container.querySelector('[data-rpdf-grab]').addEventListener('pointerdown', (event) => { event.preventDefault(); const startY = event.clientY, startTime = Date.now(); const move = (e) => { surface.style.transform = `translateY(${Math.max(0, e.clientY - startY)}px)`; }; const end = (e) => { const dy = Math.max(0, e.clientY - startY), velocity = dy / Math.max(1, Date.now() - startTime); surface.style.transform = ''; document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', end); if (dy > window.innerHeight * .25 || velocity > 1.1) close(); }; document.addEventListener('pointermove', move); document.addEventListener('pointerup', end, { once: true }); });
   container.querySelector('[data-rpdf-close]').addEventListener('click', close); if (minimizeButton) minimizeButton.addEventListener('click', () => setMinimized(!state.minimized)); overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); }); controls.addEventListener('pointerdown', (event) => event.stopPropagation()); originalTab.addEventListener('click', showOriginal); translationTab.addEventListener('click', () => { if (trs.length) showLanguageMenu(); }); requestButton.addEventListener('click', requestTranslation);
   function hideQuote() { container.querySelector('[data-rpdf-quote]').hidden = true; state.quote = null; }

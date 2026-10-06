@@ -1,5 +1,5 @@
 /* Capacitor adapter for the canonical Sidjil reader UI. */
-import { mount as mountShared } from './researcher-pdf-core.js?v=20261012-unified-reader-controls-export';
+import { mount as mountShared } from './researcher-pdf-core.js?v=20261012-touch-zoom';
 import { resolveAppUrl } from './api-base.js';
 import { apiFetch } from './api-client.js';
 

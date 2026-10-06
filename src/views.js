@@ -140,7 +140,7 @@ ${ogUrl}
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/style.css?v=20261006-bilingual-search">
-<link rel="stylesheet" href="/rpdf-reader.css?v=20261011-shared-reader">
+<link rel="stylesheet" href="/rpdf-reader.css?v=20261012-touch-zoom">
 </head>`;
 }
 
@@ -834,7 +834,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
         </div>
       </div>
     </section>
-    <script type="module" src="/js/researcher-pdf.js?v=20261012-unified-reader-controls-export"></script>
+    <script type="module" src="/js/researcher-pdf.js?v=20261012-touch-zoom"></script>
     <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
     <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
     <script src="/js/docx-reader.js?v=20261008-cache-safe" defer></script>
