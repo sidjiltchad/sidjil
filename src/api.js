@@ -383,6 +383,8 @@ async function apiList(env, url, key) {
 // يُرجع الأماكن ذات الإحداثيات مع موادها المنشورة (كل مادة = حدث/نقطة)
 
 async function apiMapPoints(env, url) {
+  const startedAt = Date.now();
+  let rowsRead = 0;
   const sp = url.searchParams;
   const region = (sp.get('region') || '').trim();
   const kind = (sp.get('kind') || '').trim(); // city | region | site
@@ -393,44 +395,71 @@ async function apiMapPoints(env, url) {
   if (kind) { where.push('p.kind = ?'); binds.push(kind); }
   const whereSql = ' WHERE ' + where.join(' AND ');
 
-  const placesRes = await env.DB.prepare(
-    `SELECT p.id, p.name_ar, p.name_orig, p.region, p.kind, p.lat, p.lng, p.place_confidence
-     FROM places p${whereSql} ORDER BY p.name_ar`
-  ).bind(...binds).all();
+  try {
+    const placesRes = await env.DB.prepare(
+      `SELECT p.id, p.name_ar, p.name_orig, p.region, p.kind, p.lat, p.lng, p.place_confidence
+       FROM places p${whereSql} ORDER BY p.name_ar`
+    ).bind(...binds).all();
+    rowsRead += Number(placesRes.meta?.rows_read || 0);
 
-  const places = placesRes.results || [];
-  const out = [];
-  for (const p of places) {
-    const mats = await env.DB.prepare(
-      `SELECT DISTINCT m.id, m.ark, m.type, m.title_ar, m.title_orig,
-              m.description, m.year, m.date_text
-       FROM materials m
-       LEFT JOIN material_places mp ON mp.material_id = m.id
-       WHERE m.publish_status = 'published' AND (mp.place_id = ? OR m.place_id = ?)
-       ORDER BY m.year, m.id`
-    ).bind(p.id, p.id).all();
-    out.push({
-      id: p.id,
-      name_ar: p.name_ar,
-      name_orig: p.name_orig,
-      region: p.region,
-      kind: p.kind,
-      lat: p.lat,
-      lng: p.lng,
-      confidence: p.place_confidence,
-      materials: (mats.results || []).map((m) => ({
-        id: m.id,
-        ark: m.ark,
-        type: m.type,
-        title_ar: m.title_ar,
-        title_orig: m.title_orig,
-        summary: (m.description || '').slice(0, 220),
-        year: m.year,
-        date_text: m.date_text,
-      })),
-    });
+    const places = placesRes.results || [];
+    const out = [];
+    for (const p of places) {
+      const mats = await env.DB.prepare(
+        `SELECT DISTINCT m.id, m.ark, m.type, m.title_ar, m.title_orig,
+                m.description, m.year, m.date_text
+         FROM materials m
+         LEFT JOIN material_places mp ON mp.material_id = m.id
+         WHERE m.publish_status = 'published' AND (mp.place_id = ? OR m.place_id = ?)
+         ORDER BY m.year, m.id`
+      ).bind(p.id, p.id).all();
+      rowsRead += Number(mats.meta?.rows_read || 0);
+      out.push({
+        id: p.id,
+        name_ar: p.name_ar,
+        name_orig: p.name_orig,
+        region: p.region,
+        kind: p.kind,
+        lat: p.lat,
+        lng: p.lng,
+        confidence: p.place_confidence,
+        materials: (mats.results || []).map((m) => ({
+          id: m.id,
+          ark: m.ark,
+          type: m.type,
+          title_ar: m.title_ar,
+          title_orig: m.title_orig,
+          summary: (m.description || '').slice(0, 220),
+          year: m.year,
+          date_text: m.date_text,
+        })),
+      });
+    }
+    await recordApiQueryMetric(env.DB, '/api/v1/map-points', 'map.points', Date.now() - startedAt, rowsRead, false, env.QUERY_METRICS_SAMPLE_RATE || 0.1);
+    return json({ places: out });
+  } catch (error) {
+    await recordApiQueryMetric(env.DB, '/api/v1/map-points', 'map.points', Date.now() - startedAt, rowsRead, true, env.QUERY_METRICS_SAMPLE_RATE || 0.1);
+    throw error;
   }
-  return json({ places: out });
+}
+
+async function recordApiQueryMetric(db, route, queryKey, durationMs, rows, failed, sampleRate) {
+  const rate = Number(sampleRate);
+  if (!(rate > 0) || Math.random() > Math.min(1, rate)) return;
+  const day = new Date().toISOString().slice(0, 10);
+  try {
+    await db.prepare(`INSERT INTO query_metrics_daily
+      (day, route, query_key, calls, errors, total_duration_ms, max_duration_ms, total_rows)
+      VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+      ON CONFLICT(day, route, query_key) DO UPDATE SET
+        calls = calls + 1,
+        errors = errors + excluded.errors,
+        total_duration_ms = total_duration_ms + excluded.total_duration_ms,
+        max_duration_ms = max(max_duration_ms, excluded.max_duration_ms),
+        total_rows = total_rows + excluded.total_rows`)
+      .bind(day, String(route || '/unknown').slice(0, 120), queryKey, failed ? 1 : 0,
+        Math.max(0, Number(durationMs) || 0), Math.max(0, Number(durationMs) || 0), Math.max(0, Number(rows) || 0)).run();
+  } catch (_) { /* القياس لا يعطل API إذا كانت migration غير مطبقة */ }
 }
 
 async function apiCollection(env, id) {
