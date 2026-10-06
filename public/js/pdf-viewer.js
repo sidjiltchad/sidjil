@@ -81,6 +81,7 @@ import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
       fileId: fileId,
       materialId: Number(box.getAttribute('data-material-id')) || null,
       materialTitle: title,
+      uiLang: document.documentElement.lang || new URLSearchParams(window.location.search).get('lang') || 'ar',
       originalDownload: fileId ? '/file/' + fileId + '?download=1&watermark=1' : url,
       translations: translations,
       initialTranslationId: initialTranslationId || null,

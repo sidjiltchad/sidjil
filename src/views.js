@@ -834,7 +834,7 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
         </div>
       </div>
     </section>
-    <script type="module" src="/js/researcher-pdf.js?v=20261012-touch-zoom"></script>
+    <script type="module" src="/js/researcher-pdf.js?v=20261014-reader-language"></script>
     <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
     <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
     <script src="/js/docx-reader.js?v=20261008-cache-safe" defer></script>

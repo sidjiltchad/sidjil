@@ -14,7 +14,18 @@ function apiFallback(path, method = 'GET', body = undefined) {
 }
 const api = (...args) => (typeof window.api === 'function' ? window.api(...args) : apiFallback(...args));
 const toast = (message, ok = true) => (typeof window.toast === 'function' ? window.toast(message, ok) : undefined);
-const LANG_NAMES = { ar: 'العربية', fr: 'الفرنسية', en: 'الإنجليزية' };
+const READER_COPY = {
+  ar: {
+    original: 'الأصل', translation: 'الترجمة', originalFile: 'تحميل الأصل', translatedFile: 'تصدير الترجمة PDF',
+    request: 'طلب ترجمة', close: 'إغلاق القارئ', minimize: 'تصغير القارئ', expand: 'تكبير القارئ', reader: 'قارئ المادة', originalPane: 'الملف الأصلي', translationPane: 'الترجمة',
+    languageNames: { ar: 'العربية', fr: 'الفرنسية', en: 'الإنجليزية' },
+  },
+  fr: {
+    original: 'Original', translation: 'Traduction', originalFile: 'Télécharger l’original', translatedFile: 'Exporter la traduction en PDF',
+    request: 'Demander une traduction', close: 'Fermer le lecteur', minimize: 'Réduire le lecteur', expand: 'Agrandir le lecteur', reader: 'Lecteur du document', originalPane: 'Fichier original', translationPane: 'Traduction',
+    languageNames: { ar: 'arabe', fr: 'français', en: 'anglais' },
+  },
+};
 
 function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function fileIdFromUrl(url) { const m = String(url || '').match(/\/file\/(\d+)/); return m ? Number(m[1]) : null; }
@@ -27,29 +38,32 @@ async function waitForDocxReader(timeout = 15000) {
 export async function mount(container, options = {}) {
   const { url, materialId, materialTitle = '', fileId = fileIdFromUrl(url), originalDownload = url, translations = [], fileActions = null, logoUrl = `${location.origin}/sidjil-logo.png`, onClose } = options;
   if (!container || !url) throw new Error('ملف القراءة غير محدد');
+  const requestedUiLang = options.uiLang || document.documentElement?.lang || new URLSearchParams(globalThis.location?.search || '').get('lang') || 'ar';
+  const uiLang = String(requestedUiLang).toLowerCase().startsWith('fr') ? 'fr' : 'ar';
+  const copy = READER_COPY[uiLang];
   container.innerHTML = ''; container.className = 'rpdf-reader-root'; document.body.classList.add('rpdf-reader-open');
   container.innerHTML = `
-    <div class="rpdf-reader-overlay" data-rpdf-overlay role="dialog" aria-modal="true" aria-label="قارئ المادة">
+    <div class="rpdf-reader-overlay" data-rpdf-overlay role="dialog" aria-modal="true" aria-label="${escapeHtml(copy.reader)}">
       <div class="rpdf-reader-surface" data-rpdf-surface>
         <div class="rpdf-reader-grab" data-rpdf-grab aria-label="اسحب للأسفل لإغلاق القارئ"><span></span></div>
         <div class="rpdf-reader-tabs" data-rpdf-tabs role="tablist" aria-label="لغة القراءة">
           <div class="rpdf-reader-tab-slot">
-            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="original" aria-label="تحميل الأصل" title="تحميل الأصل" href="#" download>↓</a>
-            <button type="button" class="rpdf-reader-tab is-active" data-rpdf-tab="original" role="tab" aria-selected="true">الأصل</button>
+            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="original" aria-label="${escapeHtml(copy.originalFile)}" title="${escapeHtml(copy.originalFile)}" href="#" download>↓</a>
+            <button type="button" class="rpdf-reader-tab is-active" data-rpdf-tab="original" role="tab" aria-selected="true">${escapeHtml(copy.original)}</button>
           </div>
           <div class="rpdf-reader-tab-slot">
-            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="translation" aria-label="تصدير الترجمة PDF" title="تصدير الترجمة PDF" href="#" hidden>↓</a>
-            <button type="button" class="rpdf-reader-tab" data-rpdf-tab="translation" role="tab" aria-selected="false">الترجمة</button>
+            <a class="rpdf-reader-tab-download" data-rpdf-tab-download="translation" aria-label="${escapeHtml(copy.translatedFile)}" title="${escapeHtml(copy.translatedFile)}" href="#" hidden>↓</a>
+            <button type="button" class="rpdf-reader-tab" data-rpdf-tab="translation" role="tab" aria-selected="false">${escapeHtml(copy.translation)}</button>
           </div>
         </div>
         <div class="rpdf-reader-stage" data-rpdf-stage>
-          <section class="rpdf-pane rpdf-original-pane" data-rpdf-original-pane aria-label="الملف الأصلي"><div class="rpdf-pane-scroll" data-rpdf-original-scroll tabindex="0"><div class="rpdf-pdf-pages" data-rpdf-pages></div></div></section>
-          <section class="rpdf-pane rpdf-translation-pane" data-rpdf-translation-pane hidden aria-label="الترجمة"><div class="rpdf-pane-scroll rpdf-docx-scroll" data-rpdf-translation-scroll tabindex="0"><div class="rpdf-docxview" data-rpdf-docxview></div></div></section>
+          <section class="rpdf-pane rpdf-original-pane" data-rpdf-original-pane aria-label="${escapeHtml(copy.originalPane)}"><div class="rpdf-pane-scroll" data-rpdf-original-scroll tabindex="0"><div class="rpdf-pdf-pages" data-rpdf-pages></div></div></section>
+          <section class="rpdf-pane rpdf-translation-pane" data-rpdf-translation-pane hidden aria-label="${escapeHtml(copy.translationPane)}"><div class="rpdf-pane-scroll rpdf-docx-scroll" data-rpdf-translation-scroll tabindex="0"><div class="rpdf-docxview" data-rpdf-docxview></div></div></section>
         </div>
         <div class="rpdf-reader-controls" data-rpdf-controls aria-hidden="true">
-          <button type="button" data-rpdf-request aria-label="طلب ترجمة" title="طلب ترجمة" hidden>✉️</button>
-          <button type="button" class="rpdf-reader-minimize" data-rpdf-minimize aria-label="تصغير القارئ" title="تصغير القارئ">⊟</button>
-          <button type="button" data-rpdf-close aria-label="إغلاق القارئ" title="إغلاق">✕</button>
+          <button type="button" data-rpdf-request aria-label="${escapeHtml(copy.request)}" title="${escapeHtml(copy.request)}" hidden>✉️</button>
+          <button type="button" class="rpdf-reader-minimize" data-rpdf-minimize aria-label="${escapeHtml(copy.minimize)}" title="${escapeHtml(copy.minimize)}">⊟</button>
+          <button type="button" data-rpdf-close aria-label="${escapeHtml(copy.close)}" title="${escapeHtml(copy.close)}">✕</button>
         </div>
         <div class="rpdf-reader-lang-menu" data-rpdf-lang-menu hidden></div>
         <button type="button" class="rpdf-quote-btn" data-rpdf-quote hidden>💬 ناقش هذا المقطع</button>
@@ -88,8 +102,8 @@ export async function mount(container, options = {}) {
     surface.classList.toggle('is-minimized', state.minimized);
     if (minimizeButton) {
       minimizeButton.textContent = state.minimized ? '⤢' : '⊟';
-      minimizeButton.setAttribute('aria-label', state.minimized ? 'تكبير القارئ' : 'تصغير القارئ');
-      minimizeButton.title = state.minimized ? 'تكبير القارئ' : 'تصغير القارئ';
+      minimizeButton.setAttribute('aria-label', state.minimized ? copy.expand : copy.minimize);
+      minimizeButton.title = state.minimized ? copy.expand : copy.minimize;
     }
     if (state.minimized) exitFullscreen();
     else enterFullscreen();
@@ -104,7 +118,18 @@ export async function mount(container, options = {}) {
     originalTab.setAttribute('aria-selected', hasTranslation ? 'false' : 'true');
     translationTab.setAttribute('aria-selected', hasTranslation ? 'true' : 'false');
   }
-  function setDirection(lang) { const rtl = lang === 'ar'; translationPane.dir = rtl ? 'rtl' : 'ltr'; docxView.dir = rtl ? 'rtl' : 'ltr'; docxView.lang = lang || ''; translationTab.textContent = `الترجمة · ${LANG_NAMES[lang] || lang}`; }
+  function setDirection(lang) {
+    const targetLang = String(lang || 'ar').toLowerCase();
+    const rtl = targetLang === 'ar';
+    const targetName = copy.languageNames[targetLang] || targetLang;
+    translationPane.dir = rtl ? 'rtl' : 'ltr';
+    translationPane.lang = targetLang;
+    docxView.dir = rtl ? 'rtl' : 'ltr';
+    docxView.lang = targetLang;
+    docxView.dataset.translationLang = targetLang;
+    originalTab.textContent = copy.original;
+    translationTab.textContent = `${copy.translation} · ${targetName}`;
+  }
   function exportTranslationPdf() {
     if (!state.activeTranslation || !docxView || !docxView.textContent.trim()) { toast('لم تكتمل الترجمة بعد', false); return; }
     const popup = window.open('', '_blank');
@@ -187,7 +212,7 @@ export async function mount(container, options = {}) {
     catch { docxView.classList.remove('is-loading'); docxView.innerHTML = `<p class="docx-error">تعذّر عرض الترجمة داخل المتصفح. <button type="button" data-rpdf-translation-retry>إعادة المحاولة</button></p>`; docxView.querySelector('[data-rpdf-translation-retry]')?.addEventListener('click', () => { delete state.docxHandles[docxUrl]; loadTranslation(item); }); }
   }
   async function selectTranslation(item) { if (!item) return; state.activeTranslation = item; state.viewMode = 1; const base = globalThis.__SIDJIL_READER_API_ORIGIN__ || globalThis.location?.origin || ''; translationDownloadLink.href = /pdf/i.test(`${item.translation_mime || ''} ${item.translation_filename || ''}`) ? `${new URL(`/file/${item.translation_file_id}`, base || globalThis.location?.href || undefined).toString()}?download=1&watermark=1` : '#'; translationDownloadLink.hidden = false; updateLayout(); await loadTranslation(item); setControlsVisible(true); }
-  function showLanguageMenu() { const menu = container.querySelector('[data-rpdf-lang-menu]'); menu.replaceChildren(); if (trs.length <= 1) { selectTranslation(trs[0]); return; } trs.forEach((item) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = LANG_NAMES[item.target_lang] || item.target_lang; b.addEventListener('click', () => { menu.hidden = true; selectTranslation(item); }); menu.appendChild(b); }); menu.hidden = false; setControlsVisible(true); }
+  function showLanguageMenu() { const menu = container.querySelector('[data-rpdf-lang-menu]'); menu.replaceChildren(); if (trs.length <= 1) { selectTranslation(trs[0]); return; } trs.forEach((item) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = copy.languageNames[item.target_lang] || item.target_lang; b.addEventListener('click', () => { menu.hidden = true; selectTranslation(item); }); menu.appendChild(b); }); menu.hidden = false; setControlsVisible(true); }
   async function requestTranslation() { if (!materialId || requestButton.disabled) return; requestButton.disabled = true; try { const base = globalThis.__SIDJIL_READER_API_ORIGIN__ || globalThis.location?.origin || ''; const response = await fetch(new URL('/api/v1/translation-requests', base || globalThis.location?.href || undefined), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', ...(csrfToken() ? { 'X-CSRF-Token': csrfToken() } : {}) }, body: JSON.stringify({ material_id: Number(materialId), source_file_id: Number(fileId) || null }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'تعذّر إرسال طلب الترجمة'); requestButton.textContent = '✓'; requestButton.title = data.duplicate ? 'طلب الترجمة مسجل مسبقًا' : 'تم إرسال الطلب'; } catch (error) { requestButton.disabled = false; toast(error.message || 'تعذّر إرسال الطلب', false); } }
   originalScroll.addEventListener('scroll', interaction, { passive: true }); translationScroll.addEventListener('scroll', interaction, { passive: true });
   const wakeReader = (event) => { if (event.target.closest('button,a,.rpdf-reader-controls,.rpdf-reader-lang-menu')) return; interaction(); if (!state.minimized) enterFullscreen(); };
@@ -280,6 +305,8 @@ export async function mount(container, options = {}) {
     try { await fileActions.downloadFile({ id: fileId, url: originalDownload || url, filename: materialTitle || 'sidjil-original.pdf', mime: 'application/pdf' }, { title: materialTitle, variant: 'original' }); }
     catch (error) { toast(error?.message || 'تعذّر تنزيل الأصل', false); }
   });
+  originalTab.textContent = copy.original;
+  translationTab.textContent = copy.translation;
   translationTab.disabled = !trs.length;
   if (trs.length) {
     translationDownloadLink.href = '#';

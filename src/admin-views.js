@@ -1771,7 +1771,7 @@ if (!__sidjilNative && 'serviceWorker' in navigator && (location.protocol === 'h
 <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
 <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
 <script src="/js/docx-reader.js?v=20261011-text-reader" defer></script>
-<script type="module" src="/js/researcher-pdf.js?v=20261012-touch-zoom"></script>
+<script type="module" src="/js/researcher-pdf.js?v=20261014-reader-language"></script>
 <script src="/researcher-feed-v5.js?v=20261005-researcher-actions-v3" defer></script>
 
 <script>

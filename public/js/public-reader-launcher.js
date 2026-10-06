@@ -47,6 +47,7 @@
         fileId: Number(box.getAttribute('data-pdf-file-id')) || null,
         materialId: Number(box.getAttribute('data-material-id')) || null,
         materialTitle: box.getAttribute('data-material-title') || '',
+        uiLang: document.documentElement.lang || new URLSearchParams(window.location.search).get('lang') || 'ar',
         originalDownload: '/file/' + (Number(box.getAttribute('data-pdf-file-id')) || '') + '?download=1&watermark=1',
         translations: getTranslations(),
       });

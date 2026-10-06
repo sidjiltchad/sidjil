@@ -30,7 +30,7 @@ body.rpdf-reader-open .researcher-bottom-nav { display: none !important; }
 .rpdf-docx-scroll { background: #f8fafc; color: #1f2937; }
 .rpdf-docxview { --reader-word-scale: 1; min-height: 100%; padding: 54px clamp(14px, 3vw, 42px) 110px; background: #fff; font-family: var(--font-body, system-ui, sans-serif); font-size: calc(1rem * var(--reader-word-scale)); }
 .rpdf-docxview[dir="rtl"] { direction: rtl; text-align: justify; }
-.rpdf-docxview[dir="ltr"] { direction: ltr; text-align: justify; }
+.rpdf-docxview[dir="ltr"] { direction: ltr; text-align: left !important; }
 .rpdf-docxview.is-loading { opacity: .55; }
 .rpdf-reader-controls { position: absolute; z-index: 8; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 6px; padding: 7px; border: 1px solid rgba(255,255,255,.15); border-radius: 999px; background: rgba(13,18,25,.78); box-shadow: 0 10px 30px rgba(0,0,0,.35); opacity: 0; pointer-events: none; transform: translate(-50%, 12px); transition: opacity .2s, transform .2s; }
 .rpdf-reader-controls.is-visible { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
@@ -83,11 +83,14 @@ body.rpdf-reader-open .researcher-bottom-nav { display: none !important; }
 .rpdf-reader-root .sidjil-docx-view .docx .docx-page { margin-bottom: 1rem !important; padding: 2rem clamp(1rem, 4vw, 2.4rem) !important; overflow-wrap: anywhere; word-break: normal; box-shadow: 0 4px 18px rgba(0,0,0,.16); }
 .rpdf-reader-root .sidjil-docx-view img, .rpdf-reader-root .sidjil-docx-view table { max-width: 100% !important; }
 .rpdf-reader-root .sidjil-docx-view[dir="rtl"] .docx-page { direction: rtl; text-align: justify; }
-.rpdf-reader-root .sidjil-docx-view[dir="ltr"] .docx-page { direction: ltr; text-align: justify; }
+.rpdf-reader-root .sidjil-docx-view[dir="ltr"] .docx-page { direction: ltr; text-align: left !important; }
 .rpdf-reader-root .docx-fallback-pages { width: 100%; min-width: 0; }
 .rpdf-reader-root .docx-fallback-text { width: 100%; max-width: none; min-width: 0; box-sizing: border-box; margin: 0; padding: clamp(1rem, 4vw, 2.4rem) clamp(.9rem, 4vw, 2.2rem) 7rem; background: #fff; color: #172033; font-family: var(--font-body, system-ui, sans-serif); font-size: clamp(1rem, 2.1vw, 1.15rem); line-height: 1.95; text-align: justify; overflow-wrap: anywhere; word-break: normal; }
 .rpdf-reader-root .docx-fallback-text h3 { margin: 1.35rem 0 .7rem; font-size: 1.2em; font-weight: 800; line-height: 1.5; }
 .rpdf-reader-root .docx-fallback-text p { margin: 0 0 1rem; }
+.rpdf-reader-root .docx-fallback-text[dir="ltr"] { direction: ltr; text-align: left; }
+.rpdf-reader-root .docx-fallback-text[dir="ltr"] p,
+.rpdf-reader-root .docx-fallback-text[dir="ltr"] h3 { text-align: left; }
 .rpdf-reader-root .docx-fallback-text table { width: 100%; max-width: 100%; margin: 1.2rem 0; border-collapse: collapse; table-layout: fixed; }
 .rpdf-reader-root .docx-fallback-text td { max-width: 0; border: 1px solid #d4dbe5; padding: .5rem; overflow-wrap: anywhere; vertical-align: top; }
 .rpdf-reader-root .rpdf-reader-controls { flex-wrap: nowrap; max-width: calc(100% - 16px); overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
