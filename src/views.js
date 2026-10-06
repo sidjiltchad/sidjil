@@ -808,66 +808,24 @@ function pdfViewerBlock(ctx, pdfFiles, materialId = '', documentTitle = '', file
   const counterparts = (fileTranslations || []).filter(
     (x) => Number(x.source_file_id) === Number(pf.id) && x.translation_file_id
   );
-  const langName = (l) => l === 'ar' ? (lang === 'fr' ? 'Arabe' : 'العربية') : (lang === 'fr' ? 'Français' : 'الفرنسية');
-  const toggleBtns = counterparts.map((c) => {
-    const label = lang === 'fr' ? `Lire en ${langName(c.target_lang)}` : `اقرأ بـ${langName(c.target_lang)}`;
-    const back = lang === 'fr' ? 'Lire l’original' : 'اقرأ الأصل';
-    return `<button type="button" class="btn btn-small btn-translate" data-doc-toggle data-docx="/file/${c.translation_file_id}" data-docx-lang="${esc(c.target_lang)}" data-label-read="${esc(label)}" data-label-back="${esc(back)}">${esc(label)}</button>`;
-  }).join('');
-  const requestBtn = counterparts.length ? '' :
-    `<button type="button" class="btn btn-small btn-ghost" data-request-translation data-material-id="${esc(String(materialId))}" data-file-id="${esc(String(pf.id))}">${esc(t(lang, 'request_translation'))}</button>`;
   const sharedTranslations = counterparts.map((c) => ({
     translation_file_id: Number(c.translation_file_id),
     target_lang: c.target_lang,
     source_lang: c.source_lang || '',
+    translation_filename: c.translation_filename || '',
+    translation_mime: c.translation_mime || '',
   }));
   return `
     <section class="doc-section" id="pdfViewer">
       <h2 class="doc-section-title">${esc(t(lang, 'pdf_viewer_label'))}</h2>
-      <div class="pdf-viewer" id="pdfViewerBox" data-pdf="/file/${pf.id}" data-pdf-file-id="${esc(String(pf.id))}" data-material-id="${esc(String(materialId))}" data-material-title="${esc(documentTitle)}" data-translation-files="${esc(JSON.stringify(sharedTranslations))}">
-        <div class="pdf-toolbar" role="toolbar" aria-label="${esc(t(lang, 'pdf_viewer_label'))}">
-          <button type="button" class="btn btn-small" data-pdf-prev>${esc(t(lang, 'prev'))}</button>
-          <span class="pdf-pageinfo"><span data-pdf-num>1</span> / <span data-pdf-count>…</span></span>
-          <button type="button" class="btn btn-small" data-pdf-next>${esc(t(lang, 'next'))}</button>
-          <span class="pdf-sep"></span>
-          <button type="button" class="btn btn-small" data-pdf-zoom-out aria-label="${esc(t(lang, 'zoom_out'))}">−</button>
-          <button type="button" class="btn btn-small" data-pdf-zoom-in aria-label="${esc(t(lang, 'zoom_in'))}">+</button>
-          <button type="button" class="btn btn-small" data-pdf-fit>${esc(t(lang, 'fit_width'))}</button>
-          <button type="button" class="btn btn-small" data-pdf-full>${esc(t(lang, 'fullscreen'))}</button>
-          <button type="button" class="btn btn-small btn-primary" data-pdf-read data-read-label="${esc(t(lang, 'read_full_book'))}" data-close-label="${esc(t(lang, 'close_full_book'))}">${esc(t(lang, 'read_full_book'))}</button>
-          ${toggleBtns}
-          ${requestBtn}
-          <a class="btn btn-small btn-ghost" href="/file/${pf.id}?download=1&watermark=1">${esc(t(lang, 'download_original'))}</a>
+      <div class="pdf-viewer pdf-unified-launcher" id="pdfViewerBox" data-pdf="/file/${pf.id}" data-pdf-file-id="${esc(String(pf.id))}" data-material-id="${esc(String(materialId))}" data-material-title="${esc(documentTitle)}" data-translation-files="${esc(JSON.stringify(sharedTranslations))}">
+        <div class="pdf-reader-launcher" role="group" aria-label="${esc(t(lang, 'pdf_viewer_label'))}">
+          <button type="button" class="btn btn-primary" data-pdf-read data-read-label="${esc(t(lang, 'read_full_book'))}">${esc(t(lang, 'read_full_book'))}</button>
         </div>
-        <div class="pdf-canvas-wrap" id="pdfCanvasWrap"><canvas data-pdf-canvas></canvas></div>
-        <div class="docx-view hidden" data-docx-view aria-live="polite"></div>
-        <div class="pdf-reading-shell hidden" data-reading-shell aria-label="${esc(t(lang, 'read_full_book'))}">
-          <div class="pdf-reading-header">
-            <button type="button" class="pdf-reading-close" data-reading-close aria-label="${esc(t(lang, 'close_full_book'))}">×</button>
-            <div class="pdf-reading-heading">
-              <strong>${esc(documentTitle || t(lang, 'pdf_viewer_label'))}</strong>
-              <span><span data-reading-current>1</span> / <span data-reading-count>…</span></span>
-            </div>
-            <div class="pdf-reading-actions" data-reading-actions><button type="button" class="pdf-reading-cycle" data-reading-view-cycle aria-label="عرض الترجمة" title="عرض الترجمة">◐</button></div>
-          </div>
-          <div class="pdf-reading-columns">
-            <section class="pdf-reading-column" data-reading-original-pane>
-              <h3 class="pdf-reading-column-title">${lang === 'fr' ? 'Original' : 'الأصل'}</h3>
-              <div class="pdf-reading-pages" data-pdf-reading-pages aria-live="polite"></div>
-            </section>
-            <section class="pdf-reading-column pdf-reading-translation-pane hidden" data-reading-translation-pane>
-              <h3 class="pdf-reading-column-title" data-reading-translation-label>${lang === 'fr' ? 'Traduction' : 'الترجمة'}</h3>
-            </section>
-          </div>
-        </div>
-        <p class="pdf-error hidden" data-pdf-error>${esc(t(lang, 'pdf_load_error'))} <a href="/file/${pf.id}?download=1&watermark=1">${esc(t(lang, 'download_original'))}</a></p>
       </div>
     </section>
     <script type="module" src="/js/researcher-pdf.js?v=20261011-shared-public-reader"></script>
-    <script type="module" src="/js/pdf-viewer.js?v=20261011-shared-public-reader"></script>
-    <script src="/vendor/jszip/jszip.min.js?v=20261005" defer></script>
-    <script src="/vendor/docx-preview/docx-preview.min.js?v=20261005" defer></script>
-    <script src="/js/docx-reader.js?v=20261008-cache-safe" defer></script>`;
+    <script type="module" src="/js/public-reader-launcher.js?v=20261011-unified-reader"></script>`;
 }
 
 /* ---------- صفحة المادة ---------- */

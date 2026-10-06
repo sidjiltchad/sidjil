@@ -2214,6 +2214,21 @@ blockquote {
   box-shadow: var(--shadow);
 }
 
+/* صفحة المادة تفتح القارئ الموحد مباشرة؛ لا تعرض عارضاً مضمناً ثانياً. */
+.pdf-viewer.pdf-unified-launcher {
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+.pdf-reader-launcher {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: .25rem 0;
+}
+
 .pdf-toolbar {
   display: flex;
   flex-wrap: wrap;
