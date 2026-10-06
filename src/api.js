@@ -286,7 +286,7 @@ async function apiSearch(req, env, url) {
     nextCursor: result.nextCursor || null,
     hasMore: Boolean(result.hasMore),
     paginationMode: result.paginationMode || 'page',
-  });
+  }, 200, { 'Cache-Control': 'no-store, max-age=0' });
 }
 
 // ---------- مادة واحدة ----------
