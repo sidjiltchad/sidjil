@@ -74,6 +74,16 @@ export function displayEntityName(lang, row, kind = 'generic') {
   return String(lang === 'fr' ? (row.name_fr || row.name_orig || row.name_ar) : (row.name_ar || row.name_orig) || '').trim();
 }
 
+function sourceUrlLabel(url, lang) {
+  try {
+    const host = new URL(String(url)).hostname.replace(/^www\./i, '').toLowerCase();
+    if (host === 'gallica.bnf.fr') return 'Gallica (BnF)';
+    return host;
+  } catch {
+    return lang === 'fr' ? 'Source originale' : 'المصدر الأصلي';
+  }
+}
+
 /* ---------- التخطيط العام ---------- */
 
 function head(ctx, { title, description, ogImage, canonical }) {
@@ -878,7 +888,10 @@ async function documentPage(ctx, ark) {
   if (sourceName) metaRows.push([t(lang, 'source_label'), m.source.website
     ? `<a href="${esc(m.source.website)}" rel="noopener" target="_blank">${esc(sourceName)}</a>` : esc(sourceName)]);
   if (m.archive_ref) metaRows.push([t(lang, 'archive_ref_label'), `<code class="ref" dir="ltr">${esc(m.archive_ref)}</code>`]);
-  if (m.source_url) metaRows.push([t(lang, 'source_label') + ' ↗', `<a href="${esc(m.source_url)}" rel="noopener" target="_blank">${esc(truncate(m.source_url, 60))}</a>`]);
+  if (m.source_url) {
+    const sourceLinkLabel = sourceName || sourceUrlLabel(m.source_url, lang);
+    metaRows.push([t(lang, 'source_label') + ' ↗', `<a class="source-link" href="${esc(m.source_url)}" rel="noopener" target="_blank" title="${esc(m.source_url)}">${esc(sourceLinkLabel)}</a>`]);
+  }
   if (m.rights) metaRows.push([t(lang, 'rights_label'), esc(m.rights)]);
   const tags = (m.tags || []).map(x => `<a class="tag-chip" href="${langPath(ctx, '/archive?tag=' + x.id)}">${esc(displayEntityName(lang, x))}${lang === 'ar' && x.name_orig ? ` <span class="latin">${esc(x.name_orig)}</span>` : ''}</a>`).join('');
   if (tags) metaRows.push([t(lang, 'tag_label'), tags]);
