@@ -36,7 +36,7 @@ export async function configureNativeChrome({ documentLike = globalThis.document
   if (!statusBar) return false;
   const root = documentLike?.documentElement;
   await Promise.allSettled([
-    statusBar.setOverlaysWebView?.({ overlay: false }),
+    statusBar.setOverlaysWebView?.({ overlay: true }),
     statusBar.setBackgroundColor?.({ color: '#0b1220' }),
     statusBar.setStyle?.({ style: 'DARK' }),
   ]);
@@ -48,7 +48,10 @@ export async function configureNativeChrome({ documentLike = globalThis.document
   try { info = (await statusBar.getInfo?.()) || {}; } catch { /* optional plugin API */ }
   const nativeHeight = Number(info.height);
   const overlays = Boolean(info.overlays);
-  const inset = overlays && Number.isFinite(nativeHeight) && nativeHeight > 0 ? nativeHeight : 0;
+  // MainActivity enables edge-to-edge explicitly, so a valid plugin height is
+  // the top inset for the content row even if Android reports the overlay flag
+  // late during WebView startup.
+  const inset = Number.isFinite(nativeHeight) && nativeHeight > 0 ? nativeHeight : 0;
   root?.style.setProperty('--sidjil-status-bar-inset-top', `${inset}px`);
   // Keep the legacy variable in sync for any older shell asset loaded from
   // cache while the new asset is being installed.

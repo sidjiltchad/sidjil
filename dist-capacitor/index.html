@@ -14,11 +14,13 @@
   <body>
     <div class="mobile-app-shell" data-mobile-shell>
       <header class="mobile-app-header">
-        <button class="mobile-brand" type="button" data-route="feed" aria-label="موجز الباحث">
-          <img src="./assets/sidjil-logo.png" alt="سِجِل" width="42" height="42">
-          <span>مساحة الباحث</span>
-        </button>
-        <span class="mobile-runtime" data-runtime aria-live="polite">جارٍ التهيئة…</span>
+        <div class="mobile-app-header-content">
+          <button class="mobile-brand" type="button" data-route="feed" aria-label="موجز الباحث">
+            <img src="./assets/sidjil-logo.png" alt="سِجِل" width="42" height="42">
+            <span>مساحة الباحث</span>
+          </button>
+          <span class="mobile-runtime" data-runtime aria-live="polite">جارٍ التهيئة…</span>
+        </div>
       </header>
       <main class="mobile-app-main" id="mobile-main" tabindex="-1">
         <section class="mobile-state is-loading" data-loading-state aria-live="polite">

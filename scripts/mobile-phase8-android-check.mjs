@@ -23,7 +23,7 @@ for (const dep of ['@capacitor/app', '@capacitor/keyboard', '@capacitor/status-b
 }
 assert.match(config, /disableBackButtonHandler:\s*true/);
 assert.match(config, /resizeOnFullScreen:\s*true/);
-assert.match(config, /overlaysWebView:\s*false/);
+assert.match(config, /overlaysWebView:\s*true/);
 assert.match(config, /launchAutoHide:\s*true/);
 assert.match(config, /launchShowDuration:\s*500/);
 assert.match(manifest, /android:windowSoftInputMode="adjustResize"/);
@@ -37,6 +37,8 @@ assert.match(styles, /windowSplashScreenAnimatedIcon/);
 assert.match(colors, /sidjil_navy/);
 assert.match(activity, /installSplashScreen\(this\)/);
 assert.match(activity, /setKeepOnScreenCondition\(\(\) -> false\)/);
+assert.match(activity, /WindowInsetsCompat\.Type\.statusBars\(\)/);
+assert.match(activity, /sidjil-status-bar-inset-top/);
 assert.match(navigation, /function canGoBack\(\)/);
 assert.match(navigation, /stackDepth/);
 assert.match(ux, /backButton/);
@@ -52,6 +54,8 @@ assert.match(shell, /hideNativeSplash/);
 assert.match(shell, /navigationGuardCleanup/);
 assert.match(css, /env\(--?safe-area-inset|env\(safe-area-inset/);
 assert.match(css, /--sidjil-viewport-height/);
+assert.match(css, /mobile-app-header-content/);
+assert.match(css, /--sidjil-status-bar-inset-top/);
 assert.match(build, /native-ux\.js/);
 assert.match(gitignore, /android\/local\.properties/);
 

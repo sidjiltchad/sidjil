@@ -26,8 +26,9 @@ html { min-height: var(--sidjil-viewport-height, 100dvh); }
 body { min-height: var(--sidjil-viewport-height, 100dvh); }
 button, input { font: inherit; }
 button { cursor: pointer; }
-.mobile-app-shell { min-height: var(--sidjil-viewport-height, 100dvh); display: grid; grid-template-rows: auto 1fr auto; background: radial-gradient(circle at 50% -20%, #173267 0, #0b1220 58%); }
-.mobile-app-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: calc(1rem + var(--sidjil-status-bar-inset-top, env(safe-area-inset-top, 0px))) clamp(1rem, 4vw, 2rem) 1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
+.mobile-app-shell { min-height: var(--sidjil-viewport-height, 100dvh); display: grid; grid-template-rows: auto 1fr auto; background: #0b1220; }
+.mobile-app-header { display: block; min-width: 0; border-bottom: 1px solid rgba(255,255,255,.1); background: radial-gradient(circle at 50% -20%, #173267 0, #0b1220 58%); }
+.mobile-app-header-content { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-width: 0; padding: calc(var(--sidjil-status-bar-inset-top, env(safe-area-inset-top, 0px)) + .5rem) clamp(1rem, 4vw, 2rem) 1rem; }
 .mobile-brand { display: inline-flex; align-items: center; gap: .7rem; border: 0; background: transparent; color: inherit; font-weight: 700; padding: 0; text-align: start; }
 .mobile-brand img { display: block; object-fit: contain; border: 0; border-radius: 0; background: transparent; }
 .mobile-runtime { color: #9db2d8; font-size: .78rem; }
