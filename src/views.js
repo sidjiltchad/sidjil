@@ -139,7 +139,7 @@ ${ogUrl}
 <meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=20261006-bilingual-search">
+<link rel="stylesheet" href="/style.css?v=20261122-majalis-block">
 <link rel="stylesheet" href="/rpdf-reader.css?v=20261012-touch-zoom">
 </head>`;
 }
@@ -205,7 +205,39 @@ function header(ctx, active = '', { hideSearch = false } = {}) {
 </header>`;
 }
 
-function footer(ctx) {
+const MAJALIS_BLOCK = `<section class="footer-project" aria-label="Majalis Studio">
+  <div class="footer-brand">
+    <span class="footer-logo-wrap"><img src="/majalis-logo.png" alt="شعار المجالس — Majalis Studio" width="52" height="52" loading="lazy"></span>
+    <div>
+      <div class="footer-name">المجالس | Majalis Studio</div>
+      <div class="footer-tag">منصة البث المباشر وتسجيل الدروس العلمية · Live streaming &amp; lesson recording</div>
+    </div>
+  </div>
+  <div class="footer-project-cols">
+    <div class="fp-col" lang="ar" dir="rtl">
+      <h3>المجالس | Majalis Studio</h3>
+      <p><strong>Majalis Studio</strong> منصة رقمية متخصصة في البث المباشر وتسجيل الدروس العلمية والمحاضرات والخطب والبرامج التعليمية.</p>
+      <ul class="footer-facts">
+        <li>الموقع الرسمي: <a href="https://majalis.sidjil.org" rel="noopener">https://majalis.sidjil.org</a></li>
+        <li>الموقع الجغرافي: نجامينا، جمهورية تشاد.</li>
+        <li>البريد الإلكتروني: <a href="mailto:info@sidjil.org">info@sidjil.org</a></li>
+      </ul>
+      <p class="footer-note">تُستضاف منصة Majalis Studio على النطاق الفرعي majalis.sidjil.org التابع للنطاق sidjil.org.</p>
+    </div>
+    <div class="fp-col" lang="en" dir="ltr">
+      <h3>Majalis Studio</h3>
+      <p><strong>Majalis Studio</strong> is a digital platform for live streaming and recording educational lessons, lectures, sermons, and other educational programs.</p>
+      <ul class="footer-facts">
+        <li>Official website: <a href="https://majalis.sidjil.org" rel="noopener">https://majalis.sidjil.org</a></li>
+        <li>Location: N'Djamena, Chad.</li>
+        <li>Email: <a href="mailto:info@sidjil.org">info@sidjil.org</a></li>
+      </ul>
+      <p class="footer-note">Majalis Studio is hosted on the majalis.sidjil.org subdomain of sidjil.org.</p>
+    </div>
+  </div>
+</section>`;
+
+function footer(ctx, active) {
   const { lang } = ctx;
   const year = new Date().getFullYear();
   return `<footer class="site-footer">
@@ -238,6 +270,7 @@ function footer(ctx) {
       <a href="${langPath(ctx, '/about')}">${esc(t(lang, 'nav_about'))}</a>
       <a href="${langPath(ctx, '/methodology')}">${esc(t(lang, 'nav_methodology'))}</a>
     </nav>
+${active === '/' ? MAJALIS_BLOCK : ''}
   </div>
   <div class="footer-bottom">
     <div class="wrap">© ${year} ${esc(t(lang, 'site_name'))} — ${esc(t(lang, 'all_rights'))}.</div>
@@ -247,7 +280,7 @@ function footer(ctx) {
 
 export function layout(ctx, { title, description, ogImage, canonical, active, content, hideHeaderSearch = false }) {
   return head(ctx, { title, description, ogImage, canonical }) +
-    `<body>\n${header(ctx, active, { hideSearch: hideHeaderSearch })}\n<main id="main">\n${content}\n</main>\n${footer(ctx)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
+    `<body>\n${header(ctx, active, { hideSearch: hideHeaderSearch })}\n<main id="main">\n${content}\n</main>\n${footer(ctx, active)}\n${pwaBar(ctx, active)}\n<script src="/app.js" defer></script>\n</body>\n</html>`;
 }
 
 // شريط سفلي يظهر فقط في وضع التطبيق (standalone)
