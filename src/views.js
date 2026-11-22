@@ -139,7 +139,7 @@ ${ogUrl}
 <meta name="apple-mobile-web-app-title" content="مجلس سِجِل">
 <link rel="apple-touch-icon" href="/logo.png">
 <link rel="preload" href="/fonts/ibm-plex-sans-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=20261122-majalis-block">
+<link rel="stylesheet" href="/style.css?v=20261122-majalis-footer-v2">
 <link rel="stylesheet" href="/rpdf-reader.css?v=20261012-touch-zoom">
 </head>`;
 }
