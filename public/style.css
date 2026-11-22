@@ -3968,7 +3968,7 @@ textarea { border-radius: var(--shape-control); }
 .cat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 18px;
+  gap: 18px;}
 
 /* ===== Majalis Studio — كتلة التذييل (تستعمل متغيّرات سِجِل: --gold --line --ink-secondary --font-head ...) ===== */
 .footer-project{grid-column:1/-1;margin-top:1.6rem;padding:1.4rem 1.4rem 1.2rem;border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow-sm)}
